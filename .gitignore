@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local runtime data
+memory.json
+
+# Termux / editor files
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
