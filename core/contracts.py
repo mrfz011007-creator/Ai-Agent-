@@ -154,9 +154,9 @@ class Task:
     title: str
     status: TaskStatus = TaskStatus.PENDING
     dependencies: list[str] = field(default_factory=list)
-    execution_contract: ExecutionContract | None = None
     attempts: int = 0
     result: Any = None
+    execution_contract: ExecutionContract | None = None
 
     def mark_running(self) -> None:
         if self.status not in (TaskStatus.READY, TaskStatus.PENDING):
