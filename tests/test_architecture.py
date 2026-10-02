@@ -358,3 +358,56 @@ def test_command_runner_reports_timeout(tmp_path):
     )
     assert not result["success"]
     assert result["status"] == "TIMEOUT"
+
+
+def test_workspace_guard_denies_destructive_commands(tmp_path):
+    from security.guard import GuardEngine
+
+    guard = GuardEngine(tmp_path)
+    result = guard.check(
+        tool="run_command",
+        arguments={"command": "rm -rf project", "cwd": str(tmp_path)},
+    )
+    assert not result.allowed
+    assert result.reason == "DESTRUCTIVE_COMMAND_DENIED"
+
+
+def test_tool_router_redacts_secrets_and_limits_structured_output(tmp_path):
+    from core.budget import BudgetManager
+    from core.contracts import Budget, ToolRequest
+    from execution.router import ToolRouter
+    from security.guard import GuardEngine
+    from security.policy import PolicyEngine
+    from verification.evidence import EvidenceStore
+
+    secret = "AIza1234567890123456789012345"
+    registry = {
+        "run_command": {
+            "func": lambda **kwargs: {
+                "success": True,
+                "status": "SUCCESS",
+                "stdout": secret + ("x" * 200),
+                "stderr": "Bearer SUPERSECRET123456789",
+            },
+            "permission": "safe",
+        }
+    }
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget(max_output_chars=50)),
+        evidence=EvidenceStore(),
+        guard=GuardEngine(tmp_path),
+    )
+    result = router.execute(
+        ToolRequest(
+            tool="run_command",
+            action="test",
+            arguments={"command": "echo ok", "cwd": str(tmp_path)},
+            task_id="RED-1",
+        )
+    )
+    assert result.success
+    assert "[REDACTED_SECRET]" in result.data["stdout"]
+    assert len(result.data["stdout"]) <= 50
+    assert "[REDACTED_SECRET]" in result.data["stderr"]
