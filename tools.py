@@ -159,8 +159,16 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
         raise ValueError("expected_count harus >= 1.")
 
     path = path_aman(nama)
+    max_bytes = _max_file_bytes()
+    if path.stat().st_size > max_bytes:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "File melebihi batas ukuran patch.",
+        }
     raw = path.read_bytes()
-    if len(raw) > _max_file_bytes():
+    if len(raw) > max_bytes:
         return {
             "status": "error",
             "success": False,
@@ -251,6 +259,13 @@ def tulis_file(nama, isi, expected_sha256=None):
                     "success": False,
                     "code": "FILE_CHANGED",
                     "pesan": "Penulisan ditolak: file yang diharapkan tidak ada.",
+                }
+            if path.stat().st_size > _max_file_bytes():
+                return {
+                    "status": "error",
+                    "success": False,
+                    "code": "FILE_TOO_LARGE",
+                    "pesan": "File saat ini melebihi batas ukuran snapshot.",
                 }
             current = path.read_text(encoding="utf-8")
             current_sha256 = _sha256_text(current)
