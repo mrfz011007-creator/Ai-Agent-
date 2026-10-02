@@ -39,6 +39,7 @@ def test_safe_resume_requires_explicit_reason(tmp_path):
     evidence.record(
         evidence_id="E-R2",
         task_id="R2",
+        attempt_id="R2:attempt:1",
         tool="reconcile",
         action="inspect",
         result=ToolResult(True, "SUCCESS", "reconcile"),
@@ -82,6 +83,7 @@ def test_evidence_survives_restart_and_allows_safe_resume(tmp_path):
     evidence.record(
         evidence_id="E-R4",
         task_id="R4",
+        attempt_id="R4:attempt:1",
         tool="reconcile",
         action="inspect",
         result=ToolResult(True, "SUCCESS", "reconcile"),
@@ -355,3 +357,55 @@ def test_runtime_does_not_replay_non_idempotent_tool_after_ambiguous_failure(tmp
     assert not result.success
     assert len(calls) == 1
     assert runtime.task_manager.get(task.task_id).attempts == 1
+
+def test_recovery_rejects_success_evidence_from_stale_attempt(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    manager.create(Task("R12", "reject stale evidence", status=TaskStatus.READY))
+    manager.start("R12")
+    evidence = EvidenceStore(store)
+    evidence.record(
+        evidence_id="E-R12-OLD",
+        task_id="R12",
+        attempt_id="R12:attempt:0",
+        tool="reconcile",
+        action="inspect",
+        result=ToolResult(True, "SUCCESS", "reconcile"),
+    )
+    recovery = RecoveryManager(manager, evidence)
+    recovery.recover_task("R12")
+    try:
+        recovery.reconcile(
+            "R12", ReconcileOutcome.SAFE_TO_RESUME,
+            "Evidence is from an earlier attempt.",
+            evidence_ids=("E-R12-OLD",),
+        )
+        assert False, "stale attempt evidence must not authorize recovery"
+    except ValueError as exc:
+        assert "current attempt" in str(exc).lower()
+
+
+def test_recovery_accepts_evidence_from_current_attempt(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    manager.create(Task("R13", "accept current evidence", status=TaskStatus.READY))
+    manager.start("R13")
+    evidence = EvidenceStore(store)
+    evidence.record(
+        evidence_id="E-R13-CURRENT",
+        task_id="R13",
+        attempt_id="R13:attempt:1",
+        tool="reconcile",
+        action="inspect",
+        result=ToolResult(True, "SUCCESS", "reconcile"),
+    )
+    recovery = RecoveryManager(manager, evidence)
+    recovery.recover_task("R13")
+    result = recovery.reconcile(
+        "R13", ReconcileOutcome.SAFE_TO_RESUME,
+        "Current attempt evidence confirms safe resume.",
+        evidence_ids=("E-R13-CURRENT",),
+    )
+    assert result.action == "RESUME"
+    assert result.status == TaskStatus.RUNNING
+
