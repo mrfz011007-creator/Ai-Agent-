@@ -145,3 +145,30 @@ def test_search_does_not_follow_workspace_escape(monkeypatch, tmp_path):
     from tools import cari_teks
 
     assert cari_teks("secret-marker")["hasil"] == []
+
+
+def test_tool_router_bounds_total_structured_output(monkeypatch, tmp_path):
+    from core.budget import Budget, BudgetManager
+    from core.contracts import ToolRequest
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+    from verification.evidence import EvidenceStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    registry = {"huge": {"func": lambda: {"items": ["x" * 20 for _ in range(20)]}, "permission": "safe"}}
+    budget = BudgetManager(Budget(max_output_chars=100))
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=budget,
+        evidence=EvidenceStore(),
+    )
+
+    result = router.execute(ToolRequest(tool="huge", action="execute", arguments={}))
+
+    assert result.success is True
+    assert result.data["output_truncated"] is True
+    assert sum(len(item) for item in result.data["items"]) <= 100
