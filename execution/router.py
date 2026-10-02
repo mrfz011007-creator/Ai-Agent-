@@ -74,7 +74,17 @@ class ToolRouter:
 
         try:
             data = function(**dict(request.arguments))
-            result = ToolResult(True, "success", request.tool, data=data)
+            if isinstance(data, str) and len(data) > self._budget.budget.max_output_chars:
+                data = data[: self._budget.budget.max_output_chars]
+                result = ToolResult(
+                    True,
+                    "success",
+                    request.tool,
+                    data=data,
+                    error="OUTPUT_TRUNCATED",
+                )
+            else:
+                result = ToolResult(True, "success", request.tool, data=data)
         except Exception as error:
             result = ToolResult(False, "error", request.tool, error=str(error))
 
