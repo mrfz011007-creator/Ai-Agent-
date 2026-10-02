@@ -32,6 +32,7 @@ def test_task_execution_contract_allows_declared_tool_only(tmp_path):
             execution_contract=ExecutionContract(
                 objective="read bounded data",
                 allowed_tools=("search_memory",),
+                allowed_capabilities=("workspace.read",),
                 completion_conditions=("search returns evidence",),
             ),
         )
@@ -88,6 +89,7 @@ def test_tool_without_declared_capability_is_denied(tmp_path):
             execution_contract=ExecutionContract(
                 objective="use a tool with missing capability declaration",
                 allowed_tools=("unregistered_capability_tool",),
+                allowed_capabilities=("workspace.read",),
                 completion_conditions=("tool execution evidence exists",),
             ),
         )
