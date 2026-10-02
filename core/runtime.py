@@ -7,6 +7,7 @@ from pathlib import Path
 from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, create_gemini_gateway
 from core.model_planner import ModelPlanService
+from core.model_execution import ExecutionProposal
 from core.memory_service import MemoryService
 from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
