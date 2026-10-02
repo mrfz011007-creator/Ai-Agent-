@@ -62,12 +62,36 @@ def test_verifier_validates_all_task_evidence():
 
 from verification.build import BuildManager, TestManager
 
+class _FakeRouter:
+    def __init__(self, success=True):
+        self.success = success
+
+    def execute(self, request):
+        if self.success:
+            from pathlib import Path
+            command = request.arguments["command"]
+            if "app-debug.apk" in command:
+                Path(request.arguments["cwd"], "app-debug.apk").write_bytes(b"apk")
+            return ToolResult(
+                True, "success", request.tool,
+                data={"success": True, "status": "SUCCESS", "exit_code": 0,
+                      "stdout": "ok", "stderr": ""},
+                evidence_id="E-BUILD",
+            )
+        return ToolResult(
+            False, "error", request.tool,
+            data={"success": False, "status": "FAILED", "exit_code": 1,
+                  "stdout": "", "stderr": "failed"},
+            error="failed",
+            evidence_id="E-FAIL",
+        )
+
 
 def test_build_manager_registers_artifact(tmp_path):
     store = StateStore(tmp_path / "state.sqlite3")
     output = tmp_path / "app-debug.apk"
     output.write_bytes(b"apk")
-    manager = BuildManager(ArtifactManager(store))
+    manager = BuildManager(ArtifactManager(store), _FakeRouter())
 
     result = manager.build(
         task_id="B1",
@@ -82,7 +106,7 @@ def test_build_manager_registers_artifact(tmp_path):
 
 
 def test_test_manager_reports_exit_status(tmp_path):
-    result = TestManager().run(
+    result = TestManager(_FakeRouter()).run(
         command="python -c \"print('ok')\"",
         cwd=tmp_path,
     )
