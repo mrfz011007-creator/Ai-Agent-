@@ -90,6 +90,11 @@ class MemoryService:
                     reason="REFLECTION_HIGH_RISK_REQUIRES_REVIEW")
                 rejected.append({"key": candidate.key, "status": "pending_review", "review_id": item["id"]})
                 continue
+            existing = search_memory(candidate.key, memory_type=candidate.memory_type,
+                project_id=project_id if project_id is not None else self.project_id, task_id=task_id, limit=5)
+            if any(item["record"].get("value") == candidate.value for item in existing.get("results", [])):
+                rejected.append({"key": candidate.key, "status": "duplicate", "reason": "REFLECTION_DUPLICATE"})
+                continue
             result = self.commit_proposal({
                 "key": candidate.key,
                 "value": candidate.value,
