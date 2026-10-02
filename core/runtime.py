@@ -17,6 +17,7 @@ from verification.artifacts import ArtifactManager
 from verification.build import BuildManager, TestManager
 from registry import TOOL_REGISTRY
 from permissions import minta_konfirmasi
+from execution.command import run_command
 
 
 @dataclass
@@ -45,17 +46,26 @@ class AgentRuntime:
         evidence_store = EvidenceStore(state_store)
         recovery_manager = RecoveryManager(task_manager, evidence_store)
         artifact_manager = ArtifactManager(state_store)
-        build_manager = BuildManager(artifact_manager)
-        test_manager = TestManager()
         budget_manager = BudgetManager(Budget())
-        policy_engine = PolicyEngine(TOOL_REGISTRY.get)
+
+        runtime_registry = dict(TOOL_REGISTRY)
+        runtime_registry["run_command"] = {
+            "func": run_command,
+            "permission": "confirm",
+            "description": "Run one bounded project command through the execution boundary.",
+        }
+
+        registry_getter = runtime_registry.get
+        policy_engine = PolicyEngine(registry_getter)
         tool_router = ToolRouter(
-            registry_getter=TOOL_REGISTRY.get,
+            registry_getter=registry_getter,
             policy=policy_engine,
             budget=budget_manager,
             evidence=evidence_store,
             confirmation=minta_konfirmasi,
         )
+        build_manager = BuildManager(artifact_manager, tool_router)
+        test_manager = TestManager(tool_router)
         return cls(
             state_store=state_store,
             checkpoint_manager=checkpoint_manager,
