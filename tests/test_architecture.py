@@ -296,7 +296,7 @@ def test_recovery_does_not_change_completed_task(tmp_path):
 def test_runtime_exposes_acceptance_gate(tmp_path):
     from core.runtime import AgentRuntime
 
-    runtime = AgentRuntime.create(tmp_path / "state.sqlite3", confirmation=lambda request: True)
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
     assert runtime.acceptance_gate is not None
 
 
@@ -430,11 +430,13 @@ def test_runtime_tool_execution_completion(tmp_path):
     )
     runtime.task_manager.start(task.task_id)
 
+    from core.contracts import ToolRequest
+
     result = runtime.tool_router.execute(
-        __import__("core.contracts", fromlist=["ToolRequest"]).ToolRequest(
-            tool="remember",
+        ToolRequest(
+            tool="lokasi",
             action="execute",
-            arguments={"key": "e2e", "value": "ok"},
+            arguments={},
             task_id=task.task_id,
             source="test",
         )
