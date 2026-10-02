@@ -37,8 +37,8 @@ class AgentRuntime:
             store=state_store,
             checkpoints=checkpoint_manager,
         )
-        recovery_manager = RecoveryManager(task_manager)
         evidence_store = EvidenceStore(state_store)
+        recovery_manager = RecoveryManager(task_manager, evidence_store)
         budget_manager = BudgetManager(Budget())
         policy_engine = PolicyEngine(TOOL_REGISTRY.get)
         tool_router = ToolRouter(
