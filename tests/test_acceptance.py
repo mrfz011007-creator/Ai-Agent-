@@ -19,7 +19,7 @@ def _setup(tmp_path):
     return store, evidence, artifacts, gate, manager
 
 
-def _evidence(evidence, task_id, evidence_id, success=True):
+def _evidence(evidence, task_id, evidence_id, success=True, attempt_id="attempt-1"):
     from core.contracts import ToolResult
     evidence.record(
         evidence_id=evidence_id,
@@ -27,6 +27,7 @@ def _evidence(evidence, task_id, evidence_id, success=True):
         tool="run_command",
         action="build",
         result=ToolResult(success, "SUCCESS" if success else "FAILED", "run_command"),
+        attempt_id=attempt_id,
     )
 
 
@@ -47,6 +48,7 @@ def test_acceptance_requires_valid_artifact_and_tests(tmp_path):
         path=path,
         kind="APK",
         attempt_id="attempt-1",
+        evidence_id="build-1",
     )
     _evidence(evidence, "A1", "build-1")
     _evidence(evidence, "A1", "test-1")
