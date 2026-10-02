@@ -91,3 +91,26 @@ def tanya_gemini(pertanyaan, tools):
         )
 
     return get_runtime().model_gateway.call(invoke)
+
+
+def propose_plan_gemini(goal):
+    """Ask Gemini for a JSON-only plan; runtime validation remains authoritative."""
+    def invoke(client):
+        response = client.models.generate_content(
+            model="gemini-3.8-flash",
+            contents=goal,
+            config=types.GenerateContentConfig(
+                system_instruction=(
+                    "Return ONLY a JSON plan with keys goal, tasks, "
+                    "acceptance_criteria. Each task has task_id, title, "
+                    "dependencies. Do not include commands, tool arguments, "
+                    "secrets, markdown, or executable instructions."
+                ),
+                response_mime_type="application/json",
+                automatic_function_calling=(
+                    types.AutomaticFunctionCallingConfig(disable=True)
+                ),
+            ),
+        )
+        return response.text or ""
+    return get_runtime().model_gateway.call(invoke)
