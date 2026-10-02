@@ -143,3 +143,19 @@ def test_completed_requires_verification():
         assert False, "Completion without PASS must fail"
     except ValueError:
         pass
+
+
+def test_state_store_persists_task_and_checkpoint(tmp_path):
+    from core.state_store import StateStore
+    from core.checkpoint import CheckpointManager
+
+    store = StateStore(tmp_path / "state.sqlite3")
+    store.save_task("T1", "RUNNING", 1, {"title": "build"})
+    assert store.load_task("T1")["payload"]["title"] == "build"
+
+    manager = CheckpointManager(store)
+    task = Task("T1", "build", status=TaskStatus.RUNNING, attempts=1)
+    checkpoint = manager.capture(task, workspace="demo")
+    latest = manager.latest("T1")
+    assert latest["checkpoint_id"] == checkpoint.checkpoint_id
+    assert latest["payload"]["workspace"] == "demo"
