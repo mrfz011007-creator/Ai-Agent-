@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import sqlite3
 from core.contracts import Task, TaskStatus, VerificationResult, VerificationStatus
 from core.execution_contract import ExecutionContract
 from core.state_store import StateStore
@@ -221,5 +222,12 @@ class TaskManager:
         )
 
     def _checkpoint(self, task: Task, **payload) -> None:
-        if self.checkpoints is not None:
+        if self.checkpoints is None:
+            return
+        try:
             self.checkpoints.capture(task, **payload)
+        except (OSError, sqlite3.Error):
+            # Task state is authoritative. A checkpoint is recovery/history
+            # metadata and must not turn a successfully persisted transition
+            # into a reported failure when the checkpoint store is unavailable.
+            return
