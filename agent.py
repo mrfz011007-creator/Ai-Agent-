@@ -1,4 +1,5 @@
 import json
+import uuid
 
 from google.genai import types
 
@@ -7,18 +8,20 @@ from llm import (
     buat_tool_definitions,
 )
 
-from core.runtime import execute_tool
+from core.runtime import execute_tool, get_runtime
+from core.contracts import Task
 
 from conversation import ConversationMemory
 
 from local_router import jalankan_lokal
 
 
-def jalankan_tool(nama_tool, args):
+def jalankan_tool(nama_tool, args, task_id=None):
     result = execute_tool(
         nama_tool,
         args,
         source="model",
+        task_id=task_id,
     )
 
     payload = {
@@ -38,8 +41,8 @@ def jalankan_tool(nama_tool, args):
     return payload
 
 
-def proses_tool(nama_tool, args):
-    return jalankan_tool(nama_tool, args)
+def proses_tool(nama_tool, args, task_id=None):
+    return jalankan_tool(nama_tool, args, task_id)
 
 
 def proses_lokal(perintah):
@@ -81,6 +84,10 @@ def main():
 
         print("\n🧠 Gemini sedang berpikir...")
 
+        runtime = get_runtime()
+        execution_task_id = None
+        evidence_ids = []
+
         try:
 
             while True:
@@ -106,6 +113,17 @@ def main():
                     if response.text:
                         print("\nGemini:", response.text)
 
+                    if execution_task_id is not None:
+                        if evidence_ids:
+                            runtime.verify_tool_execution(
+                                execution_task_id,
+                                evidence_ids,
+                            )
+                        else:
+                            runtime.task_manager.fail(
+                                execution_task_id,
+                                "No tool evidence produced",
+                            )
                     break
 
                 function_response_parts = []
@@ -124,10 +142,21 @@ def main():
                         )
                     )
 
+                    if execution_task_id is None:
+                        execution_task_id = f"task-{uuid.uuid4().hex[:12]}"
+                        runtime.task_manager.create(
+                            Task(task_id=execution_task_id, title=perintah)
+                        )
+                        runtime.task_manager.start(execution_task_id)
+
                     hasil = proses_tool(
                         nama_tool,
-                        args
+                        args,
+                        execution_task_id,
                     )
+
+                    if hasil.get("evidence_id"):
+                        evidence_ids.append(hasil["evidence_id"])
 
                     print(
                         "📤 Hasil:",
