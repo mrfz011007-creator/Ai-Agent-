@@ -8,6 +8,21 @@ from core.task_manager import TaskManager
 from verification.evidence import EvidenceStore
 
 
+class FailureClass(str, Enum):
+    RETRYABLE = "RETRYABLE"
+    NON_RETRYABLE = "NON_RETRYABLE"
+    HUMAN_REQUIRED = "HUMAN_REQUIRED"
+
+
+def classify_failure(status: str, error: str | None = None) -> FailureClass:
+    text = f"{status} {error or ''}".lower()
+    if any(token in text for token in ("budget_exceeded", "guard_denied", "user denied", "cancelled", "permission")):
+        return FailureClass.HUMAN_REQUIRED if "budget" in text else FailureClass.NON_RETRYABLE
+    if any(token in text for token in ("timeout", "timed out", "temporarily", "unavailable", "connection", "429", "rate limit")):
+        return FailureClass.RETRYABLE
+    return FailureClass.NON_RETRYABLE
+
+
 class ReconcileOutcome(str, Enum):
     SAFE_TO_RESUME = "SAFE_TO_RESUME"
     SAFE_TO_RETRY = "SAFE_TO_RETRY"
@@ -29,9 +44,10 @@ class RecoveryManager:
 
     INTERRUPTED = (TaskStatus.RUNNING.value, TaskStatus.VERIFYING.value)
 
-    def __init__(self, task_manager: TaskManager, evidence_store: EvidenceStore | None = None):
+    def __init__(self, task_manager: TaskManager, evidence_store: EvidenceStore | None = None, budget=None):
         self.task_manager = task_manager
         self.evidence_store = evidence_store
+        self.budget = budget
 
     def recover_task(self, task_id: str) -> RecoveryDecision | None:
         task = self.task_manager.get(task_id)
@@ -64,6 +80,28 @@ class RecoveryManager:
             action="WAIT_FOR_RECONCILIATION",
             reason="Execution state was interrupted and requires reconciliation before retry.",
         )
+
+    def retry_after_failure(self, task_id: str, *, status: str, error: str | None = None) -> RecoveryDecision:
+        task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+        if task is None:
+            raise KeyError(f"Unknown task: {task_id}")
+        if task.status != TaskStatus.RUNNING:
+            raise ValueError(f"Retry requires RUNNING task, got {task.status}")
+        failure_class = classify_failure(status, error)
+        if failure_class != FailureClass.RETRYABLE:
+            return RecoveryDecision(task_id, task.status, task.status, failure_class.value, error or status)
+        if self.budget is None:
+            raise RuntimeError("Recovery budget is not configured")
+        try:
+            self.budget.reserve_recovery_cycle()
+        except RuntimeError as exc:
+            self.task_manager.fail(task_id, str(exc))
+            return RecoveryDecision(task_id, TaskStatus.RUNNING, TaskStatus.FAILED, "BLOCK", str(exc))
+        task.status = TaskStatus.WAITING
+        self.task_manager.persist(task_id)
+        self.task_manager.checkpoint(task_id, event="recovery_retry", reason=error or status)
+        task = self.task_manager.retry(task_id)
+        return RecoveryDecision(task_id, TaskStatus.WAITING, task.status, "RETRY", error or status)
 
     def reconcile(
         self,
