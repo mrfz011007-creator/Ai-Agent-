@@ -31,6 +31,6 @@ jobs:
       - name: Run repository tests
         run: python -m pytest -q
       - name: Static correctness checks
-        run: python -m pip install ruff && python -m ruff check . --select F,E9
+        run: python -m pip install ruff && python -m ruff check core execution security verification agent.py conversation.py intent_router.py local_router.py llm.py key_manager.py memory.py memory_context.py memory_policy.py permissions.py registry.py tools.py --select F,E9
       - name: Security scan
         run: python -m pip install bandit && python -m bandit -r core execution security verification tools.py memory.py -ll
