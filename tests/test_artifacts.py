@@ -60,7 +60,7 @@ def test_verifier_validates_all_task_evidence():
     assert wrong_task.status == VerificationStatus.FAILED
 
 
-from verification.build import BuildManager, TestManager
+from verification.build import BuildManager
 
 class _FakeRouter:
     def __init__(self, success=True):
