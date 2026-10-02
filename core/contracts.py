@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping
 
+from core.execution_contract import ExecutionContract
+
 
 class TaskStatus(str, Enum):
     PENDING = "PENDING"
@@ -152,6 +154,7 @@ class Task:
     title: str
     status: TaskStatus = TaskStatus.PENDING
     dependencies: list[str] = field(default_factory=list)
+    execution_contract: ExecutionContract | None = None
     attempts: int = 0
     result: Any = None
 
