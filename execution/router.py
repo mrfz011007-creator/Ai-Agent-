@@ -7,6 +7,7 @@ from core.budget import BudgetManager
 from core.contracts import Decision, ToolRequest, ToolResult
 from security.policy import PolicyContext, PolicyEngine
 from verification.evidence import EvidenceStore
+from security.guard import GuardEngine
 
 
 class ToolRouter:
@@ -20,12 +21,14 @@ class ToolRouter:
         budget: BudgetManager,
         evidence: EvidenceStore,
         confirmation: Callable[[str, dict], bool] | None = None,
+        guard: GuardEngine | None = None,
     ):
         self._registry_getter = registry_getter
         self._policy = policy
         self._budget = budget
         self._evidence = evidence
         self._confirmation = confirmation
+        self._guard = guard
 
     def execute(self, request: ToolRequest) -> ToolResult:
         policy = self._policy.decide(
@@ -50,6 +53,19 @@ class ToolRouter:
                     "cancelled",
                     request.tool,
                     error="User denied tool execution",
+                )
+
+        if self._guard is not None:
+            guard = self._guard.check(
+                tool=request.tool,
+                arguments=dict(request.arguments),
+            )
+            if not guard.allowed:
+                return ToolResult(
+                    False,
+                    "guard_denied",
+                    request.tool,
+                    error=guard.reason,
                 )
 
         try:
