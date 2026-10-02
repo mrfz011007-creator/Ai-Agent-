@@ -144,7 +144,8 @@ def _load_store() -> dict[str, Any]:
     if "records" not in value:
         store = _migrate_legacy(value)
     else:
-        if value.get("schema_version") != MEMORY_SCHEMA_VERSION:
+        schema_version = value.get("schema_version", 1)
+        if schema_version not in {1, MEMORY_SCHEMA_VERSION}:
             raise RuntimeError("MEMORY_SCHEMA_VERSION_UNSUPPORTED")
         records = value.get("records")
         if not isinstance(records, list):
@@ -240,6 +241,12 @@ def _new_record(
         "invalidated_by": None,
         "supersedes_id": supersedes_id,
         "tags": sorted(set(tags)),
+        "importance": 0.5,
+        "confidence": 0.5,
+        "retention": "normal",
+        "summary": str(value)[:500],
+        "evidence_refs": [],
+        "last_accessed_at": None,
     }
     _validate_record(record)
     return record
@@ -279,7 +286,20 @@ def remember(
     source: Any = None,
     provenance: Mapping[str, Any] | None = None,
     tags: list[str] | None = None,
+    importance: float | None = None,
+    confidence: float | None = None,
+    retention: str = "normal",
+    summary: str | None = None,
+    evidence_refs: list[str] | None = None,
 ) -> dict[str, Any]:
+    from memory_policy import evaluate_memory_candidate
+    source_data = _normalize_source(source)
+    decision = evaluate_memory_candidate(memory_type=memory_type, key=key, value=value,
+        source=source_data, provenance=provenance or {}, context=context or {},
+        importance=importance, confidence=confidence, retention=retention,
+        evidence_refs=evidence_refs or [])
+    if not decision.allowed:
+        return {"status": "rejected", "success": False, "reason": decision.reason}
     store = _load_store()
     previous = _active_matches(
         store,
@@ -309,6 +329,11 @@ def remember(
         source=source,
         provenance=provenance or {"reason": "memory_write"},
         tags=tags or [],
+        importance=decision.importance,
+        confidence=decision.confidence,
+        retention=retention,
+        summary=summary or str(value)[:500],
+        evidence_refs=evidence_refs or [],
         version=latest_version + 1,
         supersedes_id=supersedes_id,
         now=now,
@@ -342,6 +367,7 @@ def recall(
     if not records:
         return {"status": "not_found", "success": True, "key": key}
     record = records[0]
+    record["last_accessed_at"] = _utc_now()
     return {
         "status": "success",
         "success": True,
@@ -388,6 +414,11 @@ def update_memory(
                 source=record["source"],
                 provenance=provenance or {"reason": "memory_update", "previous_id": record_id},
                 tags=record["tags"],
+            importance=record.get("importance", 0.5),
+            confidence=record.get("confidence", 0.5),
+            retention=record.get("retention", "normal"),
+            summary=record.get("summary"),
+            evidence_refs=record.get("evidence_refs", []),
             )
     return {"status": "not_found", "success": True, "record_id": record_id}
 
@@ -429,6 +460,8 @@ def _score_record(
             if record["context"].get(key) == value:
                 score += 2.0
     score += min(record["version"], 10) * 0.05
+    score += float(record.get("importance", 0.5)) * 2.0
+    score += float(record.get("confidence", 0.5))
     score += float(record.get("importance", 0.5)) * 2.0
     score += float(record.get("confidence", 0.5))
     return score
