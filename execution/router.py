@@ -24,6 +24,7 @@ class ToolRouter:
         evidence: EvidenceStore,
         confirmation: Callable[[str, dict], bool] | None = None,
         guard: GuardEngine | None = None,
+        task_getter: Callable[[str], object | None] | None = None,
     ):
         self._registry_getter = registry_getter
         self._policy = policy
@@ -31,11 +32,23 @@ class ToolRouter:
         self._evidence = evidence
         self._confirmation = confirmation
         self._guard = guard
+        self._task_getter = task_getter
 
     def execute(self, request: ToolRequest) -> ToolResult:
         metadata = self._registry_getter(request.tool)
         if metadata is None:
             return ToolResult(False, "denied", request.tool, error="Unknown tool")
+
+        if self._task_getter is not None and request.task_id is not None:
+            task = self._task_getter(request.task_id)
+            contract = getattr(task, "execution_contract", None) if task is not None else None
+            if contract is not None and not contract.allows_tool(request.tool):
+                return ToolResult(
+                    False,
+                    "contract_denied",
+                    request.tool,
+                    error=f"Tool not allowed by execution contract: {request.tool}",
+                )
 
         schema = metadata.get("parameters")
         if schema is not None:
