@@ -11,7 +11,8 @@ from typing import Any, Mapping
 
 MEMORY_SCHEMA_VERSION = 2
 MEMORY_TYPES = frozenset({"fact", "decision", "experience", "preference"})
-MEMORY_STATUSES = frozenset({"active", "invalidated", "superseded", "archived"})\nMEMORY_RETENTION_POLICIES = frozenset({"normal", "durable", "ephemeral"})
+MEMORY_STATUSES = frozenset({"active", "invalidated", "superseded", "archived"})
+MEMORY_RETENTION_POLICIES = frozenset({"normal", "durable", "ephemeral"})
 
 
 class MemoryValidationError(ValueError):
@@ -75,7 +76,8 @@ def _validate_record(record: Mapping[str, Any]) -> None:
     required = {
         "id", "type", "key", "value", "project_id", "task_id", "context",
         "source", "provenance", "created_at", "updated_at", "version",
-        "status", "invalidated_at", "invalidated_by", "supersedes_id", "tags",\n        "importance", "confidence", "retention", "summary", "evidence_refs", "last_accessed_at",
+        "status", "invalidated_at", "invalidated_by", "supersedes_id", "tags",
+        "importance", "confidence", "retention", "summary", "evidence_refs", "last_accessed_at",
     }
     missing = required - set(record)
     if missing:
@@ -426,7 +428,9 @@ def _score_record(
         for key, value in context.items():
             if record["context"].get(key) == value:
                 score += 2.0
-    score += min(record["version"], 10) * 0.05\n    score += float(record.get("importance", 0.5)) * 2.0\n    score += float(record.get("confidence", 0.5))
+    score += min(record["version"], 10) * 0.05
+    score += float(record.get("importance", 0.5)) * 2.0
+    score += float(record.get("confidence", 0.5))
     return score
 
 
