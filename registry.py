@@ -6,8 +6,12 @@ from tools import (
     buat_file,
     baca_file,
     tulis_file,
+    cari_teks,
+    patch_file,
     jalankan_python,
 )
+
+from execution.command import run_command
 
 from memory import (
     remember,
@@ -22,6 +26,7 @@ from memory_context import (
 TOOL_REGISTRY = {
 
     "lihat": {
+        "capabilities": ["workspace.read"],
         "func": lihat,
         "permission": "safe",
         "description": "Menampilkan isi direktori kerja saat ini.",
@@ -32,6 +37,7 @@ TOOL_REGISTRY = {
     },
 
     "lokasi": {
+        "capabilities": ["workspace.read"],
         "func": lokasi,
         "permission": "safe",
         "description": "Menampilkan lokasi direktori kerja saat ini.",
@@ -42,6 +48,7 @@ TOOL_REGISTRY = {
     },
 
     "siapa": {
+        "capabilities": ["workspace.read"],
         "func": siapa,
         "permission": "safe",
         "description": "Menampilkan username pengguna Termux saat ini.",
@@ -51,7 +58,41 @@ TOOL_REGISTRY = {
         },
     },
 
+    "cari_teks": {
+        "capabilities": ["workspace.read"],
+        "func": cari_teks,
+        "permission": "safe",
+        "description": "Mencari teks di dalam file workspace.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "pola": {"type": "string"},
+            },
+            "required": ["query"],
+        },
+    },
+
+    "patch_file": {
+        "capabilities": ["workspace.write"],
+        "func": patch_file,
+        "permission": "confirm",
+        "description": "Menerapkan penggantian teks yang exact dan bounded pada file workspace.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "nama": {"type": "string"},
+                "old": {"type": "string"},
+                "new": {"type": "string"},
+                "expected_count": {"type": "integer"},
+                "expected_sha256": {"type": "string"},
+            },
+            "required": ["nama", "old", "new"],
+        },
+    },
+
     "baca_file": {
+        "capabilities": ["workspace.read"],
         "func": baca_file,
         "permission": "safe",
         "description": "Membaca isi sebuah file.",
@@ -68,6 +109,7 @@ TOOL_REGISTRY = {
     },
 
     "buat_folder": {
+        "capabilities": ["workspace.write"],
         "func": buat_folder,
         "permission": "confirm",
         "description": "Membuat folder baru.",
@@ -84,6 +126,7 @@ TOOL_REGISTRY = {
     },
 
     "buat_file": {
+        "capabilities": ["workspace.write"],
         "func": buat_file,
         "permission": "confirm",
         "description": "Membuat file kosong baru.",
@@ -100,6 +143,7 @@ TOOL_REGISTRY = {
     },
 
     "tulis_file": {
+        "capabilities": ["workspace.write"],
         "func": tulis_file,
         "permission": "confirm",
         "description": "Menulis atau mengganti isi sebuah file.",
@@ -114,12 +158,32 @@ TOOL_REGISTRY = {
                     "type": "string",
                     "description": "Isi lengkap yang akan ditulis ke file.",
                 },
+                "expected_sha256": {
+                    "type": "string",
+                    "description": "SHA-256 snapshot dari baca_file; penulisan ditolak jika file sudah berubah.",
+                },
             },
             "required": ["nama", "isi"],
         },
     },
 
+    "run_command": {
+        "capabilities": ["process.execute"],
+        "func": run_command,
+        "permission": "confirm",
+        "description": "Menjalankan satu command proyek melalui execution boundary yang dibatasi.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "cwd": {"type": "string"},
+            },
+            "required": ["command"],
+        },
+    },
+
     "jalankan_python": {
+        "capabilities": ["process.execute"],
         "func": jalankan_python,
         "permission": "confirm",
         "description": "Menjalankan file Python.",
@@ -136,6 +200,7 @@ TOOL_REGISTRY = {
     },
 
     "remember": {
+        "capabilities": ["workspace.write"],
         "func": remember,
         "permission": "confirm",
         "description": "Menyimpan informasi ke memory agent.",
@@ -156,6 +221,7 @@ TOOL_REGISTRY = {
     },
 
     "recall": {
+        "capabilities": ["workspace.read"],
         "func": recall_memory,
         "permission": "safe",
         "description": "Mengambil informasi dari memory agent berdasarkan key.",
@@ -172,6 +238,7 @@ TOOL_REGISTRY = {
     },
 
     "search_memory": {
+        "capabilities": ["workspace.read"],
         "func": search_memory_tool,
         "permission": "safe",
         "description": "Mencari informasi di memory berdasarkan key atau value.",
@@ -218,3 +285,17 @@ def get_tool_permission(nama_tool):
         return "blocked"
 
     return tool["permission"]
+
+
+
+def get_tool_catalog():
+    """Return non-executable tool metadata for planning and model context."""
+    return {
+        name: {
+            "description": entry["description"],
+            "parameters": entry["parameters"],
+            "permission": entry["permission"],
+            "capabilities": entry.get("capabilities", []),
+        }
+        for name, entry in TOOL_REGISTRY.items()
+    }
