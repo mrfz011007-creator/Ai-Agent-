@@ -96,6 +96,6 @@ def test_model_gateway_consumes_model_budget(monkeypatch):
     )
 
     assert gateway.call(lambda client: client) == "secret-1"
-    with pytest.raises(RuntimeError, match="MODEL_CALL_BUDGET_EXCEEDED"):
+    with pytest.raises(RuntimeError, match="MODEL_BUDGET_EXCEEDED"):
         gateway.call(lambda client: client)
     assert budget.budget.model_calls == 1
