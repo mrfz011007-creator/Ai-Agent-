@@ -418,3 +418,30 @@ def test_tool_router_redacts_secrets_and_limits_structured_output(tmp_path):
     assert "[REDACTED_SECRET]" in result.data["stdout"]
     assert len(result.data["stdout"]) <= 50
     assert "[REDACTED_SECRET]" in result.data["stderr"]
+
+
+def test_runtime_tool_execution_completion(tmp_path):
+    from core.contracts import Task, TaskStatus
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(
+        Task(task_id="task-e2e", title="evidence-backed tool execution")
+    )
+    runtime.task_manager.start(task.task_id)
+
+    result = runtime.tool_router.execute(
+        __import__("core.contracts", fromlist=["ToolRequest"]).ToolRequest(
+            tool="remember",
+            action="execute",
+            arguments={"key": "e2e", "value": "ok"},
+            task_id=task.task_id,
+            source="test",
+        )
+    )
+
+    assert result.success
+    completed = runtime.verify_tool_execution(
+        task.task_id, [result.evidence_id]
+    )
+    assert completed.status == TaskStatus.COMPLETED
