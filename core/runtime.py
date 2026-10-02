@@ -139,8 +139,21 @@ class AgentRuntime:
             return result
 
         task = self.task_manager.get(task_id) if task_id is not None else None
-        current_attempt = attempt_id or (f"{task_id}:attempt:{task.attempts}" if task_id and task else None)
-        return self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id, attempt_id=current_attempt))
+        current_attempt = (
+            f"{task_id}:attempt:{task.attempts}"
+            if task_id and task
+            else attempt_id
+        )
+        return self.tool_router.execute(
+            ToolRequest(
+                tool=name,
+                action="execute",
+                arguments=args,
+                source=source,
+                task_id=task_id,
+                attempt_id=current_attempt,
+            )
+        )
 
     def build(self, **kwargs):
         return self.build_manager.build(**kwargs)
