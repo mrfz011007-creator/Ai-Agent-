@@ -80,6 +80,7 @@ class AgentRuntime:
             evidence=evidence_store,
             confirmation=minta_konfirmasi,
             guard=guard,
+            task_getter=task_manager.get,
         )
         build_manager = BuildManager(artifact_manager, tool_router)
         test_manager = TestManager(tool_router)
