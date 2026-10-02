@@ -56,7 +56,7 @@ def test_runtime_model_execution_uses_router_and_evidence(tmp_path):
     runtime.task_manager.start("T-RUN")
 
     runtime.tool_router._registry_getter = lambda name: {
-        "safe_tool": {"permission": "safe", "func": lambda **kwargs: {"success": True, "value": kwargs}}
+        "safe_tool": {"permission": "safe", "capabilities": ["workspace.read"], "parameters": {"type": "object", "properties": {"x": {"type": "string"}}}, "func": lambda **kwargs: {"success": True, "value": kwargs}}
     }.get(name)
     runtime.tool_router._policy = __import__("security.policy", fromlist=["PolicyEngine"]).PolicyEngine(runtime.tool_router._registry_getter)
 
