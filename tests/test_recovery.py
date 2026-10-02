@@ -276,6 +276,7 @@ def test_runtime_retry_creates_new_attempt_and_current_evidence_only(tmp_path):
         "flaky": {
             "func": flaky_tool,
             "permission": "safe",
+            "idempotent": True,
         }
     }
     router = ToolRouter(
@@ -308,3 +309,31 @@ def test_runtime_retry_creates_new_attempt_and_current_evidence_only(tmp_path):
         )
     ]
     assert all(item.task_id == "R9" for item in evidence_rows)
+
+
+def test_runtime_does_not_replay_non_idempotent_tool_after_ambiguous_failure(tmp_path):
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task("R10", "avoid duplicate side effect", status=TaskStatus.READY))
+    runtime.task_manager.start(task.task_id)
+    calls = []
+
+    def side_effect():
+        calls.append("called")
+        return {"success": False, "status": "error", "stderr": "connection temporarily unavailable"}
+
+    registry = {"side_effect": {"func": side_effect, "permission": "safe"}}
+    runtime.tool_router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=runtime.budget_manager,
+        evidence=runtime.evidence_store,
+    )
+
+    result = runtime.execute_with_recovery("side_effect", {}, task_id=task.task_id)
+
+    assert not result.success
+    assert len(calls) == 1
+    assert runtime.task_manager.get(task.task_id).attempts == 1
