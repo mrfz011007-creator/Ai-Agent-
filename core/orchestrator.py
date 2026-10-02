@@ -7,7 +7,6 @@ from core.plan import Plan, PlanProposal, Planner, TaskGraph, PlanStatus
 from core.task_manager import TaskManager
 from core.state_store import StateStore
 from core.model_execution import ModelExecutionService
-from core.model_planner import ModelPlanService
 
 
 @dataclass
