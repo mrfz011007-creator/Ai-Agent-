@@ -108,6 +108,17 @@ class AgentRuntime:
     def verify_acceptance(self, **kwargs):
         return self.acceptance_gate.verify(**kwargs)
 
+    def verify_tool_execution(self, task_id: str, evidence_ids: list[str]):
+        """Verify successful tool evidence and complete the execution task."""
+        verification = Verifier(self.evidence_store).verify_task_evidence(
+            task_id, evidence_ids
+        )
+        if verification.status.value != "PASSED":
+            self.task_manager.fail(task_id, verification.reason)
+            return self.task_manager.get(task_id)
+        self.task_manager.begin_verification(task_id)
+        return self.task_manager.complete(task_id, verification)
+
     def verify_and_complete(self, task_id: str, **kwargs):
         verification = self.acceptance_gate.verify(task_id=task_id, **kwargs)
         self.task_manager.begin_verification(task_id)
