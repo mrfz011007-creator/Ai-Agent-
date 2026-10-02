@@ -74,6 +74,50 @@ def test_tool_execution_creates_evidence_and_can_be_verified():
     assert verification.status == VerificationStatus.PASSED
 
 
+def test_model_and_recovery_budgets_are_hard():
+    budget = BudgetManager(Budget(max_model_calls=1, max_recovery_cycles=1))
+    budget.reserve_model_call()
+    try:
+        budget.reserve_model_call()
+        assert False, "Model budget must be hard"
+    except RuntimeError as error:
+        assert str(error) == "MODEL_BUDGET_EXCEEDED"
+
+    budget.reserve_recovery_cycle()
+    try:
+        budget.reserve_recovery_cycle()
+        assert False, "Recovery budget must be hard"
+    except RuntimeError as error:
+        assert str(error) == "RECOVERY_BUDGET_EXCEEDED"
+
+
+def test_budget_snapshot_exposes_all_runtime_limits():
+    budget = BudgetManager(
+        Budget(max_tool_calls=2, max_model_calls=3, max_recovery_cycles=4)
+    )
+    snapshot = budget.snapshot()
+    assert snapshot["remaining_tool_calls"] == 2
+    assert snapshot["remaining_model_calls"] == 3
+    assert snapshot["remaining_recovery_cycles"] == 4
+    assert "remaining_runtime_seconds" in snapshot
+
+
+def test_output_budget_truncates_large_tool_output():
+    registry = {"safe_tool": {"permission": "safe", "func": lambda: "x" * 20}}
+    evidence = EvidenceStore()
+    budget = BudgetManager(Budget(max_output_chars=10))
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=budget,
+        evidence=evidence,
+    )
+    result = router.execute(ToolRequest("safe_tool", "execute"))
+    assert result.success is True
+    assert result.data == "x" * 10
+    assert result.error == "OUTPUT_TRUNCATED"
+
+
 def test_budget_is_hard():
     router, _, budget = make_router(max_calls=1)
     assert router.execute(ToolRequest("safe_tool", "execute")).success
