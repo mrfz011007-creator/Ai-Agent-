@@ -43,6 +43,13 @@ class ExecutionContract:
             raise ExecutionContractError(
                 "completion_conditions must be machine-verifiable objects"
             )
+        for condition in self.completion_conditions:
+            criterion_type = condition.get("type")
+            if criterion_type == "task_completed":
+                raise ExecutionContractError(
+                    "completion_conditions cannot require task_completed; "
+                    "task completion is the result of the acceptance gate"
+                )
         if self.evidence_required and not self.completion_conditions:
             raise ExecutionContractError(
                 "Evidence-backed contracts require completion conditions"
