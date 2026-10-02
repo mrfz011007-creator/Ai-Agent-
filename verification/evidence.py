@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from core.contracts import Evidence, ToolResult
+from core.state_store import StateStore
 
 
 @dataclass
 class EvidenceStore:
     records: dict[str, Evidence] = field(default_factory=dict)
+    store: StateStore | None = None
 
     def record(
         self,
@@ -18,7 +20,7 @@ class EvidenceStore:
         action: str,
         result: ToolResult,
     ) -> Evidence:
-        if evidence_id in self.records:
+        if evidence_id in self.records or (self.store and self.store.load_evidence(evidence_id)):
             raise ValueError(f"Evidence already exists: {evidence_id}")
 
         evidence = Evidence(
@@ -30,8 +32,45 @@ class EvidenceStore:
             result_status=result.status,
             error=result.error,
         )
+        if self.store is not None:
+            self.store.save_evidence(
+                evidence_id=evidence.evidence_id,
+                task_id=evidence.task_id,
+                tool=evidence.tool,
+                action=evidence.action,
+                success=evidence.success,
+                result_status=evidence.result_status,
+                error=evidence.error,
+                payload={
+                    "evidence_id": evidence.evidence_id,
+                    "task_id": evidence.task_id,
+                    "tool": evidence.tool,
+                    "action": evidence.action,
+                    "success": evidence.success,
+                    "result_status": evidence.result_status,
+                    "error": evidence.error,
+                },
+            )
         self.records[evidence_id] = evidence
         return evidence
 
     def get(self, evidence_id: str) -> Evidence | None:
-        return self.records.get(evidence_id)
+        evidence = self.records.get(evidence_id)
+        if evidence is not None:
+            return evidence
+        if self.store is None:
+            return None
+        row = self.store.load_evidence(evidence_id)
+        if row is None:
+            return None
+        evidence = Evidence(
+            evidence_id=row["evidence_id"],
+            task_id=row["task_id"],
+            tool=row["tool"],
+            action=row["action"],
+            success=row["success"],
+            result_status=row["result_status"],
+            error=row["error"],
+        )
+        self.records[evidence_id] = evidence
+        return evidence
