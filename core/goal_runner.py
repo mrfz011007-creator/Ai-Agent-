@@ -173,7 +173,15 @@ class GoalRunner:
             plan = self._persist(plan, PlanStatus.WAITING)
             return plan, graph
 
-        return self._run_graph(plan, graph, max_steps=max_steps, project_id=project_id, context=context)
+        # Project/context metadata is not persisted with Plan yet. Resume
+        # therefore uses explicit runtime defaults instead of undefined names.
+        return self._run_graph(
+            plan,
+            graph,
+            max_steps=max_steps,
+            project_id=None,
+            context=None,
+        )
 
     @staticmethod
     def _new_plan_id() -> str:
