@@ -18,7 +18,8 @@ class ArtifactManager:
 
     def register(self, *, task_id: str, path: str | Path, kind: str,
                  attempt_id: str | None = None,
-                 source_commit: str | None = None) -> Artifact:
+                 source_commit: str | None = None,
+                 evidence_id: str | None = None) -> Artifact:
         file_path = Path(path)
         if not file_path.is_file():
             raise FileNotFoundError(f"Artifact not found: {file_path}")
@@ -37,6 +38,7 @@ class ArtifactManager:
             sha256=digest.hexdigest(),
             size=file_path.stat().st_size,
             source_commit=source_commit,
+            evidence_id=evidence_id,
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         self.store.save_artifact(asdict(artifact))
@@ -55,6 +57,7 @@ class ArtifactManager:
             sha256=row["sha256"],
             size=int(row["size"]),
             source_commit=row["source_commit"],
+            evidence_id=row.get("evidence_id"),
             created_at=row["payload"].get("created_at") or row["created_at"],
         )
 
