@@ -91,14 +91,30 @@ class ToolRouter:
 
         try:
             data = function(**dict(request.arguments))
-            if isinstance(data, dict) and "success" in data:
-                safe_data = redact_value(data)
-                max_output = self._budget.budget.max_output_chars
-                for key in ("stdout", "stderr"):
-                    value = safe_data.get(key)
-                    if isinstance(value, str) and len(value) > max_output:
-                        safe_data[key] = value[:max_output]
-                        safe_data["output_truncated"] = True
+            safe_data = redact_value(data)
+            max_output = self._budget.budget.max_output_chars
+            output_truncated = False
+
+            def bound(value):
+                nonlocal output_truncated
+                if isinstance(value, str):
+                    if len(value) > max_output:
+                        output_truncated = True
+                        return value[:max_output]
+                    return value
+                if isinstance(value, dict):
+                    return {key: bound(item) for key, item in value.items()}
+                if isinstance(value, list):
+                    return [bound(item) for item in value]
+                if isinstance(value, tuple):
+                    return tuple(bound(item) for item in value)
+                return value
+
+            safe_data = bound(safe_data)
+            if isinstance(safe_data, dict) and output_truncated:
+                safe_data["output_truncated"] = True
+
+            if isinstance(safe_data, dict) and "success" in safe_data:
                 result = ToolResult(
                     bool(safe_data.get("success")),
                     str(safe_data.get("status", "success" if safe_data.get("success") else "error")).lower(),
