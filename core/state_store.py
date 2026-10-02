@@ -44,6 +44,20 @@ class StateStore:
                 )
             """)
             db.execute("""
+                CREATE TABLE IF NOT EXISTS artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    attempt_id TEXT,
+                    path TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    source_commit TEXT,
+                    payload TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     checkpoint_id TEXT PRIMARY KEY,
                     task_id TEXT,
@@ -140,6 +154,53 @@ class StateStore:
         for row in rows:
             result = dict(row)
             result["success"] = bool(result["success"])
+            result["payload"] = json.loads(result["payload"])
+            results.append(result)
+        return results
+
+    def save_artifact(self, artifact: dict[str, Any]) -> None:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO artifacts(
+                    artifact_id,task_id,attempt_id,path,kind,sha256,size,
+                    source_commit,payload
+                ) VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    artifact["artifact_id"],
+                    artifact["task_id"],
+                    artifact.get("attempt_id"),
+                    artifact["path"],
+                    artifact["kind"],
+                    artifact["sha256"],
+                    int(artifact["size"]),
+                    artifact.get("source_commit"),
+                    json.dumps(artifact, sort_keys=True, default=str),
+                ),
+            )
+
+    def load_artifact(self, artifact_id: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT artifact_id,task_id,attempt_id,path,kind,sha256,size,source_commit,payload,created_at "
+                "FROM artifacts WHERE artifact_id=?",
+                (artifact_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["payload"] = json.loads(result["payload"])
+        return result
+
+    def load_artifacts_for_task(self, task_id: str) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT artifact_id,task_id,attempt_id,path,kind,sha256,size,source_commit,payload,created_at "
+                "FROM artifacts WHERE task_id=? ORDER BY rowid ASC",
+                (task_id,),
+            ).fetchall()
+        results = []
+        for row in rows:
+            result = dict(row)
             result["payload"] = json.loads(result["payload"])
             results.append(result)
         return results
