@@ -43,3 +43,26 @@ def test_execution_proposal_never_executes_directly():
     assert router.request.source == "model"
     assert router.request.task_id == "T1"
     assert router.request.attempt_id == "T1:attempt:1"
+
+
+def test_runtime_model_execution_uses_router_and_evidence(tmp_path):
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(
+        __import__("core.contracts", fromlist=["Task"]).Task("T-RUN", "read")
+    )
+    task.status = __import__("core.contracts", fromlist=["TaskStatus"]).TaskStatus.READY
+    runtime.task_manager.start("T-RUN")
+
+    runtime.tool_router._registry_getter = lambda name: {
+        "safe_tool": {"permission": "safe", "func": lambda **kwargs: {"success": True, "value": kwargs}}
+    }.get(name)
+    runtime.tool_router._policy = __import__("security.policy", fromlist=["PolicyEngine"]).PolicyEngine(runtime.tool_router._registry_getter)
+
+    proposal = ModelExecutionService(
+        lambda _: '{"tool":"safe_tool","action":"execute","arguments":{"x":"y"}}'
+    ).propose("read")
+    result = runtime.execute_model_proposal(proposal, task_id="T-RUN")
+    assert result.success
+    assert result.evidence_id is not None
