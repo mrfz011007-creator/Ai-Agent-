@@ -109,7 +109,7 @@ class AgentRuntime:
         )
 
     def tool_catalog(self) -> dict[str, dict]:
-        """Return non-executable tool metadata from the registry API."""
+        """Return non-executable tool metadata for model context."""
         from registry import get_tool_catalog
         return get_tool_catalog()
 
