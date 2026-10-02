@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.budget import BudgetManager
-from core.model_gateway import ModelGateway, gemini_credentials
+from core.model_gateway import ModelGateway, create_gemini_gateway
 from core.model_execution import ExecutionProposal
 from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
@@ -56,9 +56,7 @@ class AgentRuntime:
         budget_manager = BudgetManager(Budget())
         recovery_manager = RecoveryManager(task_manager, evidence_store, budget_manager)
         recovery_controller = RecoveryController(recovery_manager, task_manager)
-        model_gateway = ModelGateway(
-            credentials=gemini_credentials(),
-            client_factory=lambda api_key: __import__("google.genai", fromlist=["Client"]).Client(api_key=api_key),
+        model_gateway = create_gemini_gateway(
             budget=budget_manager,
         )
 
