@@ -177,3 +177,35 @@ def test_task_manager_persists_transitions_and_checkpoints(tmp_path):
     assert saved["status"] == "RUNNING"
     assert saved["attempts"] == 1
     assert checkpoints.latest("T2") is not None
+
+
+def test_task_manager_restores_persisted_task_after_restart(tmp_path):
+    from core.state_store import StateStore
+    from core.checkpoint import CheckpointManager
+
+    db = tmp_path / "restart.sqlite3"
+    first = TaskManager(
+        store=StateStore(db),
+        checkpoints=CheckpointManager(StateStore(db)),
+    )
+    task = first.create(Task("T3", "restart me"))
+    task.status = TaskStatus.READY
+    first.start("T3")
+
+    second = TaskManager(
+        store=StateStore(db),
+        checkpoints=CheckpointManager(StateStore(db)),
+    )
+    restored = second.restore("T3")
+    assert restored is not None
+    assert restored.status == TaskStatus.RUNNING
+    assert restored.attempts == 1
+    assert restored.title == "restart me"
+
+
+def test_runtime_factory_does_not_create_state_until_requested(tmp_path):
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(tmp_path / "runtime.sqlite3")
+    assert runtime.state_store.path.exists()
+    assert runtime.task_manager.store is runtime.state_store
