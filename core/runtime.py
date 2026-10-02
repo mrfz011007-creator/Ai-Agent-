@@ -11,6 +11,8 @@ from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
 from core.task_manager import TaskManager
+from core.orchestrator import Orchestrator
+from core.plan import Planner
 from core.recovery import RecoveryManager, RecoveryController
 from security.policy import PolicyEngine
 from execution.router import ToolRouter
@@ -41,6 +43,7 @@ class AgentRuntime:
     test_manager: TestManager
     acceptance_gate: AcceptanceGate
     model_gateway: ModelGateway
+    orchestrator: Orchestrator
 
     @classmethod
     def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":
@@ -84,6 +87,7 @@ class AgentRuntime:
         build_manager = BuildManager(artifact_manager, tool_router)
         test_manager = TestManager(tool_router)
         acceptance_gate = AcceptanceGate(Verifier(evidence_store), artifact_manager)
+        orchestrator = Orchestrator(task_manager, Planner(), store=state_store)
         return cls(
             state_store=state_store,
             checkpoint_manager=checkpoint_manager,
@@ -99,6 +103,7 @@ class AgentRuntime:
             test_manager=test_manager,
             acceptance_gate=acceptance_gate,
             model_gateway=model_gateway,
+            orchestrator=orchestrator,
         )
 
     def execute_model_proposal(
