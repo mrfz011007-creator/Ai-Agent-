@@ -226,8 +226,14 @@ class AgentRuntime:
         )
         if verification.status.value != "PASSED":
             return verification
-        self.task_manager.begin_verification(task_id)
-        return self.task_manager.complete_with_gate(task_id, verification)
+        task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        if task.status == TaskStatus.RUNNING:
+            self.task_manager.begin_verification(task_id)
+        elif task.status != TaskStatus.VERIFYING:
+            raise ValueError(f"Task must be RUNNING or VERIFYING, got {task.status}")
+        return verification
 
     def verify_and_complete(self, task_id: str, **kwargs):
         verification = self.acceptance_gate.verify(task_id=task_id, **kwargs)
