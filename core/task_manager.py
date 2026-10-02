@@ -65,6 +65,25 @@ class TaskManager:
         self._checkpoint(task, event="started")
         return task
 
+    def resume(self, task_id: str) -> Task:
+        task = self._require(task_id)
+        if task.status != TaskStatus.WAITING:
+            raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
+        task.mark_running()
+        self._persist(task)
+        self._checkpoint(task, event="resumed")
+        return task
+
+    def block(self, task_id: str, reason: str) -> Task:
+        task = self._require(task_id)
+        if task.status != TaskStatus.WAITING:
+            raise ValueError(f"Invalid transition: {task.status} -> BLOCKED")
+        task.status = TaskStatus.BLOCKED
+        task.result = {"reason": reason}
+        self._persist(task)
+        self._checkpoint(task, event="blocked", reason=reason)
+        return task
+
     def begin_verification(self, task_id: str) -> Task:
         task = self._require(task_id)
         task.mark_verifying()
