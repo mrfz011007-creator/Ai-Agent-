@@ -69,7 +69,7 @@ class TaskManager:
         task = self._require(task_id)
         if task.status != TaskStatus.WAITING:
             raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
-        task.mark_running()
+        task.status = TaskStatus.RUNNING
         self._persist(task)
         self._checkpoint(task, event="resumed")
         return task
