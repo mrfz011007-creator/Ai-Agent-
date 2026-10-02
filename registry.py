@@ -6,6 +6,8 @@ from tools import (
     buat_file,
     baca_file,
     tulis_file,
+    cari_teks,
+    patch_file,
     jalankan_python,
 )
 
@@ -48,6 +50,36 @@ TOOL_REGISTRY = {
         "parameters": {
             "type": "object",
             "properties": {},
+        },
+    },
+
+    "cari_teks": {
+        "func": cari_teks,
+        "permission": "safe",
+        "description": "Mencari teks di dalam file workspace.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "pola": {"type": "string"},
+            },
+            "required": ["query"],
+        },
+    },
+
+    "patch_file": {
+        "func": patch_file,
+        "permission": "confirm",
+        "description": "Menerapkan penggantian teks yang exact dan bounded pada file workspace.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "nama": {"type": "string"},
+                "old": {"type": "string"},
+                "new": {"type": "string"},
+                "expected_count": {"type": "integer"},
+            },
+            "required": ["nama", "old", "new"],
         },
     },
 
