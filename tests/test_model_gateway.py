@@ -99,3 +99,20 @@ def test_model_gateway_consumes_model_budget(monkeypatch):
     with pytest.raises(RuntimeError, match="MODEL_BUDGET_EXCEEDED"):
         gateway.call(lambda client: client)
     assert budget.budget.model_calls == 1
+
+
+def test_exhausted_model_failure_can_put_running_task_in_waiting(tmp_path):
+    from core.contracts import Task, TaskStatus
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task("MODEL-R1", "model failure"))
+    task.status = TaskStatus.READY
+    runtime.task_manager.start("MODEL-R1")
+
+    result = runtime.handle_model_failure(
+        "MODEL-R1", RuntimeError("MODEL_CREDENTIALS_EXHAUSTED")
+    )
+
+    assert result.status == TaskStatus.WAITING
+    assert runtime.task_manager.get("MODEL-R1").status == TaskStatus.WAITING
