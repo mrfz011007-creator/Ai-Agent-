@@ -22,9 +22,7 @@ class ModelPlanService:
     def propose(self, goal: str) -> PlanProposal:
         if not isinstance(goal, str) or not goal.strip():
             raise ValueError("Goal cannot be empty")
-        raw = self.model_call(
-            prompt=f"{PLAN_SCHEMA_INSTRUCTION}\n\nUSER GOAL:\n{goal.strip()}"
-        )
+        raw = self.model_call(f"{PLAN_SCHEMA_INSTRUCTION}\n\nUSER GOAL:\n{goal.strip()}")
         if not isinstance(raw, str):
             raise PlanGraphError("Model planner must return text")
         try:
