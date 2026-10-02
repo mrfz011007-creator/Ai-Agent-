@@ -30,7 +30,7 @@ def test_memory_schema_persists_typed_record_with_provenance(tmp_path, monkeypat
     assert record["status"] == "active"
 
     raw = json.loads((tmp_path / "memory.json").read_text())
-    assert raw["schema_version"] == 1
+    assert raw["schema_version"] == 2
     assert raw["records"][0]["id"] == record["id"]
     assert load_memory()["records"][0]["id"] == record["id"]
 
@@ -59,7 +59,7 @@ def test_memory_update_creates_revision_and_invalidates_previous(tmp_path, monke
     assert second["supersedes_id"] == first["id"]
     assert history[0]["status"] == "active"
     assert history[0]["value"] == "new-model"
-    assert history[1]["status"] == "invalidated"
+    assert history[1]["status"] == "superseded"
     assert history[1]["value"] == "old-model"
 
 
@@ -143,14 +143,33 @@ def test_legacy_flat_memory_is_migrated(tmp_path, monkeypatch):
     from memory import load_memory, recall
 
     store = load_memory()
-    assert store["schema_version"] == 1
+    assert store["schema_version"] == 2
     assert store["records"][0]["type"] == "fact"
     assert recall("legacy_key")["value"] == "legacy_value"
 
 
 def test_invalid_memory_type_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
-    from memory import MemoryValidationError, remember
+    from memory import remember
 
-    with pytest.raises(MemoryValidationError):
-        remember("x", "y", memory_type="unknown")
+    result = remember("x", "y", memory_type="unknown")
+    assert result["success"] is False
+    assert result["reason"] == "MEMORY_TYPE_INVALID"
+
+
+def test_memory_recall_persists_last_accessed_at(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    from memory import load_memory, recall, remember
+
+    record = remember(
+        "access-tracked",
+        "value",
+        source="test",
+        provenance={"reason": "access test"},
+    )["record"]
+    assert record["last_accessed_at"] is None
+
+    recalled = recall("access-tracked")
+    assert recalled["record"]["last_accessed_at"] is not None
+    persisted = load_memory()["records"][0]
+    assert persisted["last_accessed_at"] == recalled["record"]["last_accessed_at"]
