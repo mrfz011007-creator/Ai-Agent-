@@ -61,9 +61,9 @@ class ToolResult:
 class Evidence:
     evidence_id: str
     task_id: str | None
-    attempt_id: str | None
     tool: str
     action: str
+    attempt_id: str | None = None
     success: bool
     result_status: str
     error: str | None = None
