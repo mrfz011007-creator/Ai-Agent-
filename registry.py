@@ -174,11 +174,13 @@ TOOL_REGISTRY = {
         "description": "Menjalankan satu command proyek melalui execution boundary yang dibatasi.",
         "parameters": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 "command": {"type": "string"},
                 "cwd": {"type": "string"},
+                "timeout": {"type": "number"},
             },
-            "required": ["command"],
+            "required": ["command", "cwd"],
         },
     },
 

@@ -44,10 +44,16 @@ class BuildManager:
             )
 
         artifact_ids: list[str] = []
+        build_root = Path(cwd).resolve()
         for path in artifact_paths or []:
+            artifact_path = (build_root / path).resolve()
+            try:
+                artifact_path.relative_to(build_root)
+            except ValueError as error:
+                raise ValueError("Artifact path must remain inside build workspace") from error
             artifact = self.artifact_manager.register(
                 task_id=task_id,
-                path=Path(cwd) / path,
+                path=artifact_path,
                 kind=self._kind_for(path),
                 attempt_id=attempt_id,
                 source_commit=source_commit,

@@ -136,18 +136,20 @@ LOCAL_INTENTS = {
 
 def pola_cocok(teks, pola):
     """
-    Mengecek apakah semua kata dalam pola
-    terdapat dalam teks.
+    Cocok hanya jika pola muncul sebagai rangkaian kata berurutan.
     """
 
     kata_teks = teks.split()
+    pola = list(pola)
 
-    for kata in pola:
+    if not pola or len(pola) > len(kata_teks):
+        return False
 
-        if kata not in kata_teks:
-            return False
-
-    return True
+    panjang = len(pola)
+    return any(
+        kata_teks[i:i + panjang] == pola
+        for i in range(len(kata_teks) - panjang + 1)
+    )
 
 
 # ============================================================
@@ -167,6 +169,12 @@ def deteksi_intent(perintah):
     teks = normalisasi_teks(
         perintah
     )
+
+    # Negated local/memory commands must not be executed
+    # through deterministic intent matching.
+    negasi = {"jangan", "tidak", "tak", "bukan", "batalkan"}
+    if any(kata in teks.split() for kata in negasi):
+        return None
 
     # ========================================================
     # MEMORY INTENT

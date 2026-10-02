@@ -64,12 +64,46 @@ class ExecutionContract:
     def from_dict(cls, payload: dict) -> "ExecutionContract":
         if not isinstance(payload, dict):
             raise ExecutionContractError("Execution contract payload must be an object")
+
+        objective = payload.get("objective")
+        allowed_tools = payload.get("allowed_tools")
+        allowed_capabilities = payload.get("allowed_capabilities", ())
+        completion_conditions = payload.get("completion_conditions", ())
+        max_tool_calls = payload.get("max_tool_calls", 10)
+        retry_limit = payload.get("retry_limit", 0)
+        evidence_required = payload.get("evidence_required", True)
+
+        if not isinstance(objective, str):
+            raise ExecutionContractError("Execution contract objective must be a string")
+        if not isinstance(allowed_tools, (list, tuple)) or not all(
+            isinstance(tool, str) for tool in allowed_tools
+        ):
+            raise ExecutionContractError("Execution contract allowed_tools must be strings")
+        if not isinstance(allowed_capabilities, (list, tuple)) or not all(
+            isinstance(capability, str) for capability in allowed_capabilities
+        ):
+            raise ExecutionContractError(
+                "Execution contract allowed_capabilities must be strings"
+            )
+        if not isinstance(completion_conditions, (list, tuple)) or not all(
+            isinstance(condition, str) for condition in completion_conditions
+        ):
+            raise ExecutionContractError(
+                "Execution contract completion_conditions must be strings"
+            )
+        if isinstance(max_tool_calls, bool) or not isinstance(max_tool_calls, int):
+            raise ExecutionContractError("max_tool_calls must be an integer")
+        if isinstance(retry_limit, bool) or not isinstance(retry_limit, int):
+            raise ExecutionContractError("retry_limit must be an integer")
+        if not isinstance(evidence_required, bool):
+            raise ExecutionContractError("evidence_required must be a boolean")
+
         return cls(
-            objective=payload["objective"],
-            allowed_tools=tuple(payload["allowed_tools"]),
-            allowed_capabilities=tuple(payload.get("allowed_capabilities", ())),
-            max_tool_calls=int(payload.get("max_tool_calls", 10)),
-            retry_limit=int(payload.get("retry_limit", 0)),
-            evidence_required=bool(payload.get("evidence_required", True)),
-            completion_conditions=tuple(payload.get("completion_conditions", ())),
+            objective=objective,
+            allowed_tools=tuple(allowed_tools),
+            allowed_capabilities=tuple(allowed_capabilities),
+            max_tool_calls=max_tool_calls,
+            retry_limit=retry_limit,
+            evidence_required=evidence_required,
+            completion_conditions=tuple(completion_conditions),
         )

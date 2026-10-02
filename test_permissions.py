@@ -1,24 +1,21 @@
+import pytest
+
 from permissions import get_permission
 
 
-def test_permission(nama_tool):
-    permission = get_permission(nama_tool)
-
-    print(
-        f"{nama_tool:20} -> {permission}"
-    )
-
-
-print("=== TEST PERMISSION SYSTEM ===")
-
-test_permission("lihat")
-test_permission("lokasi")
-test_permission("siapa")
-test_permission("baca_file")
-
-test_permission("buat_folder")
-test_permission("buat_file")
-test_permission("tulis_file")
-test_permission("jalankan_python")
-
-test_permission("tool_tidak_dikenal")
+@pytest.mark.parametrize(
+    ("tool", "expected"),
+    [
+        ("lihat", "safe"),
+        ("lokasi", "safe"),
+        ("siapa", "safe"),
+        ("baca_file", "safe"),
+        ("buat_folder", "confirm"),
+        ("buat_file", "confirm"),
+        ("tulis_file", "confirm"),
+        ("jalankan_python", "confirm"),
+        ("tool_tidak_dikenal", "blocked"),
+    ],
+)
+def test_permission(tool, expected):
+    assert get_permission(tool) == expected

@@ -8,8 +8,8 @@ from core.plan import PlanDecoder, PlanGraphError, PlanProposal
 
 
 PLAN_SCHEMA_INSTRUCTION = """Return ONLY a JSON object with this shape:
-{"goal":"string","tasks":[{"task_id":"string","title":"string","dependencies":["task_id"]}],"acceptance_criteria":["string"]}
-Do not include markdown, executable commands, tool arguments, shell syntax, or secrets.
+{"goal":"string","tasks":[{"task_id":"string","title":"string","dependencies":["task_id"],"execution_contract":{"objective":"string","allowed_tools":["tool"],"allowed_capabilities":["workspace.read"],"max_tool_calls":10,"retry_limit":0,"evidence_required":true,"completion_conditions":["condition"]}}],"acceptance_criteria":["string"]}
+Every task must include an execution_contract. Use only the capabilities actually required. Read-only tasks should use read capabilities and read-only tools. Do not include markdown, executable commands, shell syntax, or secrets.
 Create a bounded dependency graph. Task descriptions express intent only; execution is authorized separately by the runtime."""
 
 

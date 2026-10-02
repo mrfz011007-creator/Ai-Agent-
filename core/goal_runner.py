@@ -120,13 +120,11 @@ class GoalRunner:
 
         waiting = [task for task in graph.tasks.values() if task.status == TaskStatus.WAITING]
         if waiting:
-            if len(waiting) > 1:
-                raise RuntimeError("Cannot resume multiple waiting tasks in one plan")
-            self.runtime.task_manager.retry(waiting[0].task_id)
-            restored = self.runtime.orchestrator.restore_graph(plan_id)
-            if restored is None:
-                raise KeyError(f"Unknown persisted plan: {plan_id}")
-            plan, graph = restored
+            # An interrupted task may have committed a side effect before the
+            # process died. Automatically retrying here would bypass explicit
+            # reconciliation and can duplicate non-idempotent work.
+            plan = self._persist(plan, PlanStatus.WAITING)
+            return plan, graph
 
         return self._run_graph(plan, graph, max_steps=max_steps)
 
