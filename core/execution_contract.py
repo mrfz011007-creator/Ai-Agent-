@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass\nfrom typing import Mapping
 from security.capabilities import Capability
 
 
@@ -18,7 +18,7 @@ class ExecutionContract:
     max_tool_calls: int = 10
     retry_limit: int = 0
     evidence_required: bool = True
-    completion_conditions: tuple[str, ...] = ()
+    completion_conditions: tuple[Mapping[str, object], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.objective.strip():
