@@ -144,7 +144,7 @@ def test_run_goal_is_bounded_and_reports_completed_plan():
             return Planner().propose(
                 goal,
                 [Task("one", "Do one")],
-                ["one completed"],
+                [{"type": "all_tasks_completed"}],
             )
 
     def model_call(_):
