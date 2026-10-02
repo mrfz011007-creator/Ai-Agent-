@@ -108,13 +108,10 @@ class AgentRuntime:
             orchestrator=orchestrator,
         )
 
-    def tool_catalog(self) -> dict[str, str]:
-        """Return non-authoritative tool descriptions from the registry API."""
+    def tool_catalog(self) -> dict[str, dict]:
+        """Return non-executable tool metadata from the registry API."""
         from registry import get_tool_catalog
-        return {
-            name: str(metadata.get("description", ""))
-            for name, metadata in get_tool_catalog().items()
-        }
+        return get_tool_catalog()
 
     def run_goal(
         self,
