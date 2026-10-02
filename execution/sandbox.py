@@ -97,6 +97,28 @@ def _bind_sources(executable: str, env: dict[str, str]) -> list[Path]:
     return sources
 
 
+def prepare_hardened(
+    argv: list[str],
+    *,
+    cwd: str,
+    source_env: dict[str, str] | None = None,
+) -> tuple[list[str], dict[str, str]]:
+    """Portable fallback when kernel namespaces are unavailable.
+
+    It never invokes a shell, removes credential-like environment variables,
+    confines the working directory to the selected workspace, and relies on
+    the caller's resource limits. Network isolation is unavailable in this mode.
+    """
+    workspace = Path(cwd).resolve()
+    if not workspace.is_dir():
+        raise SandboxPolicyError("Sandbox workspace must be an existing directory")
+    if any(token in argv[0] for token in (";", "|", "&", ">", "<", "$", "`")):
+        raise SandboxPolicyError("Shell control syntax is not allowed")
+    executable = _resolve_executable(argv)
+    env = _safe_env(dict(source_env or os.environ), workspace)
+    return [executable, *argv[1:]], env
+
+
 def prepare_sandbox(
     argv: list[str],
     *,
@@ -115,7 +137,20 @@ def prepare_sandbox(
     unshare = shutil.which("unshare")
     chroot = shutil.which("chroot")
     if not unshare or not chroot:
-        raise SandboxUnavailable("unshare/chroot are required for command isolation")
+        raise SandboxUnavailable("unshare/chroot are required for namespace isolation")
+
+    try:
+        probe = __import__("subprocess").run(
+            [unshare, "--user", "--map-root-user", "--mount", "--net", "true"],
+            stdout=__import__("subprocess").DEVNULL,
+            stderr=__import__("subprocess").DEVNULL,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, __import__("subprocess").SubprocessError) as error:
+        raise SandboxUnavailable("Linux namespace probe failed") from error
+    if probe.returncode != 0:
+        raise SandboxUnavailable("Linux user/mount/network namespaces are unavailable")
 
     workspace = Path(cwd).resolve()
     if not workspace.is_dir():
