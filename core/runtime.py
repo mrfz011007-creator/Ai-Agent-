@@ -183,6 +183,12 @@ class AgentRuntime:
         if result.success or task_id is None:
             return result
 
+        # Retrying an operation after an ambiguous failure can duplicate side effects.
+        # Only tools explicitly declared idempotent may be replayed automatically.
+        metadata = self.tool_router._registry_getter(name)
+        if metadata is None or metadata.get("idempotent") is not True:
+            return result
+
         decision = self.recovery_controller.handle_tool_failure(
             task_id,
             status=result.status,
