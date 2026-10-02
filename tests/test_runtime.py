@@ -35,3 +35,27 @@ def test_runtime_plan_goal_uses_model_gateway_boundary(tmp_path, monkeypatch):
     assert graph.tasks["build"].title == "Build app"
     assert calls
     assert "build app" in calls[0]
+
+
+def test_router_bounds_omitted_command_timeout_to_remaining_runtime(tmp_path, monkeypatch):
+    import time
+
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    runtime.tool_router._confirmation = lambda tool, args: True
+    runtime.budget_manager.budget.max_runtime_seconds = 5.0
+    runtime.budget_manager.started_at = time.monotonic()
+
+    result = runtime.tool_router.execute(
+        __import__("core.contracts", fromlist=["ToolRequest"]).ToolRequest(
+            tool="run_command",
+            action="execute",
+            arguments={
+                "command": 'python3 -c "import time; time.sleep(10)"',
+                "cwd": str(tmp_path),
+            },
+            source="test",
+        )
+    )
+
+    assert result.status == "timeout"
+    assert result.data["status"] == "TIMEOUT"
