@@ -19,7 +19,7 @@ def test_execute_step_completes_and_unlocks_dependency():
 
     def execute(task):
         seen.append(("execute", task.task_id))
-        return VerificationResult(VerificationStatus.PASSED, "executed", (f"e-{task.task_id}",))
+        return VerificationResult(VerificationStatus.PASSED, "executed", (f"e-{task.task_id}",), authority="acceptance_gate")
 
     first = o.execute_step(
         graph,
@@ -53,7 +53,7 @@ def test_run_until_blocked_respects_step_budget():
     _, graph = o.materialize(proposal, "plan-budget")
     result = o.run_until_blocked(
         graph,
-        execute=lambda task: VerificationResult(VerificationStatus.PASSED, "ok", (f"e-{task.task_id}",)),
+        execute=lambda task: VerificationResult(VerificationStatus.PASSED, "ok", (f"e-{task.task_id}",), authority="acceptance_gate"),
         verify=lambda task, verification: verification,
         max_steps=1,
     )
