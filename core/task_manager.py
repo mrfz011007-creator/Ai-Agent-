@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from core.contracts import VerificationStatus
 
 from core.contracts import Task, TaskStatus, VerificationResult
 from core.state_store import StateStore
@@ -22,6 +23,26 @@ class TaskManager:
 
     def get(self, task_id: str) -> Task | None:
         return self.tasks.get(task_id)
+
+    def restore(self, task_id: str) -> Task | None:
+        if self.store is None:
+            return None
+        saved = self.store.load_task(task_id)
+        if saved is None:
+            return None
+        payload = saved["payload"]
+        result = payload.get("result")
+        task = Task(
+            task_id=saved["task_id"],
+            title=payload["title"],
+            status=TaskStatus(saved["status"]),
+            dependencies=list(payload.get("dependencies", [])),
+            attempts=int(saved["attempts"]),
+            result=result,
+        )
+        self.tasks[task.task_id] = task
+        return task
+
 
     def mark_ready(self, task_id: str) -> Task:
         task = self._require(task_id)
