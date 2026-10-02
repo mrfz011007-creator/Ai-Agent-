@@ -29,7 +29,7 @@ def path_aman(nama: str) -> Path:
 def jalankan(command):
     """Run a command through the bounded command executor."""
     result = run_command(
-        command,
+        command=command,
         cwd=str(workspace_root()),
     )
     return {
@@ -37,7 +37,7 @@ def jalankan(command):
         "status": result["status"],
         "stdout": result.get("stdout", ""),
         "stderr": result.get("stderr", ""),
-        "returncode": result.get("returncode"),
+        "returncode": result.get("exit_code"),
         **({"error": result["error"]} if result.get("error") else {}),
     }
 
