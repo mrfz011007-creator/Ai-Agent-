@@ -105,9 +105,11 @@ class AgentRuntime:
     def handle_model_failure(self, task_id: str | None, error: Exception):
         return self.recovery_controller.handle_model_failure(task_id, error)
 
-    def execute_with_recovery(self, name: str, args: dict, *, source: str = "agent", task_id: str | None = None):
+    def execute_with_recovery(self, name: str, args: dict, *, source: str = "agent", task_id: str | None = None, attempt_id: str | None = None):
         """Execute a tool and perform at most one bounded recovery retry."""
-        result = self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id))
+        task = self.task_manager.get(task_id) if task_id is not None else None
+        current_attempt = attempt_id or (f"{task_id}:attempt:{task.attempts}" if task_id and task else None)
+        result = self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id, attempt_id=current_attempt))
         if result.success or task_id is None:
             return result
 
@@ -119,7 +121,9 @@ class AgentRuntime:
         if decision.action != "RETRY":
             return result
 
-        return self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id))
+        task = self.task_manager.get(task_id) if task_id is not None else None
+        current_attempt = attempt_id or (f"{task_id}:attempt:{task.attempts}" if task_id and task else None)
+        return self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id, attempt_id=current_attempt))
 
     def build(self, **kwargs):
         return self.build_manager.build(**kwargs)
