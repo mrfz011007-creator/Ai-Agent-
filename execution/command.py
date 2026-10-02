@@ -47,8 +47,11 @@ def run_command(
     cwd: str,
     timeout: float = 900.0,
     output_limit: int = DEFAULT_OUTPUT_LIMIT,
+    max_output_chars: int | None = None,
 ) -> dict:
     """Execute one bounded process; authorization is owned by ToolRouter."""
+    if max_output_chars is not None:
+        output_limit = max_output_chars
     if output_limit <= 0:
         return {
             "success": False,
