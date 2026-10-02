@@ -8,6 +8,7 @@ from core.contracts import Decision, ToolRequest, ToolResult
 from security.policy import PolicyContext, PolicyEngine
 from verification.evidence import EvidenceStore
 from security.guard import GuardEngine
+from security.schema import SchemaValidationError, validate_tool_arguments
 from security.redaction import redact_text, redact_value
 
 
@@ -32,6 +33,22 @@ class ToolRouter:
         self._guard = guard
 
     def execute(self, request: ToolRequest) -> ToolResult:
+        metadata = self._registry_getter(request.tool)
+        if metadata is None:
+            return ToolResult(False, "denied", request.tool, error="Unknown tool")
+
+        schema = metadata.get("parameters")
+        if schema is not None:
+            try:
+                validate_tool_arguments(schema, request.arguments)
+            except SchemaValidationError as error:
+                return ToolResult(
+                    False,
+                    "schema_invalid",
+                    request.tool,
+                    error=str(error),
+                )
+
         policy = self._policy.decide(
             PolicyContext(
                 tool=request.tool,
@@ -78,10 +95,6 @@ class ToolRouter:
                 request.tool,
                 error=str(error),
             )
-
-        metadata = self._registry_getter(request.tool)
-        if metadata is None:
-            return ToolResult(False, "error", request.tool, error="Unknown tool")
 
         function = metadata.get("func")
         if function is None:
