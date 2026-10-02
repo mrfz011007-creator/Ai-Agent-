@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 from core.contracts import TaskStatus
-from core.model_execution import ExecutionProposal
 from core.model_planner import ModelPlanService
 from core.plan import Plan, PlanStatus, TaskGraph
 from core.memory_service import memory_prompt_context
