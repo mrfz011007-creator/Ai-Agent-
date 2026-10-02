@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, gemini_credentials
+from core.model_execution import ExecutionProposal, ModelExecutionService
 from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
@@ -100,6 +101,21 @@ class AgentRuntime:
             test_manager=test_manager,
             acceptance_gate=acceptance_gate,
             model_gateway=model_gateway,
+        )
+
+    def execute_model_proposal(
+        self,
+        proposal: ExecutionProposal,
+        *,
+        task_id: str,
+        attempt_id: str | None = None,
+    ):
+        """Send model intent through the single ToolRouter authorization boundary."""
+        return ModelExecutionService(lambda _: "").execute(
+            proposal,
+            self.tool_router,
+            task_id=task_id,
+            attempt_id=attempt_id,
         )
 
     def handle_model_failure(self, task_id: str | None, error: Exception):
