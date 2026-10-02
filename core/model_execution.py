@@ -23,11 +23,16 @@ class ModelExecutionService:
         self.model_call = model_call
         self.tool_catalog = dict(tool_catalog or {})
 
-    def propose(self, task_title: str) -> ExecutionProposal:
+    def propose(self, task_title: str, context: Mapping[str, Any] | None = None) -> ExecutionProposal:
+        context_payload = dict(context or {})
+        context_json = json.dumps(context_payload, ensure_ascii=False, default=str)
+        if len(context_json) > 16000:
+            context_json = context_json[:16000] + "...[CONTEXT_TRUNCATED]"
         raw = self.model_call(
             'Return ONLY JSON: {"tool":"string","action":"execute","arguments":{}}. '
             "Choose one tool needed for the task. Do not include secrets or markdown. "
             f"AVAILABLE TOOLS: {json.dumps(self.tool_catalog, ensure_ascii=False)} "
+            f"PREVIOUS EXECUTION CONTEXT: {context_json} "
             f"TASK: {task_title}"
         )
         if not isinstance(raw, str):
