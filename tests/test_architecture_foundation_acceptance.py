@@ -107,7 +107,7 @@ def test_goal_lifecycle_completes_through_runtime_and_survives_restart(tmp_path)
     db = tmp_path / "state.sqlite3"
     runtime = AgentRuntime.create(db)
     task = runtime.task_manager.create(
-        Task("E2E-1", "bounded goal execution", status=TaskStatus.READY)
+        Task("E2E-1", "bounded goal execution", status=TaskStatus.READY, execution_contract=ExecutionContract(objective="bounded goal execution", allowed_tools=("search_memory",), allowed_capabilities=("workspace.read",), completion_conditions=({"type":"evidence_success","task_id":"E2E-1"},)))
     )
     runtime.task_manager.start(task.task_id)
 
