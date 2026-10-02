@@ -27,6 +27,7 @@ class ToolRouter:
         guard: GuardEngine | None = None,
         task_getter: Callable[[str], object | None] | None = None,
         capability_policy: CapabilityPolicy | None = None,
+        task_tool_call_consumer: Callable[[str], object] | None = None,
     ):
         self._registry_getter = registry_getter
         self._policy = policy
@@ -36,6 +37,7 @@ class ToolRouter:
         self._guard = guard
         self._task_getter = task_getter
         self._capability_policy = capability_policy
+        self._task_tool_call_consumer = task_tool_call_consumer
 
     def execute(self, request: ToolRequest) -> ToolResult:
         metadata = self._registry_getter(request.tool)
@@ -66,6 +68,12 @@ class ToolRouter:
                     request.tool,
                     error=capability.reason,
                 )
+
+        if self._task_tool_call_consumer is not None and request.task_id is not None:
+            try:
+                self._task_tool_call_consumer(request.task_id)
+            except RuntimeError as error:
+                return ToolResult(False, "task_limit_exceeded", request.tool, error=str(error))
 
         schema = metadata.get("parameters")
         if schema is not None:
