@@ -11,6 +11,8 @@ from tools import (
     jalankan_python,
 )
 
+from execution.command import run_command
+
 from memory import (
     remember,
 )
@@ -147,8 +149,26 @@ TOOL_REGISTRY = {
                     "type": "string",
                     "description": "Isi lengkap yang akan ditulis ke file.",
                 },
+                "expected_sha256": {
+                    "type": "string",
+                    "description": "SHA-256 snapshot dari baca_file; penulisan ditolak jika file sudah berubah.",
+                },
             },
             "required": ["nama", "isi"],
+        },
+    },
+
+    "run_command": {
+        "func": run_command,
+        "permission": "confirm",
+        "description": "Menjalankan satu command proyek melalui execution boundary yang dibatasi.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "cwd": {"type": "string"},
+            },
+            "required": ["command"],
         },
     },
 
