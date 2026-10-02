@@ -168,9 +168,9 @@ class ModelGateway:
 
     def generate_text(
         self,
-        *,
         prompt: str,
-        system_instruction: str,
+        *,
+        system_instruction: str = "",
         response_mime_type: str | None = None,
     ) -> str:
         """High-level model API used by planners and execution services."""

@@ -43,12 +43,17 @@ class ExecutionContract:
             raise ExecutionContractError(
                 "completion_conditions must be machine-verifiable objects"
             )
+        task_condition_types = {"evidence_success", "tool_success", "artifact_exists", "artifact_kind"}
+        plan_only_types = {"task_completed", "all_tasks_completed", "no_failed_tasks"}
         for condition in self.completion_conditions:
             criterion_type = condition.get("type")
-            if criterion_type == "task_completed":
+            if criterion_type in plan_only_types:
                 raise ExecutionContractError(
-                    "completion_conditions cannot require task_completed; "
-                    "task completion is the result of the acceptance gate"
+                    f"completion_conditions cannot use plan-level criterion: {criterion_type}"
+                )
+            if criterion_type not in task_condition_types:
+                raise ExecutionContractError(
+                    f"Unsupported task completion condition: {criterion_type}"
                 )
         if self.evidence_required and not self.completion_conditions:
             raise ExecutionContractError(
