@@ -50,10 +50,20 @@ class TaskManager:
             ),
             attempts=int(saved["attempts"]),
             result=result,
+            tool_calls=int(payload.get("tool_calls", 0)),
         )
         self.tasks[task.task_id] = task
         return task
 
+
+    def consume_tool_call(self, task_id: str) -> Task:
+        task = self._require(task_id)
+        contract = task.execution_contract
+        if contract is not None and task.tool_calls >= contract.max_tool_calls:
+            raise RuntimeError("TASK_TOOL_CALL_LIMIT_EXCEEDED")
+        task.tool_calls += 1
+        self._persist(task)
+        return task
 
     def mark_ready(self, task_id: str) -> Task:
         task = self._require(task_id)
@@ -181,6 +191,7 @@ class TaskManager:
             payload={
                 "title": task.title,
                 "dependencies": task.dependencies,
+                "tool_calls": task.tool_calls,
                 "execution_contract": (
                     task.execution_contract.to_dict()
                     if task.execution_contract is not None
