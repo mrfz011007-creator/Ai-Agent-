@@ -130,3 +130,22 @@ class TaskManager:
         if task is None:
             raise KeyError(f"Unknown task: {task_id}")
         return task
+
+    
+    def _persist(self, task: Task) -> None:
+        if self.store is None:
+            return
+        self.store.save_task(
+            task_id=task.task_id,
+            status=task.status.value,
+            attempts=task.attempts,
+            payload={
+                "title": task.title,
+                "dependencies": task.dependencies,
+                "result": task.result,
+            },
+        )
+
+    def _checkpoint(self, task: Task, **payload) -> None:
+        if self.checkpoints is not None:
+            self.checkpoints.capture(task, **payload)
