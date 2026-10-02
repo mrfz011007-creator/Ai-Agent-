@@ -138,7 +138,7 @@ def prepare_sandbox(
 
     # The launcher is a shell script executed inside the new user/mount/network
     # namespace. It is removed by the parent after the child exits.
-    launcher = Path(tempfile.mkdtemp(prefix=".ai-agent-launcher-", dir="/tmp")) / "launcher.sh"
+    launcher = Path("/tmp") / f".ai-agent-launcher-{token}.sh"
     lines = [
         "#!/bin/sh",
         "set -eu",
