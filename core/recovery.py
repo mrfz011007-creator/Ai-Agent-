@@ -95,6 +95,10 @@ class RecoveryManager:
                 task_id, task.status, task.status, "NO_RETRY",
                 "Automatic retry requires explicit idempotent=True.",
             )
+        contract = task.execution_contract
+        if contract is not None and (task.attempts - 1) >= contract.retry_limit:
+            return RecoveryDecision(task_id, task.status, task.status, "NO_RETRY", "Execution contract retry limit reached.")
+
         if self.budget is None:
             raise RuntimeError("Recovery budget is not configured")
         try:
