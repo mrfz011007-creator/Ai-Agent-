@@ -4,6 +4,7 @@ from typing import Any, Mapping
 
 from memory import invalidate_memory, remember, search_memory, update_memory
 from core.reflection import ReflectionService
+from core import reflection_queue
 
 
 class MemoryService:
@@ -79,7 +80,15 @@ class MemoryService:
         for candidate in candidates:
             # High-risk proposals never receive autonomous persistence authority.
             if candidate.risk == "high":
-                rejected.append({"key": candidate.key, "reason": "REFLECTION_HIGH_RISK_REQUIRES_REVIEW"})
+                item = reflection_queue.enqueue({"key": candidate.key, "value": candidate.value,
+                    "memory_type": candidate.memory_type, "summary": candidate.summary,
+                    "confidence": candidate.confidence, "importance": candidate.importance,
+                    "retention": candidate.retention, "evidence_refs": list(candidate.evidence_refs),
+                    "tags": list(candidate.tags), "scope": candidate.scope, "risk": candidate.risk,
+                    "project_id": project_id if project_id is not None else self.project_id,
+                    "task_id": task_id, "context": context or {}, "source": source},
+                    reason="REFLECTION_HIGH_RISK_REQUIRES_REVIEW")
+                rejected.append({"key": candidate.key, "status": "pending_review", "review_id": item["id"]})
                 continue
             result = self.commit_proposal({
                 "key": candidate.key,
@@ -103,6 +112,24 @@ class MemoryService:
             })
             (committed if result.get("success") else rejected).append(result)
         return {"status": "success", "success": True, "committed": committed, "rejected": rejected}
+
+    def review_reflection(self, review_id: str, *, approve: bool, reviewer: str = "human") -> dict[str, Any]:
+        pending = {item["id"]: item for item in reflection_queue.list_pending()}
+        item = pending.get(review_id)
+        if item is None:
+            return {"status": "not_found", "success": False, "review_id": review_id}
+        candidate = item["candidate"]
+        if not approve:
+            resolved = reflection_queue.resolve(review_id, status="rejected", resolution=reviewer)
+            return {"status": "rejected", "success": True, "review": resolved}
+        result = self.commit_proposal(candidate)
+        if not result.get("success"):
+            return {"status": "commit_rejected", "success": False, "result": result}
+        resolved = reflection_queue.resolve(review_id, status="approved", resolution=reviewer)
+        return {"status": "approved", "success": True, "record": result.get("record"), "review": resolved}
+
+    def pending_reflections(self) -> list[dict[str, Any]]:
+        return reflection_queue.list_pending()
 
     def update(self, record_id: str, value: Any,
                *, provenance: Mapping[str, Any] | None = None) -> dict[str, Any]:
