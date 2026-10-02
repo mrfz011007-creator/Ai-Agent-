@@ -130,9 +130,12 @@ def run_command(
                     f"AI_AGENT_PROCESS_MEMORY_MB must be >= {MIN_MEMORY_LIMIT_MB}"
                 )
             memory_bytes = memory_mb * 1024 * 1024
-            resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
-            resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
-            resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
+            if hasattr(resource, "RLIMIT_CPU"):
+                resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
+            if hasattr(resource, "RLIMIT_NOFILE"):
+                resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
+            if hasattr(resource, "RLIMIT_NPROC"):
+                resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
             if hasattr(resource, "RLIMIT_AS"):
                 resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
 
@@ -153,6 +156,8 @@ def run_command(
             _terminate_process(process)
             stdout, out_truncated = _read_limited(stdout_path, output_limit)
             stderr, err_truncated = _read_limited(stderr_path, output_limit)
+            stdout = redact_text(stdout)
+            stderr = redact_text(stderr)
             if out_truncated or err_truncated:
                 stderr = f"{stderr}\nOUTPUT_TRUNCATED".strip()
             return {
@@ -189,6 +194,22 @@ def run_command(
         return {
             "success": False,
             "status": "SANDBOX_POLICY_ERROR",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": str(error),
+        }
+    except subprocess.SubprocessError as error:
+        try:
+            stdout_handle.close()
+        except Exception:
+            pass
+        try:
+            stderr_handle.close()
+        except Exception:
+            pass
+        return {
+            "success": False,
+            "status": "EXECUTION_ERROR",
             "exit_code": None,
             "stdout": "",
             "stderr": str(error),
