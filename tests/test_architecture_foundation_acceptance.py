@@ -128,3 +128,5 @@ def test_goal_lifecycle_completes_through_runtime_and_survives_restart(tmp_path)
     assert restored is not None
     assert restored.status == TaskStatus.COMPLETED
     assert restored.result.authority == "acceptance_gate"
+    assert restored.result.status.value == "PASSED"
+    assert result.evidence_id in restored.result.evidence_ids
