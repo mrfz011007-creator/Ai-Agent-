@@ -106,7 +106,7 @@ def test_build_manager_registers_artifact(tmp_path):
 
 
 def test_test_manager_reports_exit_status(tmp_path):
-    result = TestManager(_FakeRouter()).run(
+    result = ArtifactTestManager(_FakeRouter()).run(
         command="python -c \"print('ok')\"",
         cwd=tmp_path,
     )
