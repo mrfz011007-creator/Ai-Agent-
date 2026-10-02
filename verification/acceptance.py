@@ -65,6 +65,12 @@ class AcceptanceGate:
                     f"Artifact belongs to another task: {artifact_id}",
                     tuple(evidence_ids),
                 )
+            if artifact.evidence_id != build_evidence_id:
+                return VerificationResult(
+                    VerificationStatus.FAILED,
+                    f"Artifact is not linked to build evidence: {artifact_id}",
+                    tuple(evidence_ids),
+                )
             if expected_attempt_id is not None and artifact.attempt_id != expected_attempt_id:
                 return VerificationResult(
                     VerificationStatus.FAILED,
@@ -90,7 +96,7 @@ class AcceptanceGate:
 
         for criterion in criteria:
             criterion_evidence = self.verifier.verify_task_evidence(
-                task_id, criterion.evidence_ids
+                task_id, criterion.evidence_ids, expected_attempt_id
             ) if criterion.evidence_ids else VerificationResult(
                 VerificationStatus.PASSED, "No evidence required"
             )
@@ -136,4 +142,5 @@ class AcceptanceGate:
             VerificationStatus.PASSED,
             "Build, artifact integrity, tests, and required acceptance criteria verified",
             tuple(dict.fromkeys(evidence_ids)),
+            authority="acceptance_gate",
         )
