@@ -37,7 +37,7 @@ def test_model_plan_contract_is_preserved():
                 "completion_conditions": ["Patch produces successful evidence"],
             },
         }],
-        "acceptance_criteria": ["Project remains valid"],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
     })
     contract = proposal.tasks[0].execution_contract
     assert contract is not None
@@ -49,7 +49,7 @@ def test_model_plan_without_contract_falls_back_to_read_only_contract():
     proposal = PlanDecoder.from_mapping({
         "goal": "inspect",
         "tasks": [{"task_id": "inspect", "title": "Inspect project", "dependencies": []}],
-        "acceptance_criteria": [],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
     })
     contract = proposal.tasks[0].execution_contract
     assert contract is not None
