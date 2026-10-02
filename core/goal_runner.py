@@ -139,7 +139,7 @@ class GoalRunner:
     ) -> tuple[Plan, TaskGraph]:
         """Create and execute one bounded goal through the runtime boundary."""
         proposer = ModelPlanService(
-            self.runtime.model_gateway.generate_text,
+            self.runtime.model_gateway.text,
             memory=self.runtime.memory,
         )
         proposal = proposer.propose(goal, project_id=project_id, context=context)
