@@ -186,3 +186,49 @@ def test_runtime_resume_goal_completed_plan_does_not_reference_missing_context(t
 
     assert resumed_plan.status.value == "COMPLETED"
     assert resumed_graph.tasks["inspect"].status == TaskStatus.COMPLETED
+
+
+def test_successful_execution_is_not_failed_when_memory_observability_breaks(tmp_path, monkeypatch):
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+
+    def fake_generate_text(prompt, **kwargs):
+        if "USER GOAL:" in prompt:
+            return (
+                '{"goal":"memory isolation","tasks":'
+                '[{"task_id":"inspect","title":"Inspect workspace","dependencies":[]}],'
+                '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+            )
+        return '{"tool":"lokasi","action":"execute","arguments":{}}'
+
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
+
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        evidence_id = "ev-memory-isolation"
+        result = ToolResult(True, "success", proposal.tool, data={"ok": True}, evidence_id=evidence_id)
+        runtime.evidence_store.record(
+            evidence_id=evidence_id,
+            task_id=task_id,
+            attempt_id=attempt_id,
+            tool=proposal.tool,
+            action=proposal.action,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+    monkeypatch.setattr(
+        runtime.memory,
+        "record_experience",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("MEMORY_WRITE_FAILED")),
+    )
+    monkeypatch.setattr(
+        runtime.memory,
+        "reflect_and_commit",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("REFLECTION_FAILED")),
+    )
+
+    plan, graph = runtime.run_goal("memory isolation", plan_id="plan-memory-isolation")
+
+    assert plan.status.value == "COMPLETED"
+    assert graph.tasks["inspect"].status == TaskStatus.COMPLETED
+    assert graph.tasks["inspect"].attempts == 1
