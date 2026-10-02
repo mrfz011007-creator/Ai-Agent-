@@ -99,6 +99,22 @@ class AgentRuntime:
             model_gateway=model_gateway,
         )
 
+    def execute_with_recovery(self, name: str, args: dict, *, source: str = "agent", task_id: str | None = None):
+        """Execute a tool and perform at most one bounded recovery retry."""
+        result = execute_tool(name, args, source=source, task_id=task_id)
+        if result.success or task_id is None:
+            return result
+
+        decision = self.recovery_manager.retry_after_failure(
+            task_id,
+            status=result.status,
+            error=result.error,
+        )
+        if decision.action != "RETRY":
+            return result
+
+        return execute_tool(name, args, source=source, task_id=task_id)
+
     def build(self, **kwargs):
         return self.build_manager.build(**kwargs)
 
