@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from memory import invalidate_memory, remember, search_memory, update_memory
+from core.reflection import ReflectionService
 
 
 class MemoryService:
@@ -56,6 +57,52 @@ class MemoryService:
                         task_id=task_id, context=context, source=source, provenance=provenance,
                         tags=tags, importance=importance, confidence=confidence,
                         retention=retention, summary=summary, evidence_refs=evidence_refs)
+
+    def reflect_and_commit(self, *, model_call, experience: Mapping[str, Any], evidence_refs: list[str] | tuple[str, ...],
+                           related_memory: list[Mapping[str, Any]] | None = None, project_id: str | None = None,
+                           task_id: str | None = None, context: Mapping[str, Any] | None = None,
+                           source: Mapping[str, Any] | str | None = None) -> dict[str, Any]:
+        """Reflect on one verified experience and commit only bounded candidates."""
+        service = ReflectionService(model_call)
+        try:
+            candidates = service.reflect(
+                experience=experience,
+                evidence_refs=evidence_refs,
+                related_memory=related_memory,
+            )
+        except Exception as error:
+            # Reflection is advisory. A model/reflection failure must never fail the task.
+            return {"status": "reflection_failed", "success": False, "reason": str(error), "committed": []}
+
+        committed = []
+        rejected = []
+        for candidate in candidates:
+            # High-risk proposals never receive autonomous persistence authority.
+            if candidate.risk == "high":
+                rejected.append({"key": candidate.key, "reason": "REFLECTION_HIGH_RISK_REQUIRES_REVIEW"})
+                continue
+            result = self.commit_proposal({
+                "key": candidate.key,
+                "value": candidate.value,
+                "memory_type": candidate.memory_type,
+                "project_id": project_id if project_id is not None else self.project_id,
+                "task_id": task_id,
+                "context": context or {},
+                "source": source,
+                "provenance": {
+                    "reason": "bounded_reflection",
+                    "scope": candidate.scope,
+                    "risk": candidate.risk,
+                    "reflection_evidence_refs": list(candidate.evidence_refs),
+                },
+                "importance": candidate.importance,
+                "confidence": candidate.confidence,
+                "retention": candidate.retention,
+                "summary": candidate.summary,
+                "evidence_refs": list(candidate.evidence_refs),
+            })
+            (committed if result.get("success") else rejected).append(result)
+        return {"status": "success", "success": True, "committed": committed, "rejected": rejected}
 
     def update(self, record_id: str, value: Any,
                *, provenance: Mapping[str, Any] | None = None) -> dict[str, Any]:
