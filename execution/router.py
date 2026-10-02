@@ -70,12 +70,6 @@ class ToolRouter:
                     error=capability.reason,
                 )
 
-        if self._task_tool_call_consumer is not None and request.task_id is not None:
-            try:
-                self._task_tool_call_consumer(request.task_id)
-            except RuntimeError as error:
-                return ToolResult(False, "task_limit_exceeded", request.tool, error=str(error))
-
         arguments = dict(request.arguments)
         if request.tool == "run_command" and "timeout" in arguments:
             timeout = arguments["timeout"]
@@ -131,6 +125,12 @@ class ToolRouter:
                     request.tool,
                     error=guard.reason,
                 )
+
+        if self._task_tool_call_consumer is not None and request.task_id is not None:
+            try:
+                self._task_tool_call_consumer(request.task_id)
+            except RuntimeError as error:
+                return ToolResult(False, "task_limit_exceeded", request.tool, error=str(error))
 
         try:
             self._budget.reserve_tool_call()
