@@ -33,7 +33,7 @@ def test_task_execution_contract_allows_declared_tool_only(tmp_path):
                 objective="read bounded data",
                 allowed_tools=("search_memory",),
                 allowed_capabilities=("workspace.read",),
-                completion_conditions=("search returns evidence",),
+                completion_conditions=({"type": "evidence_success", "task_id": "EC-TOOL-1"},),
             ),
         )
     )
@@ -66,7 +66,7 @@ def test_execution_contract_survives_task_restart(tmp_path):
         allowed_tools=("search_memory",),
         max_tool_calls=3,
         retry_limit=1,
-        completion_conditions=("successful evidence exists",),
+        completion_conditions=({"type": "evidence_success", "task_id": "EC-PERSIST-1"},),
     )
     task = runtime.task_manager.create(
         Task("EC-PERSIST-1", "persist contract", status=TaskStatus.READY, execution_contract=contract)
@@ -90,7 +90,7 @@ def test_tool_without_declared_capability_is_denied(tmp_path):
                 objective="use a tool with missing capability declaration",
                 allowed_tools=("unregistered_capability_tool",),
                 allowed_capabilities=("workspace.read",),
-                completion_conditions=("tool execution evidence exists",),
+                completion_conditions=({"type": "evidence_success", "task_id": "EC-CAP-1"},),
             ),
         )
     )
@@ -115,7 +115,7 @@ def test_execution_contract_enforces_tool_call_limit(tmp_path):
         execution_contract=ExecutionContract(
             objective="bounded calls", allowed_tools=("search_memory",),
             allowed_capabilities=("workspace.read",), max_tool_calls=1,
-            completion_conditions=("one evidence exists",),
+            completion_conditions=({"type": "evidence_success", "task_id": "EC-LIMIT-1"},),
         ),
     ))
     runtime.task_manager.start(task.task_id)
@@ -133,7 +133,7 @@ def test_execution_contract_enforces_retry_limit(tmp_path):
         execution_contract=ExecutionContract(
             objective="bounded retry", allowed_tools=("run_command",),
             allowed_capabilities=("process.execute",), retry_limit=0,
-            completion_conditions=("successful command evidence exists",),
+            completion_conditions=({"type": "evidence_success", "task_id": "EC-RETRY-1"},),
         ),
     ))
     runtime.task_manager.start(task.task_id)
@@ -153,7 +153,7 @@ def test_bounded_goal_runner_lifecycle_persists_and_resumes(tmp_path):
 
     class PlanGateway:
         def generate_text(self, prompt, **kwargs):
-            return '{"goal":"read bounded data","tasks":[{"task_id":"GOAL-E2E-1","title":"read bounded data","dependencies":[],"execution_contract":{"objective":"read bounded data","allowed_tools":["search_memory"],"allowed_capabilities":["workspace.read"],"max_tool_calls":1,"retry_limit":0,"completion_conditions":["successful evidence exists"]}}],"acceptance_criteria":[]}'
+            return '{"goal":"read bounded data","tasks":[{"task_id":"GOAL-E2E-1","title":"read bounded data","dependencies":[],"execution_contract":{"objective":"read bounded data","allowed_tools":["search_memory"],"allowed_capabilities":["workspace.read"],"max_tool_calls":1,"retry_limit":0,"completion_conditions":[{"type":"evidence_success","task_id":"GOAL-E2E-1"}]}}],"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
 
         def text(self, prompt, **kwargs):
             return '{"tool":"search_memory","action":"execute","arguments":{"query":"bounded"}}'
