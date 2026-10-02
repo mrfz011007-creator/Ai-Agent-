@@ -26,8 +26,8 @@ class CapabilityPolicy:
     def __init__(self, registry_getter):
         self._registry_getter = registry_getter
 
-    def decide(self, tool: str) -> CapabilityDecision:
-        metadata = self._registry_getter(tool)
+    def decide(self, tool: str, metadata: dict | None = None) -> CapabilityDecision:
+        metadata = metadata if metadata is not None else self._registry_getter(tool)
         if metadata is None:
             return CapabilityDecision(False, f"Unknown tool: {tool}")
 
