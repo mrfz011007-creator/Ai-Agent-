@@ -41,3 +41,41 @@ class ArtifactManager:
         )
         self.store.save_artifact(asdict(artifact))
         return artifact
+
+    def get(self, artifact_id: str) -> Artifact | None:
+        row = self.store.load_artifact(artifact_id)
+        if row is None:
+            return None
+        return Artifact(
+            artifact_id=row["artifact_id"],
+            task_id=row["task_id"],
+            attempt_id=row["attempt_id"],
+            path=row["path"],
+            kind=row["kind"],
+            sha256=row["sha256"],
+            size=int(row["size"]),
+            source_commit=row["source_commit"],
+            created_at=row["payload"].get("created_at") or row["created_at"],
+        )
+
+    def verify(self, artifact_id: str, task_id: str | None = None) -> tuple[bool, str]:
+        artifact = self.get(artifact_id)
+        if artifact is None:
+            return False, "ARTIFACT_NOT_FOUND"
+        if task_id is not None and artifact.task_id != task_id:
+            return False, "ARTIFACT_TASK_MISMATCH"
+
+        path = Path(artifact.path)
+        if not path.is_file():
+            return False, "ARTIFACT_MISSING"
+        if path.stat().st_size != artifact.size:
+            return False, "ARTIFACT_SIZE_CHANGED"
+
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+
+        if digest.hexdigest() != artifact.sha256:
+            return False, "ARTIFACT_HASH_CHANGED"
+        return True, "ARTIFACT_VALID"
