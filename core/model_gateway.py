@@ -61,6 +61,12 @@ class ModelGateway:
         self.max_attempts = max_attempts or max(1, len(credentials))
         self.budget = budget
         self.config = config or ModelConfig.from_environment()
+        provider_name = getattr(provider, "name", None)
+        if provider_name is not None and self.config.provider != provider_name:
+            raise ValueError(
+                f"Model provider mismatch: config={self.config.provider}, "
+                f"provider={provider_name}"
+            )
 
     @staticmethod
     def classify_error(error: Exception) -> ProviderErrorKind:
@@ -201,6 +207,9 @@ def create_gemini_gateway(
     budget: BudgetManager | None = None,
     config: ModelConfig | None = None,
 ) -> ModelGateway:
+    config = config or ModelConfig.from_environment()
+    if config.provider != "gemini":
+        raise ValueError(f"Unsupported model provider: {config.provider}")
     return ModelGateway(
         credentials=gemini_credentials(),
         provider=GeminiProvider(),
