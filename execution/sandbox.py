@@ -146,6 +146,9 @@ def prepare_sandbox(
         f'WORK="{work_mount}"',
         'mount -t tmpfs tmpfs "$ROOT"',
         'mkdir -p "$ROOT/usr" "$ROOT/etc" "$ROOT/dev" "$ROOT/proc" "$ROOT/tmp"',
+        'ln -s usr/bin "$ROOT/bin"',
+        'ln -s usr/lib "$ROOT/lib"',
+        'if [ -d "$ROOT/usr/lib64" ]; then ln -s usr/lib64 "$ROOT/lib64"; fi',
     ]
     for source in _bind_sources(executable, env):
         target = root / source.relative_to("/")
