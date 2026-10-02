@@ -49,26 +49,27 @@ def test_runtime_run_goal_respects_step_boundary(tmp_path, monkeypatch):
     assert runtime.state_store.load_plan("plan-bound")["status"] == "WAITING"
 
 
-def test_runtime_resume_goal_is_plan_scoped(tmp_path, monkeypatch):
+def test_runtime_resume_goal_is_plan_scoped(tmp_path):
+    from core.contracts import Task
+    from core.plan import Planner
+
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
-    plan = runtime.plan_goal(
-        "plan one",
-        plan_id="plan-one",
+    proposal_one = Planner().propose(
+        "plan one", [Task("one-build", "Build one")]
     )
-    runtime.task_manager.start("build")
+    plan_one, _ = runtime.orchestrator.materialize(proposal_one, "plan-one")
+    runtime.task_manager.start("one-build")
 
-    other = runtime.plan_goal(
-        "plan two",
-        plan_id="plan-two",
+    proposal_two = Planner().propose(
+        "plan two", [Task("two-build", "Build two")]
     )
-    runtime.task_manager.start("build")
+    plan_two, _ = runtime.orchestrator.materialize(proposal_two, "plan-two")
+    runtime.task_manager.start("two-build")
 
-    # Restore one plan in a fresh runtime to prove recovery only touches its tasks.
     fresh = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
-    restored = fresh.orchestrator.restore_graph(plan[0].plan_id)
-    assert restored is not None
-    fresh.runtime_model_for_test = None
+    restored_one = fresh.orchestrator.restore_graph(plan_one.plan_id)
+    assert restored_one is not None
+    fresh.recovery_manager.recover_tasks(tuple(restored_one[1].tasks))
 
-    # The second plan remains interrupted until explicitly resumed.
-    second = fresh.orchestrator.restore_graph(other[0].plan_id)
-    assert second[1].tasks["build"].status == TaskStatus.RUNNING
+    assert fresh.orchestrator.restore_graph(plan_one.plan_id)[1].tasks["one-build"].status == TaskStatus.WAITING
+    assert fresh.orchestrator.restore_graph(plan_two.plan_id)[1].tasks["two-build"].status == TaskStatus.RUNNING
