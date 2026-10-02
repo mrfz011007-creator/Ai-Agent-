@@ -65,6 +65,17 @@ class TaskManager:
         self._checkpoint(task, event="started")
         return task
 
+    def retry(self, task_id: str) -> Task:
+        """Start a bounded recovery attempt from WAITING state."""
+        task = self._require(task_id)
+        if task.status != TaskStatus.WAITING:
+            raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
+        task.attempts += 1
+        task.status = TaskStatus.RUNNING
+        self._persist(task)
+        self._checkpoint(task, event="retry_started", attempt=task.attempts)
+        return task
+
     def resume(self, task_id: str) -> Task:
         task = self._require(task_id)
         if task.status != TaskStatus.WAITING:
