@@ -154,6 +154,55 @@ def test_acceptance_criteria_respect_attempt(tmp_path):
     assert "attempt" in result.reason.lower()
 
 
+def test_completion_rejects_evidence_from_stale_attempt(tmp_path):
+    from core.contracts import ToolResult, VerificationResult
+
+    store, evidence, _, _, manager = _setup(tmp_path)
+    evidence.record(
+        evidence_id="stale-build",
+        task_id="A1",
+        tool="run_command",
+        action="build",
+        result=ToolResult(True, "SUCCESS", "run_command"),
+        attempt_id="A1:attempt:0",
+    )
+    manager.begin_verification("A1")
+    result = VerificationResult(
+        VerificationStatus.PASSED,
+        "stale evidence",
+        ("stale-build",),
+        authority="acceptance_gate",
+    )
+    try:
+        manager.complete_with_gate("A1", result)
+        assert False, "stale evidence must not complete the task"
+    except ValueError as exc:
+        assert "current task attempt" in str(exc)
+
+
+def test_completion_accepts_evidence_from_current_attempt(tmp_path):
+    from core.contracts import ToolResult, VerificationResult
+
+    store, evidence, _, _, manager = _setup(tmp_path)
+    evidence.record(
+        evidence_id="current-build",
+        task_id="A1",
+        tool="run_command",
+        action="build",
+        result=ToolResult(True, "SUCCESS", "run_command"),
+        attempt_id="A1:attempt:1",
+    )
+    manager.begin_verification("A1")
+    result = VerificationResult(
+        VerificationStatus.PASSED,
+        "current evidence",
+        ("current-build",),
+        authority="acceptance_gate",
+    )
+    completed = manager.complete_with_gate("A1", result)
+    assert completed.status == TaskStatus.COMPLETED
+
+
 def test_completion_requires_acceptance_gate_authority(tmp_path):
     from core.contracts import VerificationResult
     _, _, _, _, manager = _setup(tmp_path)
