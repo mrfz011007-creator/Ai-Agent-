@@ -102,6 +102,18 @@ def _validate_record(record: Mapping[str, Any]) -> None:
         isinstance(tag, str) for tag in record["tags"]
     ):
         raise MemoryValidationError("MEMORY_TAGS_INVALID")
+    if not isinstance(record["importance"], (int, float)) or not 0 <= record["importance"] <= 1:
+        raise MemoryValidationError("MEMORY_IMPORTANCE_INVALID")
+    if not isinstance(record["confidence"], (int, float)) or not 0 <= record["confidence"] <= 1:
+        raise MemoryValidationError("MEMORY_CONFIDENCE_INVALID")
+    if record["retention"] not in MEMORY_RETENTION_POLICIES:
+        raise MemoryValidationError("MEMORY_RETENTION_INVALID")
+    if not isinstance(record["summary"], str):
+        raise MemoryValidationError("MEMORY_SUMMARY_INVALID")
+    if not isinstance(record["evidence_refs"], list) or not all(isinstance(ref, str) for ref in record["evidence_refs"]):
+        raise MemoryValidationError("MEMORY_EVIDENCE_REFS_INVALID")
+    if record["last_accessed_at"] is not None and not isinstance(record["last_accessed_at"], str):
+        raise MemoryValidationError("MEMORY_LAST_ACCESSED_INVALID")
     _json_safe(record["value"])
 
 
