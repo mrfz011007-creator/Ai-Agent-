@@ -54,7 +54,7 @@ class Orchestrator:
             raise KeyError(task_id)
         if task.status != TaskStatus.VERIFYING:
             raise ValueError("Task must be VERIFYING before completion")
-        completed = self.task_manager.complete(task_id, verification)
+        completed = self.task_manager.complete_with_gate(task_id, verification)
         graph.tasks[task_id] = completed
         return completed
 
@@ -91,7 +91,7 @@ class Orchestrator:
             failed = self.task_manager.fail(task.task_id, final.reason)
             graph.tasks[task.task_id] = failed
             return failed
-        completed = self.task_manager.complete(task.task_id, final)
+        completed = self.task_manager.complete_with_gate(task.task_id, final)
         graph.tasks[task.task_id] = completed
         return completed
 
