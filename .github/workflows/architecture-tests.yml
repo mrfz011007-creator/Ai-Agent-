@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "agent/**"
+      - "fix/**"
   pull_request:
     branches:
       - main

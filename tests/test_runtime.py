@@ -25,7 +25,7 @@ def test_runtime_plan_goal_uses_model_gateway_boundary(tmp_path, monkeypatch):
 
     def fake_generate_text(prompt, **kwargs):
         calls.append(prompt)
-        return '{"goal":"build app","tasks":[{"task_id":"build","title":"Build app","dependencies":[]}],"acceptance_criteria":["build succeeds"]}'
+        return '{"goal":"build app","tasks":[{"task_id":"build","title":"Build app","dependencies":[]}],"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
 
     monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
 

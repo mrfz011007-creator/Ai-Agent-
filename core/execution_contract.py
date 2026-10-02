@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Mapping
+
 from security.capabilities import Capability
 
 
@@ -18,23 +20,29 @@ class ExecutionContract:
     max_tool_calls: int = 10
     retry_limit: int = 0
     evidence_required: bool = True
-    completion_conditions: tuple[str, ...] = ()
+    completion_conditions: tuple[Mapping[str, object], ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.objective.strip():
+        if not isinstance(self.objective, str) or not self.objective.strip():
             raise ExecutionContractError("Execution objective cannot be empty")
         if not self.allowed_tools:
             raise ExecutionContractError("Execution contract must allow at least one tool")
-        if any(not tool.strip() for tool in self.allowed_tools):
+        if any(not isinstance(tool, str) or not tool.strip() for tool in self.allowed_tools):
             raise ExecutionContractError("Execution contract contains an empty tool name")
         try:
             tuple(Capability(value) for value in self.allowed_capabilities)
         except ValueError as error:
             raise ExecutionContractError(f"Unknown execution capability: {error}") from error
-        if self.max_tool_calls < 1:
+        if isinstance(self.max_tool_calls, bool) or self.max_tool_calls < 1:
             raise ExecutionContractError("max_tool_calls must be at least 1")
-        if self.retry_limit < 0:
+        if isinstance(self.retry_limit, bool) or self.retry_limit < 0:
             raise ExecutionContractError("retry_limit cannot be negative")
+        if not isinstance(self.evidence_required, bool):
+            raise ExecutionContractError("evidence_required must be a boolean")
+        if any(not isinstance(condition, Mapping) for condition in self.completion_conditions):
+            raise ExecutionContractError(
+                "completion_conditions must be machine-verifiable objects"
+            )
         if self.evidence_required and not self.completion_conditions:
             raise ExecutionContractError(
                 "Evidence-backed contracts require completion conditions"
@@ -57,7 +65,7 @@ class ExecutionContract:
             "max_tool_calls": self.max_tool_calls,
             "retry_limit": self.retry_limit,
             "evidence_required": self.evidence_required,
-            "completion_conditions": list(self.completion_conditions),
+            "completion_conditions": [dict(item) for item in self.completion_conditions],
         }
 
     @classmethod
@@ -86,10 +94,10 @@ class ExecutionContract:
                 "Execution contract allowed_capabilities must be strings"
             )
         if not isinstance(completion_conditions, (list, tuple)) or not all(
-            isinstance(condition, str) for condition in completion_conditions
+            isinstance(condition, dict) for condition in completion_conditions
         ):
             raise ExecutionContractError(
-                "Execution contract completion_conditions must be strings"
+                "Execution contract completion_conditions must be machine-verifiable objects"
             )
         if isinstance(max_tool_calls, bool) or not isinstance(max_tool_calls, int):
             raise ExecutionContractError("max_tool_calls must be an integer")

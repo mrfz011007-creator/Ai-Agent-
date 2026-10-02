@@ -84,7 +84,23 @@ class GoalRunner:
                 return plan, graph
             steps += 1
 
-        return self._persist(plan, PlanStatus.COMPLETED), graph
+        if graph.is_complete():
+            acceptance = self.runtime.acceptance_gate.verify_plan_criteria(
+                criteria=plan.acceptance_criteria,
+                task_ids=tuple(graph.tasks),
+                completed_task_ids=tuple(
+                    task.task_id for task in graph.tasks.values()
+                    if task.status == TaskStatus.COMPLETED
+                ),
+                failed_task_ids=tuple(
+                    task.task_id for task in graph.tasks.values()
+                    if task.status in (TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.BLOCKED)
+                ),
+            )
+            if acceptance.status.value != "PASSED":
+                return self._persist(plan, PlanStatus.FAILED), graph
+            return self._persist(plan, PlanStatus.COMPLETED), graph
+        return self._persist(plan, PlanStatus.WAITING), graph
 
     def run(
         self,

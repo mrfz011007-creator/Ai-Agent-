@@ -50,7 +50,7 @@ def test_runtime_model_execution_uses_router_and_evidence(tmp_path):
 
     runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
     task = runtime.task_manager.create(
-        __import__("core.contracts", fromlist=["Task"]).Task("T-RUN", "read")
+        __import__("core.contracts", fromlist=["Task"]).Task("T-RUN", "read", execution_contract=__import__("core.execution_contract", fromlist=["ExecutionContract"]).ExecutionContract(objective="read", allowed_tools=("safe_tool",), allowed_capabilities=("workspace.read",), completion_conditions=({"type":"evidence_success","task_id":"T-RUN"},)))
     )
     task.status = __import__("core.contracts", fromlist=["TaskStatus"]).TaskStatus.READY
     runtime.task_manager.start("T-RUN")

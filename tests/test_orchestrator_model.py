@@ -28,7 +28,7 @@ def test_orchestrator_model_loop_runs_one_task_and_verifies():
     proposal = PlanProposal(
         goal="inspect",
         tasks=(Task("inspect", "Inspect project"),),
-        acceptance_criteria=("inspection succeeds",),
+        acceptance_criteria=({"type": "all_tasks_completed"},),
     )
     _, graph = orchestrator.materialize(proposal, "plan-1")
     runtime = FakeRuntime()
@@ -144,7 +144,7 @@ def test_run_goal_is_bounded_and_reports_completed_plan():
             return Planner().propose(
                 goal,
                 [Task("one", "Do one")],
-                ["one completed"],
+                [{"type": "all_tasks_completed"}],
             )
 
     def model_call(_):

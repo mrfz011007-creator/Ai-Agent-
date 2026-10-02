@@ -34,10 +34,10 @@ def test_model_plan_contract_is_preserved():
                 "max_tool_calls": 2,
                 "retry_limit": 0,
                 "evidence_required": True,
-                "completion_conditions": ["Patch produces successful evidence"],
+                "completion_conditions": [{"type": "evidence_success", "task_id": "edit"}],
             },
         }],
-        "acceptance_criteria": ["Project remains valid"],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
     })
     contract = proposal.tasks[0].execution_contract
     assert contract is not None
@@ -49,7 +49,7 @@ def test_model_plan_without_contract_falls_back_to_read_only_contract():
     proposal = PlanDecoder.from_mapping({
         "goal": "inspect",
         "tasks": [{"task_id": "inspect", "title": "Inspect project", "dependencies": []}],
-        "acceptance_criteria": [],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
     })
     contract = proposal.tasks[0].execution_contract
     assert contract is not None
@@ -212,7 +212,7 @@ def test_rejected_schema_call_does_not_consume_task_quota(tmp_path):
             allowed_tools=("search_memory",),
             allowed_capabilities=("workspace.read",),
             max_tool_calls=1,
-            completion_conditions=("evidence exists",),
+            completion_conditions=({"type": "evidence_success", "task_id": "Q"},),
         ),
     ))
     runtime.task_manager.start("Q")
