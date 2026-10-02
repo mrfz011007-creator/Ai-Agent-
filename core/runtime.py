@@ -99,6 +99,24 @@ class AgentRuntime:
             model_gateway=model_gateway,
         )
 
+    def handle_model_failure(self, task_id: str | None, error: Exception):
+        """Translate exhausted provider failures into an explicit task state."""
+        if task_id is None:
+            return None
+        message = str(error)
+        if "MODEL_CREDENTIALS_EXHAUSTED" in message or "NO_MODEL_CREDENTIAL_AVAILABLE" in message:
+            task = self.task_manager.get(task_id)
+            if task is not None and task.status == task.status.RUNNING:
+                task.status = task.status.WAITING
+                self.task_manager.persist(task_id)
+                self.task_manager.checkpoint(
+                    task_id,
+                    event="model_waiting",
+                    reason=message,
+                )
+            return task
+        return None
+
     def execute_with_recovery(self, name: str, args: dict, *, source: str = "agent", task_id: str | None = None):
         """Execute a tool and perform at most one bounded recovery retry."""
         result = self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id))
