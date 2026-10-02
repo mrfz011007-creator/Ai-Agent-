@@ -45,6 +45,25 @@ class GoalRunner:
     ) -> tuple[Plan, TaskGraph]:
         plan = self._persist(plan, PlanStatus.EXECUTING)
         steps = 0
+        execution_context = {}
+
+        def execute_with_context(proposal, *, task_id, attempt_id=None):
+            result = self.runtime.execute_model_proposal(
+                proposal,
+                task_id=task_id,
+                attempt_id=attempt_id,
+            )
+            execution_context[task_id] = {
+                "tool": proposal.tool,
+                "action": proposal.action,
+                "success": result.success,
+                "status": result.status,
+                "evidence_id": result.evidence_id,
+                "data": result.data,
+                "error": result.error,
+            }
+            return result
+
         while not graph.is_complete():
             if max_steps is not None and steps >= max_steps:
                 plan = self._persist(plan, PlanStatus.WAITING)
@@ -53,10 +72,11 @@ class GoalRunner:
             task = self.runtime.orchestrator.execute_model_step(
                 graph,
                 model_call=self.runtime.model_gateway.text,
-                execute_proposal=self.runtime.execute_model_proposal,
+                execute_proposal=execute_with_context,
                 verify_execution=self.runtime.verify_execution_evidence,
                 handle_model_failure=self.runtime.handle_model_failure,
                 tool_catalog=self.runtime.tool_catalog(),
+                model_context=execution_context,
             )
             status = self._status_for_graph(graph)
             plan = self._persist(plan, status)
