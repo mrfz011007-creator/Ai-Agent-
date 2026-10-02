@@ -106,3 +106,39 @@ def test_tool_without_declared_capability_is_denied(tmp_path):
     )
     assert not result.success
     assert result.status == "capability_denied"
+
+
+def test_execution_contract_enforces_tool_call_limit(tmp_path):
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task(
+        "EC-LIMIT-1", "bounded calls", status=TaskStatus.READY,
+        execution_contract=ExecutionContract(
+            objective="bounded calls", allowed_tools=("search_memory",),
+            allowed_capabilities=("workspace.read",), max_tool_calls=1,
+            completion_conditions=("one evidence exists",),
+        ),
+    ))
+    runtime.task_manager.start(task.task_id)
+    first = runtime.execute_with_recovery("search_memory", {"query": "x"}, task_id=task.task_id)
+    second = runtime.execute_with_recovery("search_memory", {"query": "x"}, task_id=task.task_id)
+    assert first.success
+    assert not second.success
+    assert second.status == "task_limit_exceeded"
+
+
+def test_execution_contract_enforces_retry_limit(tmp_path):
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task(
+        "EC-RETRY-1", "bounded retry", status=TaskStatus.READY,
+        execution_contract=ExecutionContract(
+            objective="bounded retry", allowed_tools=("run_command",),
+            allowed_capabilities=("process.execute",), retry_limit=0,
+            completion_conditions=("successful command evidence exists",),
+        ),
+    ))
+    runtime.task_manager.start(task.task_id)
+    decision = runtime.recovery_manager.retry_after_failure(
+        task.task_id, status="timeout", error="timeout", idempotent=True
+    )
+    assert decision.action == "NO_RETRY"
+    assert "retry limit" in decision.reason.lower()
