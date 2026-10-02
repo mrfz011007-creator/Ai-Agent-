@@ -245,6 +245,14 @@ class Orchestrator:
                 status=PlanStatus.COMPLETED,
                 acceptance_criteria=plan.acceptance_criteria,
             )
+        elif any(task.status == TaskStatus.BLOCKED for task in graph.tasks.values()):
+            plan = Plan(
+                plan_id=plan.plan_id,
+                goal=plan.goal,
+                task_ids=plan.task_ids,
+                status=PlanStatus.BLOCKED,
+                acceptance_criteria=plan.acceptance_criteria,
+            )
         elif graph.failed():
             plan = Plan(
                 plan_id=plan.plan_id,
