@@ -147,6 +147,8 @@ class AgentRuntime:
 
     def verify_and_complete(self, task_id: str, **kwargs):
         verification = self.acceptance_gate.verify(task_id=task_id, **kwargs)
+        if verification.status.value != "PASSED":
+            return verification
         self.task_manager.begin_verification(task_id)
         return self.task_manager.complete_with_gate(task_id, verification)
 
