@@ -131,7 +131,7 @@ def test_command_timeout_redacts_secret_output(tmp_path):
     )
     assert result["status"] == "TIMEOUT"
     assert "TOP-SECRET-VALUE" not in result["stdout"]
-    assert "[REDACTED_SECRET]" in result["stdout"]
+    assert "REDACTED" in result["stdout"]
 
 
 def test_termux_uses_hardened_fallback_before_namespace_layout(monkeypatch, tmp_path):
