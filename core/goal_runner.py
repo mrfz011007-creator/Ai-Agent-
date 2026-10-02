@@ -6,6 +6,7 @@ from core.contracts import TaskStatus
 from core.model_execution import ExecutionProposal
 from core.model_planner import ModelPlanService
 from core.plan import Plan, PlanStatus, TaskGraph
+from core.memory_service import memory_prompt_context
 
 
 class GoalRunner:
@@ -45,7 +46,7 @@ class GoalRunner:
     ) -> tuple[Plan, TaskGraph]:
         plan = self._persist(plan, PlanStatus.EXECUTING)
         steps = 0
-        execution_context = {}
+        execution_context = {"goal": plan.goal, "project_id": project_id, "context": dict(context or {})}
 
         def execute_with_context(proposal, *, task_id, attempt_id=None):
             result = self.runtime.execute_model_proposal(
@@ -68,6 +69,12 @@ class GoalRunner:
             if max_steps is not None and steps >= max_steps:
                 plan = self._persist(plan, PlanStatus.WAITING)
                 return plan, graph
+
+            memory_result = self.runtime.memory.retrieve(
+                f"{plan.goal} {task.title}", project_id=project_id,
+                task_id=task.task_id, context=context, limit=8,
+            )
+            execution_context["memory"] = memory_prompt_context(memory_result)
 
             task = self.runtime.orchestrator.execute_model_step(
                 graph,
@@ -108,13 +115,18 @@ class GoalRunner:
         *,
         plan_id: str | None = None,
         max_steps: int | None = None,
+        project_id: str | None = None,
+        context=None,
     ) -> tuple[Plan, TaskGraph]:
         """Create and execute one bounded goal through the runtime boundary."""
-        proposer = ModelPlanService(self.runtime.model_gateway.generate_text)
-        proposal = proposer.propose(goal)
+        proposer = ModelPlanService(
+            self.runtime.model_gateway.generate_text,
+            memory=self.runtime.memory,
+        )
+        proposal = proposer.propose(goal, project_id=project_id, context=context)
         resolved_id = plan_id or self._new_plan_id()
         plan, graph = self.runtime.orchestrator.materialize(proposal, resolved_id)
-        return self._run_graph(plan, graph, max_steps=max_steps)
+        return self._run_graph(plan, graph, max_steps=max_steps, project_id=project_id, context=context)
 
     def resume(
         self,
