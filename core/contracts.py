@@ -107,6 +107,7 @@ class VerificationResult:
     status: VerificationStatus
     reason: str
     evidence_ids: tuple[str, ...] = ()
+    authority: str = "verifier"
 
 
 @dataclass
