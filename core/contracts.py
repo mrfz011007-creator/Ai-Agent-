@@ -61,6 +61,7 @@ class ToolResult:
 class Evidence:
     evidence_id: str
     task_id: str | None
+    attempt_id: str | None
     tool: str
     action: str
     success: bool
@@ -78,6 +79,7 @@ class Artifact:
     sha256: str
     size: int
     source_commit: str | None = None
+    evidence_id: str | None = None
     created_at: str | None = None
 
 
