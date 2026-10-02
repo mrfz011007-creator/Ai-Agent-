@@ -64,40 +64,44 @@ class GoalRunner:
                 "data": result.data,
                 "error": result.error,
             }
-            experience_record = self.runtime.memory.record_experience(
-                key=f"task:{task_id}:execution",
-                value={
-                    "tool": proposal.tool, "action": proposal.action,
-                    "success": result.success, "status": result.status,
-                    "evidence_id": result.evidence_id,
-                    "result": result.data if result.success else None,
-                    "error": result.error,
-                },
-                task_id=task_id, project_id=project_id, context=context,
-                source={"kind": "execution", "ref": result.evidence_id or task_id},
-                provenance={"reason": "bounded task execution result", "task_id": task_id},
-                tags=["execution", "success" if result.success else "failure"],
-            )
+            # Memory/reflection is observability, not an execution authority.
+            # A persistence or reflection failure must never convert an already
+            # successful tool execution into a task failure or trigger a retry
+            # that could duplicate a side effect.
+            experience_value = {
+                "tool": proposal.tool, "action": proposal.action,
+                "success": result.success, "status": result.status,
+                "evidence_id": result.evidence_id,
+                "result": result.data if result.success else None,
+                "error": result.error,
+            }
+            try:
+                experience_record = self.runtime.memory.record_experience(
+                    key=f"task:{task_id}:execution",
+                    value=experience_value,
+                    task_id=task_id, project_id=project_id, context=context,
+                    source={"kind": "execution", "ref": result.evidence_id or task_id},
+                    provenance={"reason": "bounded task execution result", "task_id": task_id},
+                    tags=["execution", "success" if result.success else "failure"],
+                )
+            except Exception:
+                experience_record = {"record": {"value": experience_value}}
+
             evidence_refs = [result.evidence_id] if result.evidence_id else []
             if evidence_refs:
-                self.runtime.memory.reflect_and_commit(
-                    model_call=self.runtime.model_gateway.generate_text,
-                    experience=experience_record.get("record", {}).get("value", {
-                        "tool": proposal.tool,
-                        "action": proposal.action,
-                        "success": result.success,
-                        "status": result.status,
-                        "evidence_id": result.evidence_id,
-                        "result": result.data if result.success else None,
-                        "error": result.error,
-                    }),
-                    evidence_refs=evidence_refs,
-                    related_memory=execution_context.get("memory", []),
-                    project_id=project_id,
-                    task_id=task_id,
-                    context=context,
-                    source={"kind": "execution", "ref": result.evidence_id},
-                )
+                try:
+                    self.runtime.memory.reflect_and_commit(
+                        model_call=self.runtime.model_gateway.generate_text,
+                        experience=experience_record.get("record", {}).get("value", experience_value),
+                        evidence_refs=evidence_refs,
+                        related_memory=execution_context.get("memory", []),
+                        project_id=project_id,
+                        task_id=task_id,
+                        context=context,
+                        source={"kind": "execution", "ref": result.evidence_id},
+                    )
+                except Exception:
+                    pass
             return result
 
         while not graph.is_complete():
