@@ -113,12 +113,13 @@ class Orchestrator:
             graph.tasks[task.task_id] = failed
             return failed
 
+        current_attempt_id = f"{task.task_id}:attempt:{current.attempts}"
         self.task_manager.begin_verification(task.task_id)
         try:
             verification = verify_execution(
                 task_id=task.task_id,
                 evidence_ids=(evidence_id,),
-                expected_attempt_id=attempt_id,
+                expected_attempt_id=current_attempt_id,
             )
         except Exception as error:
             failed = self.task_manager.fail(task.task_id, str(error))
