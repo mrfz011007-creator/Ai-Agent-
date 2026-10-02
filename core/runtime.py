@@ -124,7 +124,7 @@ class AgentRuntime:
         if restored is None:
             raise KeyError(f"Unknown persisted plan: {plan_id}")
         plan, graph = restored
-        self.recover_interrupted()
+        self.recovery_manager.recover_tasks(tuple(graph.tasks))
         restored = self.orchestrator.restore_graph(plan_id)
         if restored is None:
             raise KeyError(f"Unknown persisted plan: {plan_id}")
