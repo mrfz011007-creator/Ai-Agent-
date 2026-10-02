@@ -228,3 +228,16 @@ def test_rejected_schema_call_does_not_consume_task_quota(tmp_path):
     )
     assert good.success
     assert runtime.task_manager.get("Q").tool_calls == 1
+
+def test_task_start_cannot_bypass_uncompleted_dependencies(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    manager.create(Task("DEP", "dependency"))
+    manager.create(Task("CHILD", "child", dependencies=["DEP"]))
+
+    with pytest.raises(ValueError, match="dependencies are not completed"):
+        manager.start("CHILD")
+
+    assert manager.get("CHILD").status == TaskStatus.PENDING
+    assert manager.get("CHILD").attempts == 0
+
