@@ -296,7 +296,7 @@ def test_recovery_does_not_change_completed_task(tmp_path):
 def test_runtime_exposes_acceptance_gate(tmp_path):
     from core.runtime import AgentRuntime
 
-    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3", confirmation=lambda request: True)
     assert runtime.acceptance_gate is not None
 
 
