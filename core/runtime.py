@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
 from core.budget import BudgetManager
 from core.contracts import Budget, ToolRequest
 from core.state_store import StateStore
@@ -12,23 +16,61 @@ from registry import TOOL_REGISTRY
 from permissions import minta_konfirmasi
 
 
-state_store = StateStore()
-checkpoint_manager = CheckpointManager(state_store)
-task_manager = TaskManager(store=state_store, checkpoints=checkpoint_manager)
-evidence_store = EvidenceStore()
-budget_manager = BudgetManager(Budget())
-policy_engine = PolicyEngine(TOOL_REGISTRY.get)
-tool_router = ToolRouter(
-    registry_getter=TOOL_REGISTRY.get,
-    policy=policy_engine,
-    budget=budget_manager,
-    evidence=evidence_store,
-    confirmation=minta_konfirmasi,
-)
+@dataclass
+class AgentRuntime:
+    state_store: StateStore
+    checkpoint_manager: CheckpointManager
+    task_manager: TaskManager
+    evidence_store: EvidenceStore
+    budget_manager: BudgetManager
+    policy_engine: PolicyEngine
+    tool_router: ToolRouter
+
+    @classmethod
+    def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":
+        path = state_path or os.environ.get("AI_AGENT_STATE_DB", "agent_state.sqlite3")
+        state_store = StateStore(path)
+        checkpoint_manager = CheckpointManager(state_store)
+        task_manager = TaskManager(
+            store=state_store,
+            checkpoints=checkpoint_manager,
+        )
+        evidence_store = EvidenceStore()
+        budget_manager = BudgetManager(Budget())
+        policy_engine = PolicyEngine(TOOL_REGISTRY.get)
+        tool_router = ToolRouter(
+            registry_getter=TOOL_REGISTRY.get,
+            policy=policy_engine,
+            budget=budget_manager,
+            evidence=evidence_store,
+            confirmation=minta_konfirmasi,
+        )
+        return cls(
+            state_store=state_store,
+            checkpoint_manager=checkpoint_manager,
+            task_manager=task_manager,
+            evidence_store=evidence_store,
+            budget_manager=budget_manager,
+            policy_engine=policy_engine,
+            tool_router=tool_router,
+        )
+
+    def recover_task(self, task_id: str):
+        return self.task_manager.restore(task_id)
+
+
+_default_runtime: AgentRuntime | None = None
+
+
+def get_runtime() -> AgentRuntime:
+    global _default_runtime
+    if _default_runtime is None:
+        _default_runtime = AgentRuntime.create()
+    return _default_runtime
 
 
 def get_tool_router() -> ToolRouter:
-    return tool_router
+    return get_runtime().tool_router
 
 
 def execute_tool(
@@ -38,7 +80,7 @@ def execute_tool(
     source: str = "agent",
     task_id: str | None = None,
 ):
-    return tool_router.execute(
+    return get_tool_router().execute(
         ToolRequest(
             tool=name,
             action="execute",
