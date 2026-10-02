@@ -120,6 +120,7 @@ class Orchestrator:
         verify_execution,
         handle_model_failure=None,
         tool_catalog=None,
+        model_context=None,
     ) -> Task | None:
         """Execute one task from model intent through runtime authorization and a completion gate."""
         task = self.start_next(graph)
@@ -127,7 +128,7 @@ class Orchestrator:
             return None
         attempt_id = f"{task.task_id}:attempt:{task.attempts}"
         try:
-            proposal = ModelExecutionService(model_call, tool_catalog=tool_catalog).propose(task.title)
+            proposal = ModelExecutionService(model_call, tool_catalog=tool_catalog).propose(task.title, context=model_context)
             result = execute_proposal(
                 proposal,
                 task_id=task.task_id,
@@ -197,6 +198,7 @@ class Orchestrator:
         max_steps: int | None = None,
         handle_model_failure=None,
         tool_catalog=None,
+        model_context=None,
     ) -> tuple[Task, ...]:
         """Run a bounded model-driven task graph until blocked or complete."""
         completed = []
@@ -211,6 +213,7 @@ class Orchestrator:
                 verify_execution=verify_execution,
                 handle_model_failure=handle_model_failure,
                 tool_catalog=tool_catalog,
+                model_context=model_context,
             )
             if task is None or task.status != TaskStatus.COMPLETED:
                 break
@@ -229,6 +232,7 @@ class Orchestrator:
         verify_execution,
         max_steps: int | None = None,
         handle_model_failure=None,
+        model_context=None,
     ) -> tuple[Plan, TaskGraph, tuple[Task, ...]]:
         """Plan and execute one bounded goal without granting model output authority."""
         proposal = plan_proposer.propose(goal)
@@ -240,6 +244,7 @@ class Orchestrator:
             verify_execution=verify_execution,
             max_steps=max_steps,
             handle_model_failure=handle_model_failure,
+            model_context=model_context,
         )
         if self.plan_complete(graph):
             plan = Plan(
