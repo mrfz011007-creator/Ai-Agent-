@@ -30,3 +30,7 @@ jobs:
         run: python -m compileall -q .
       - name: Run repository tests
         run: python -m pytest -q
+      - name: Static lint
+        run: python -m pip install ruff && python -m ruff check .
+      - name: Security scan
+        run: python -m pip install bandit && python -m bandit -r core execution security verification tools.py memory.py -ll
