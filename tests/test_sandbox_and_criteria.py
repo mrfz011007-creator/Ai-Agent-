@@ -12,32 +12,32 @@ from verification.criteria import CriterionValidationError, validate_criteria
 
 
 def test_sandbox_allows_workspace_write_and_isolates_tmp_when_namespaced(tmp_path):
-    host_escape = Path('/tmp/ai-agent-host-escape-test')
-    host_escape.unlink(missing_ok=True)
-
-    script = (
-        "from pathlib import Path; "
-        "Path('/tmp/ai-agent-host-escape-test').write_text('x'); "
-        "Path('inside.txt').write_text('ok')"
-    )
-
+    # Workspace writes must work in both namespace and hardened modes.
+    workspace_script = "from pathlib import Path; Path('inside.txt').write_text('ok')"
     result = run_command(
-        command=f"python3 -c {shlex.quote(script)}",
+        command=f"python3 -c {shlex.quote(workspace_script)}",
         cwd=str(tmp_path),
         timeout=10,
     )
+    assert result["success"], result
+    assert (tmp_path / "inside.txt").read_text() == "ok"
 
-    if result['sandbox_mode'] == 'namespace':
-        assert result['success'], result
-        assert (tmp_path / 'inside.txt').read_text() == 'ok'
-        assert not host_escape.exists()
-    else:
-        # Hardened fallback still permits the selected workspace to be used,
-        # but it does not provide a separate filesystem namespace. Therefore
-        # /tmp isolation is not asserted in this mode.
-        assert result['success'], result
-        assert (tmp_path / 'inside.txt').read_text() == 'ok'
-        host_escape.unlink(missing_ok=True)
+    if result["sandbox_mode"] != "namespace":
+        # Hardened fallback does not provide a separate filesystem namespace,
+        # so /tmp isolation is intentionally not asserted here.
+        return
+
+    # Only namespace mode promises filesystem isolation.
+    host_escape = Path("/tmp/ai-agent-host-escape-test")
+    host_escape.unlink(missing_ok=True)
+    escape_script = "from pathlib import Path; Path('/tmp/ai-agent-host-escape-test').write_text('x')"
+    isolated = run_command(
+        command=f"python3 -c {shlex.quote(escape_script)}",
+        cwd=str(tmp_path),
+        timeout=10,
+    )
+    assert isolated.success is False
+    assert not host_escape.exists()
 
 
 def test_sandbox_has_no_network():
