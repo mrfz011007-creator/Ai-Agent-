@@ -89,14 +89,18 @@ def run_command(
     stdout_file.close()
     stderr_file.close()
 
+    stdout_handle = open(stdout_path, "wb")
+    stderr_handle = open(stderr_path, "wb")
     try:
         process = subprocess.Popen(
             argv,
             cwd=str(Path(cwd).resolve()),
-            stdout=open(stdout_path, "wb"),
-            stderr=open(stderr_path, "wb"),
+            stdout=stdout_handle,
+            stderr=stderr_handle,
             start_new_session=(os.name == "posix"),
         )
+        stdout_handle.close()
+        stderr_handle.close()
         try:
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -127,6 +131,14 @@ def run_command(
             "output_truncated": truncated,
         }
     except OSError as error:
+        try:
+            stdout_handle.close()
+        except Exception:
+            pass
+        try:
+            stderr_handle.close()
+        except Exception:
+            pass
         return {
             "success": False,
             "status": "EXECUTION_ERROR",
