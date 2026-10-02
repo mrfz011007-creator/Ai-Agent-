@@ -1,24 +1,44 @@
 from __future__ import annotations
 
 import os
-import re
 import shlex
 import signal
 import subprocess
+import tempfile
 from pathlib import Path
 
 
-_SECRET_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|token|password|secret)(\s*[=:]\s*)([^\s,;]+)"),
-    re.compile(r"(?i)(bearer\s+)([A-Za-z0-9._~+/-]+)"),
-)
+DEFAULT_OUTPUT_LIMIT = 100_000
 
 
-def _redact(value: str) -> str:
-    result = value or ""
-    for pattern in _SECRET_PATTERNS:
-        result = pattern.sub(lambda m: m.group(1) + "***REDACTED***", result)
-    return result
+def _read_limited(path: str, limit: int) -> tuple[str, bool]:
+    with open(path, "rb") as stream:
+        data = stream.read(limit + 1)
+    truncated = len(data) > limit
+    if truncated:
+        data = data[:limit]
+    return data.decode("utf-8", errors="replace"), truncated
+
+
+def _terminate_process(process: subprocess.Popen) -> None:
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=3)
+            return
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            pass
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
 
 
 def run_command(
@@ -26,16 +46,16 @@ def run_command(
     command: str,
     cwd: str,
     timeout: float = 900.0,
-    max_output_chars: int = 100_000,
+    output_limit: int = DEFAULT_OUTPUT_LIMIT,
 ) -> dict:
-    """Execute one bounded process with process-group termination and redaction."""
-    if timeout <= 0:
+    """Execute one bounded process; authorization is owned by ToolRouter."""
+    if output_limit <= 0:
         return {
             "success": False,
-            "status": "INVALID_TIMEOUT",
+            "status": "INVALID_OUTPUT_LIMIT",
             "exit_code": None,
             "stdout": "",
-            "stderr": "timeout must be positive",
+            "stderr": "output_limit must be positive",
         }
 
     try:
@@ -55,42 +75,50 @@ def run_command(
             "status": "COMMAND_EMPTY",
             "exit_code": None,
             "stdout": "",
-            "stderr": "empty command",
+            "stderr": "",
         }
 
-    env = os.environ.copy()
+    stdout_file = tempfile.NamedTemporaryFile(prefix="ai-agent-out-", delete=False)
+    stderr_file = tempfile.NamedTemporaryFile(prefix="ai-agent-err-", delete=False)
+    stdout_path, stderr_path = stdout_file.name, stderr_file.name
+    stdout_file.close()
+    stderr_file.close()
+
     try:
         process = subprocess.Popen(
             argv,
             cwd=str(Path(cwd).resolve()),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-            env=env,
+            stdout=open(stdout_path, "wb"),
+            stderr=open(stderr_path, "wb"),
+            start_new_session=(os.name == "posix"),
         )
         try:
-            stdout, stderr = process.communicate(timeout=timeout)
+            process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            try:
-                stdout, stderr = process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                stdout, stderr = process.communicate()
+            _terminate_process(process)
+            stdout, out_truncated = _read_limited(stdout_path, output_limit)
+            stderr, err_truncated = _read_limited(stderr_path, output_limit)
+            if out_truncated or err_truncated:
+                stderr = f"{stderr}\nOUTPUT_TRUNCATED".strip()
             return {
                 "success": False,
                 "status": "TIMEOUT",
-                "exit_code": process.returncode,
-                "stdout": _redact(stdout)[-max_output_chars:],
-                "stderr": _redact(stderr or "TIMEOUT")[-max_output_chars:],
+                "exit_code": None,
+                "stdout": stdout,
+                "stderr": stderr or "TIMEOUT",
             }
+
+        stdout, out_truncated = _read_limited(stdout_path, output_limit)
+        stderr, err_truncated = _read_limited(stderr_path, output_limit)
+        truncated = out_truncated or err_truncated
+        return {
+            "success": process.returncode == 0,
+            "status": "SUCCESS" if process.returncode == 0 else "FAILED",
+            "exit_code": process.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "output_truncated": truncated,
+        }
     except OSError as error:
         return {
             "success": False,
@@ -99,20 +127,9 @@ def run_command(
             "stdout": "",
             "stderr": str(error),
         }
-
-    stdout = _redact(stdout)
-    stderr = _redact(stderr)
-    truncated = len(stdout) > max_output_chars or len(stderr) > max_output_chars
-    if len(stdout) > max_output_chars:
-        stdout = stdout[:max_output_chars]
-    if len(stderr) > max_output_chars:
-        stderr = stderr[:max_output_chars]
-
-    return {
-        "success": process.returncode == 0,
-        "status": "SUCCESS" if process.returncode == 0 else "FAILED",
-        "exit_code": process.returncode,
-        "stdout": stdout,
-        "stderr": stderr,
-        "output_truncated": truncated,
-    }
+    finally:
+        for path in (stdout_path, stderr_path):
+            try:
+                Path(path).unlink()
+            except FileNotFoundError:
+                pass
