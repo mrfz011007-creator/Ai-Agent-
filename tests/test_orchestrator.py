@@ -37,7 +37,11 @@ def test_orchestrator_does_not_start_dependent_task_early():
 
     first = orchestrator.start_next(graph)
     assert first.task_id == "inspect"
-    assert orchestrator.next_ready(graph) is None
+    try:
+        orchestrator.next_ready(graph)
+        assert False, "scheduler must reject a second active task"
+    except RuntimeError as error:
+        assert "Active task" in str(error)
     assert orchestrator.pending_dependencies(graph, "build") == ("inspect",)
 
 
