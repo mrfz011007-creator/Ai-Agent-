@@ -36,7 +36,7 @@ class BuildManager:
         source_commit: str | None = None,
         timeout: float = 900.0,
     ) -> BuildResult:
-        result = self._run(command, cwd, timeout, task_id)
+        result = self._run(command, cwd, timeout, task_id, attempt_id)
         if not result.success:
             return BuildResult(
                 False, command, result.exit_code, evidence_id=result.evidence_id,
@@ -61,7 +61,8 @@ class BuildManager:
         )
 
     def _run(
-        self, command: str, cwd: str | Path, timeout: float, task_id: str | None = None
+        self, command: str, cwd: str | Path, timeout: float, task_id: str | None = None,
+        attempt_id: str | None = None,
     ) -> CommandResult:
         if self.router is None:
             raise RuntimeError("BuildManager requires ToolRouter for controlled execution")
@@ -104,6 +105,7 @@ class TestManager:
         cwd: str | Path,
         timeout: float = 900.0,
         task_id: str | None = None,
+        attempt_id: str | None = None,
     ) -> TestResult:
         if self.router is None:
             raise RuntimeError("TestManager requires ToolRouter for controlled execution")
