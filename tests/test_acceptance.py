@@ -197,3 +197,85 @@ def test_acceptance_criteria_reject_artifact_from_wrong_attempt(tmp_path):
     assert result.status == VerificationStatus.FAILED
     assert "another attempt" in result.reason
 
+
+
+def test_acceptance_proves_build_test_artifact_chain_through_router(tmp_path):
+    from core.budget import Budget, BudgetManager
+    from execution.command import run_command
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+    from verification.build import BuildManager, TestManager
+
+    store = StateStore(tmp_path / "state.sqlite3")
+    evidence = EvidenceStore(store)
+    artifacts = ArtifactManager(store)
+    gate = AcceptanceGate(Verifier(evidence), artifacts)
+
+    registry = {
+        "run_command": {
+            "func": run_command,
+            "permission": "safe",
+            "idempotent": True,
+        }
+    }
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=evidence,
+    )
+    build = BuildManager(artifacts, router)
+    tests = TestManager(router)
+    task_id = "CHAIN-1"
+    attempt_id = "CHAIN-1:attempt:1"
+
+    build_result = build.build(
+        task_id=task_id,
+        attempt_id=attempt_id,
+        command="python -c \"from pathlib import Path; Path('app-debug.apk').write_bytes(b'proof-apk')\"",
+        cwd=tmp_path,
+        artifact_paths=["app-debug.apk"],
+        source_commit="test-commit",
+    )
+    assert build_result.success is True
+    assert build_result.evidence_id is not None
+    assert len(build_result.artifact_ids) == 1
+
+    test_result = tests.run(
+        task_id=task_id,
+        attempt_id=attempt_id,
+        command="python -c \"from pathlib import Path; assert Path('app-debug.apk').read_bytes() == b'proof-apk'\"",
+        cwd=tmp_path,
+    )
+    assert test_result.success is True
+    assert test_result.evidence_id is not None
+
+    result = gate.verify(
+        task_id=task_id,
+        build_evidence_id=build_result.evidence_id,
+        artifact_ids=build_result.artifact_ids,
+        test_evidence_ids=(test_result.evidence_id,),
+        expected_attempt_id=attempt_id,
+    )
+    assert result.status == VerificationStatus.PASSED
+    assert result.authority == "acceptance_gate"
+    assert set(result.evidence_ids) == {
+        build_result.evidence_id,
+        test_result.evidence_id,
+    }
+
+    artifact = artifacts.get(build_result.artifact_ids[0])
+    assert artifact is not None
+    assert artifact.evidence_id == build_result.evidence_id
+    assert artifact.attempt_id == attempt_id
+
+    (tmp_path / "app-debug.apk").write_bytes(b"tampered")
+    tampered = gate.verify(
+        task_id=task_id,
+        build_evidence_id=build_result.evidence_id,
+        artifact_ids=build_result.artifact_ids,
+        test_evidence_ids=(test_result.evidence_id,),
+        expected_attempt_id=attempt_id,
+    )
+    assert tampered.status == VerificationStatus.FAILED
+    assert "integrity" in tampered.reason.lower()
