@@ -43,6 +43,8 @@ class GoalRunner:
         graph: TaskGraph,
         *,
         max_steps: int | None = None,
+        project_id: str | None = None,
+        context=None,
     ) -> tuple[Plan, TaskGraph]:
         plan = self._persist(plan, PlanStatus.EXECUTING)
         steps = 0
@@ -84,6 +86,9 @@ class GoalRunner:
                 plan = self._persist(plan, PlanStatus.WAITING)
                 return plan, graph
 
+            task = self.runtime.orchestrator.next_ready(graph)
+            if task is None:
+                break
             memory_result = self.runtime.memory.retrieve(
                 f"{plan.goal} {task.title}", project_id=project_id,
                 task_id=task.task_id, context=context, limit=8,
