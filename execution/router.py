@@ -8,6 +8,7 @@ from core.contracts import Decision, ToolRequest, ToolResult
 from security.policy import PolicyContext, PolicyEngine
 from verification.evidence import EvidenceStore
 from security.guard import GuardEngine
+from security.capabilities import CapabilityPolicy
 from security.schema import SchemaValidationError, validate_tool_arguments
 from security.redaction import redact_text, redact_value
 
@@ -25,6 +26,7 @@ class ToolRouter:
         confirmation: Callable[[str, dict], bool] | None = None,
         guard: GuardEngine | None = None,
         task_getter: Callable[[str], object | None] | None = None,
+        capability_policy: CapabilityPolicy | None = None,
     ):
         self._registry_getter = registry_getter
         self._policy = policy
@@ -33,6 +35,7 @@ class ToolRouter:
         self._confirmation = confirmation
         self._guard = guard
         self._task_getter = task_getter
+        self._capability_policy = capability_policy
 
     def execute(self, request: ToolRequest) -> ToolResult:
         metadata = self._registry_getter(request.tool)
@@ -48,6 +51,16 @@ class ToolRouter:
                     "contract_denied",
                     request.tool,
                     error=f"Tool not allowed by execution contract: {request.tool}",
+                )
+
+        if self._capability_policy is not None:
+            capability = self._capability_policy.decide(request.tool)
+            if not capability.allowed:
+                return ToolResult(
+                    False,
+                    "capability_denied",
+                    request.tool,
+                    error=capability.reason,
                 )
 
         schema = metadata.get("parameters")
