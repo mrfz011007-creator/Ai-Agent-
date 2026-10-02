@@ -93,6 +93,17 @@ def test_search_and_exact_patch_are_workspace_bounded(monkeypatch, tmp_path):
     target = workspace / "sample.py"
     target.write_text("alpha\nbeta\nbeta\n", encoding="utf-8")
 
+    snapshot = tools.baca_file("sample.py")
+    assert snapshot["success"] is True
+    assert len(snapshot["sha256"]) == 64
+
+    target.write_text("alpha\nchanged\nbeta\n", encoding="utf-8")
+    stale = patch_file("sample.py", "beta", "gamma", expected_count=1, expected_sha256=snapshot["sha256"])
+    assert stale["success"] is False
+    assert stale["code"] == "FILE_CHANGED"
+
+    target.write_text("alpha\nbeta\nbeta\n", encoding="utf-8")
+
     found = cari_teks("beta")
     assert found["success"] is True
     assert [item["line"] for item in found["hasil"]] == [2, 3]
@@ -101,9 +112,26 @@ def test_search_and_exact_patch_are_workspace_bounded(monkeypatch, tmp_path):
     assert rejected["success"] is False
     assert target.read_text(encoding="utf-8") == "alpha\nbeta\nbeta\n"
 
-    applied = patch_file("sample.py", "beta", "gamma", expected_count=2)
+    applied = patch_file("sample.py", "beta", "gamma", expected_count=2, expected_sha256=snapshot["sha256"])
     assert applied["success"] is True
     assert target.read_text(encoding="utf-8") == "alpha\ngamma\ngamma\n"
+
+
+def test_write_rejects_stale_snapshot(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    target = workspace / "sample.py"
+    target.write_text("original\n", encoding="utf-8")
+    snapshot = tools.baca_file("sample.py")
+
+    target.write_text("external-change\n", encoding="utf-8")
+    result = tools.tulis_file("sample.py", "agent-change\n", expected_sha256=snapshot["sha256"])
+
+    assert result["success"] is False
+    assert result["code"] == "FILE_CHANGED"
+    assert target.read_text(encoding="utf-8") == "external-change\n"
 
 
 def test_search_does_not_follow_workspace_escape(monkeypatch, tmp_path):
