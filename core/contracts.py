@@ -63,10 +63,10 @@ class Evidence:
     task_id: str | None
     tool: str
     action: str
-    attempt_id: str | None = None
     success: bool
     result_status: str
     error: str | None = None
+    attempt_id: str | None = None
 
 
 @dataclass(frozen=True)
