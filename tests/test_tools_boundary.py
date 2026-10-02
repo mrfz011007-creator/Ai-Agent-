@@ -147,6 +147,58 @@ def test_search_does_not_follow_workspace_escape(monkeypatch, tmp_path):
     assert cari_teks("secret-marker")["hasil"] == []
 
 
+def test_router_rejects_task_scoped_execution_outside_running_state(monkeypatch, tmp_path):
+    from core.budget import Budget, BudgetManager
+    from core.contracts import Task, TaskStatus, ToolRequest
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+    from verification.evidence import EvidenceStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    registry = {
+        "write": {"func": lambda: {"success": True}, "permission": "safe"},
+    }
+    task = Task("task-1", "completed task", status=TaskStatus.COMPLETED)
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=EvidenceStore(),
+        task_getter=lambda task_id: task if task_id == task.task_id else None,
+    )
+
+    for status in (TaskStatus.PENDING, TaskStatus.WAITING, TaskStatus.VERIFYING, TaskStatus.COMPLETED):
+        task.status = status
+        result = router.execute(
+            ToolRequest(
+                tool="write",
+                action="execute",
+                arguments={},
+                task_id=task.task_id,
+                attempt_id="task-1:attempt:1",
+            )
+        )
+        assert result.success is False
+        assert result.status == "task_not_executable"
+        assert result.evidence_id is None
+
+    task.status = TaskStatus.RUNNING
+    result = router.execute(
+        ToolRequest(
+            tool="write",
+            action="execute",
+            arguments={},
+            task_id=task.task_id,
+            attempt_id="task-1:attempt:1",
+        )
+    )
+    assert result.success is True
+    assert result.evidence_id is not None
+
+
 def test_tool_router_bounds_total_structured_output(monkeypatch, tmp_path):
     from core.budget import Budget, BudgetManager
     from core.contracts import ToolRequest
