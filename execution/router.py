@@ -132,6 +132,8 @@ class ToolRouter:
                         output_truncated = True
                     return result
                 if isinstance(value, tuple):
+                    if len(value) > max_items:
+                        output_truncated = True
                     return tuple(bound(item) for item in value[:max_items])
                 return value
 
