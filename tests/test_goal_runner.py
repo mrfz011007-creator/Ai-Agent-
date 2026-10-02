@@ -18,7 +18,7 @@ def test_runtime_run_goal_completes_through_execution_and_acceptance(tmp_path, m
 
     plan, graph = runtime.run_goal("inspect workspace", plan_id="plan-run")
 
-    assert plan.status.value == "COMPLETED"
+    assert plan.status.value == "COMPLETED", graph.tasks["inspect"].result
     assert graph.tasks["inspect"].status == TaskStatus.COMPLETED
     assert runtime.state_store.load_plan("plan-run")["status"] == "COMPLETED"
     evidence = runtime.state_store.load_evidence_for_task("inspect")
@@ -44,7 +44,7 @@ def test_runtime_run_goal_respects_step_boundary(tmp_path, monkeypatch):
 
     plan, graph = runtime.run_goal("bounded", plan_id="plan-bound", max_steps=1)
 
-    assert plan.status.value == "WAITING"
+    assert plan.status.value == "WAITING", graph.tasks["one"].result
     assert graph.tasks["one"].status == TaskStatus.COMPLETED
     assert graph.tasks["two"].status == TaskStatus.PENDING
     assert runtime.state_store.load_plan("plan-bound")["status"] == "WAITING"
