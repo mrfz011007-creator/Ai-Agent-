@@ -76,3 +76,31 @@ def test_execution_contract_survives_task_restart(tmp_path):
 
     assert restored is not None
     assert restored.execution_contract == contract
+
+
+def test_tool_without_declared_capability_is_denied(tmp_path):
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(
+        Task(
+            "EC-CAP-1",
+            "use a tool with missing capability declaration",
+            status=TaskStatus.READY,
+            execution_contract=ExecutionContract(
+                objective="use a tool with missing capability declaration",
+                allowed_tools=("unregistered_capability_tool",),
+                completion_conditions=("tool execution evidence exists",),
+            ),
+        )
+    )
+    runtime.task_manager.start(task.task_id)
+    runtime.tool_router._registry_getter = lambda name: {
+        "func": lambda: {"success": True},
+        "permission": "safe",
+        "parameters": {"type": "object", "properties": {}},
+    } if name == "unregistered_capability_tool" else None
+
+    result = runtime.execute_with_recovery(
+        "unregistered_capability_tool", {}, source="model", task_id=task.task_id
+    )
+    assert not result.success
+    assert result.status == "capability_denied"
