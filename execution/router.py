@@ -159,7 +159,7 @@ class ToolRouter:
                     error="OUTPUT_TRUNCATED",
                 )
             else:
-                result = ToolResult(True, "success", request.tool, data=redact_value(data))
+                result = ToolResult(True, "success", request.tool, data=safe_data)
         except Exception as error:
             result = ToolResult(False, "error", request.tool, error=redact_text(str(error)))
 
