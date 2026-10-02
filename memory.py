@@ -31,9 +31,11 @@ def memory_file() -> Path:
 
 
 def _tokenize(value: Any) -> set[str]:
+    # Split compound keys/paths on punctuation so a query for "task inspect
+    # execution" can retrieve a key such as "task:inspect:execution".
     return {
         token
-        for token in re.findall(r"[a-zA-Z0-9_:.\\/-]+", str(value).lower())
+        for token in re.findall(r"[a-zA-Z0-9_]+", str(value).lower())
         if len(token) >= 2
     }
 
