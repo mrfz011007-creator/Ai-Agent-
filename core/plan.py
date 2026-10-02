@@ -5,7 +5,8 @@ from enum import Enum
 from typing import Any, Iterable, Mapping
 
 from core.contracts import Task, TaskStatus
-from core.execution_contract import ExecutionContract, ExecutionContractError\nfrom verification.criteria import validate_criteria, CriterionValidationError
+from core.execution_contract import ExecutionContract, ExecutionContractError
+from verification.criteria import validate_criteria, CriterionValidationError
 
 
 class PlanStatus(str, Enum):
@@ -169,10 +170,13 @@ class PlanDecoder:
             raise PlanGraphError("Model plan goal must be a non-empty string")
         if not isinstance(raw_tasks, list) or not raw_tasks:
             raise PlanGraphError("Model plan tasks must be a non-empty list")
-        if not isinstance(criteria, (list, tuple)) or not all(
-            isinstance(item, str) and item.strip() for item in criteria
-        ):
-            raise PlanGraphError("Model acceptance criteria must be non-empty strings")
+
+        try:
+            criteria = validate_criteria(criteria)
+        except CriterionValidationError as error:
+            raise PlanGraphError(
+                f"Invalid machine-verifiable acceptance criteria: {error}"
+            ) from error
 
         tasks = []
         for item in raw_tasks:
@@ -198,7 +202,9 @@ class PlanDecoder:
                     objective=title.strip(),
                     allowed_tools=cls._SAFE_READ_ONLY_TOOLS,
                     allowed_capabilities=("workspace.read",),
-                    completion_conditions=({"type": "evidence_success", "task_id": task_id},),
+                    completion_conditions=(
+                        {"type": "evidence_success", "task_id": task_id},
+                    ),
                 )
             else:
                 try:
@@ -220,7 +226,7 @@ class PlanDecoder:
         proposal = PlanProposal(
             goal=goal.strip(),
             tasks=tuple(tasks),
-            acceptance_criteria=tuple(item.strip() for item in criteria),
+            acceptance_criteria=tuple(dict(item) for item in criteria),
         )
         proposal.graph()
         return proposal
