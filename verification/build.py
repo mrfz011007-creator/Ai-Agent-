@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import shlex
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.contracts import BuildResult, TestResult
+from core.contracts import BuildResult, TestResult, ToolRequest
+from execution.router import ToolRouter
 from verification.artifacts import ArtifactManager
 
 
@@ -16,13 +15,15 @@ class CommandResult:
     exit_code: int | None
     stdout: str = ""
     stderr: str = ""
+    evidence_id: str | None = None
 
 
 class BuildManager:
-    """Runs bounded project builds and registers declared output artifacts."""
+    """Builds through the shared execution boundary and registers artifacts."""
 
-    def __init__(self, artifact_manager: ArtifactManager):
+    def __init__(self, artifact_manager: ArtifactManager, router: ToolRouter | None = None):
         self.artifact_manager = artifact_manager
+        self.router = router
 
     def build(
         self,
@@ -35,10 +36,11 @@ class BuildManager:
         source_commit: str | None = None,
         timeout: float = 900.0,
     ) -> BuildResult:
-        result = self._run(command, cwd, timeout)
+        result = self._run(command, cwd, timeout, task_id)
         if not result.success:
             return BuildResult(
-                False, command, result.exit_code, error=result.stderr or result.stdout
+                False, command, result.exit_code, evidence_id=result.evidence_id,
+                error=result.stderr or result.stdout
             )
 
         artifact_ids: list[str] = []
@@ -53,31 +55,32 @@ class BuildManager:
             artifact_ids.append(artifact.artifact_id)
 
         return BuildResult(
-            True, command, result.exit_code, tuple(artifact_ids)
+            True, command, result.exit_code, tuple(artifact_ids),
+            evidence_id=result.evidence_id,
         )
 
-    @staticmethod
-    def _run(command: str, cwd: str | Path, timeout: float) -> CommandResult:
-        try:
-            completed = subprocess.run(
-                shlex.split(command),
-                cwd=str(cwd),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
+    def _run(
+        self, command: str, cwd: str | Path, timeout: float, task_id: str | None = None
+    ) -> CommandResult:
+        if self.router is None:
+            raise RuntimeError("BuildManager requires ToolRouter for controlled execution")
+        result = self.router.execute(
+            ToolRequest(
+                tool="run_command",
+                action="build",
+                arguments={"command": command, "cwd": str(cwd), "timeout": timeout},
+                source="build_manager",
+                task_id=task_id,
             )
-        except subprocess.TimeoutExpired as error:
-            return CommandResult(False, command, None, error.stdout or "", error.stderr or "TIMEOUT")
-        except OSError as error:
-            return CommandResult(False, command, None, "", str(error))
-
+        )
+        data = result.data if isinstance(result.data, dict) else {}
         return CommandResult(
-            completed.returncode == 0,
+            result.success,
             command,
-            completed.returncode,
-            completed.stdout,
-            completed.stderr,
+            data.get("exit_code"),
+            data.get("stdout", ""),
+            data.get("stderr", result.error or ""),
+            result.evidence_id,
         )
 
     @staticmethod
@@ -87,7 +90,10 @@ class BuildManager:
 
 
 class TestManager:
-    """Runs bounded test commands; test output becomes caller-owned evidence."""
+    """Runs tests through the shared execution boundary."""
+
+    def __init__(self, router: ToolRouter | None = None):
+        self.router = router
 
     def run(
         self,
@@ -95,11 +101,24 @@ class TestManager:
         command: str,
         cwd: str | Path,
         timeout: float = 900.0,
+        task_id: str | None = None,
     ) -> TestResult:
-        result = BuildManager._run(command, cwd, timeout)
+        if self.router is None:
+            raise RuntimeError("TestManager requires ToolRouter for controlled execution")
+        result = self.router.execute(
+            ToolRequest(
+                tool="run_command",
+                action="test",
+                arguments={"command": command, "cwd": str(cwd), "timeout": timeout},
+                source="test_manager",
+                task_id=task_id,
+            )
+        )
+        data = result.data if isinstance(result.data, dict) else {}
         return TestResult(
             result.success,
             command,
-            result.exit_code,
-            None if result.success else (result.stderr or result.stdout),
+            data.get("exit_code"),
+            result.evidence_id,
+            None if result.success else (data.get("stderr") or result.error or data.get("stdout")),
         )
