@@ -145,6 +145,46 @@ def test_completed_requires_verification():
         pass
 
 
+def test_completed_requires_evidence_id():
+    manager = TaskManager()
+    task = manager.create(Task("T6", "evidence gate"))
+    task.status = TaskStatus.READY
+    manager.start("T6")
+    manager.begin_verification("T6")
+    passed_without_evidence = VerificationResult(
+        status=VerificationStatus.PASSED,
+        reason="claimed success",
+    )
+    try:
+        manager.complete("T6", passed_without_evidence)
+        assert False, "Completion without evidence must fail"
+    except ValueError as error:
+        assert "evidence" in str(error).lower()
+
+
+def test_verification_can_load_evidence_after_restart(tmp_path):
+    from core.state_store import StateStore
+
+    db = tmp_path / "verification.sqlite3"
+    first_store = StateStore(db)
+    first_evidence = EvidenceStore(first_store)
+    evidence_id = "E-V1"
+    first_evidence.record(
+        evidence_id=evidence_id,
+        task_id="V1",
+        tool="build",
+        action="assemble",
+        result=__import__("core.contracts", fromlist=["ToolResult"]).ToolResult(
+            True, "SUCCESS", "build"
+        ),
+    )
+
+    restarted = EvidenceStore(StateStore(db))
+    verification = Verifier(restarted).verify_evidence(evidence_id)
+    assert verification.status == VerificationStatus.PASSED
+    assert verification.evidence_ids == (evidence_id,)
+
+
 def test_state_store_persists_task_and_checkpoint(tmp_path):
     from core.state_store import StateStore
     from core.checkpoint import CheckpointManager
