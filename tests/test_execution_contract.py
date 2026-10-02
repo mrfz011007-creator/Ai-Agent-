@@ -142,3 +142,33 @@ def test_execution_contract_enforces_retry_limit(tmp_path):
     )
     assert decision.action == "NO_RETRY"
     assert "retry limit" in decision.reason.lower()
+
+
+def test_bounded_goal_runner_lifecycle_persists_and_resumes(tmp_path):
+    from core.runtime import AgentRuntime
+    from core.goal_runner import GoalRunner
+
+    db = tmp_path / "goal.sqlite3"
+    runtime = AgentRuntime.create(db)
+
+    class PlanGateway:
+        def generate_text(self, prompt, **kwargs):
+            return '{"tasks":[{"task_id":"GOAL-E2E-1","title":"read bounded data","dependencies":[],"execution_contract":{"objective":"read bounded data","allowed_tools":["search_memory"],"allowed_capabilities":["workspace.read"],"max_tool_calls":1,"retry_limit":0,"completion_conditions":["successful evidence exists"]}}],"acceptance_criteria":[]}'
+
+        def text(self, prompt, **kwargs):
+            return '{"tool":"search_memory","action":"execute","arguments":{"query":"bounded"}}'
+
+    runtime.model_gateway = PlanGateway()
+    runner = GoalRunner(runtime)
+    plan, graph = runner.run("read bounded data", max_steps=1)
+
+    assert plan.status.value == "COMPLETED"
+    assert graph.is_complete()
+
+    restarted = AgentRuntime.create(db)
+    restored = restarted.orchestrator.restore_graph(plan.plan_id)
+    assert restored is not None
+    restored_plan, restored_graph = restored
+    assert restored_plan.status.value == "COMPLETED"
+    assert all(task.status == TaskStatus.COMPLETED for task in restored_graph.tasks.values())
+    assert all(task.result.authority == "acceptance_gate" for task in restored_graph.tasks.values())
