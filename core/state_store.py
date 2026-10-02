@@ -205,7 +205,7 @@ class StateStore:
     def load_artifacts_for_task(self, task_id: str) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT artifact_id,task_id,attempt_id,path,kind,sha256,size,source_commit,payload,created_at "
+                "SELECT artifact_id,task_id,attempt_id,path,kind,sha256,size,source_commit,evidence_id,payload,created_at "
                 "FROM artifacts WHERE task_id=? ORDER BY rowid ASC",
                 (task_id,),
             ).fetchall()
