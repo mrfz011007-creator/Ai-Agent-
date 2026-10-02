@@ -293,6 +293,13 @@ def test_recovery_does_not_change_completed_task(tmp_path):
     assert decision.status == TaskStatus.COMPLETED
 
 
+def test_runtime_exposes_acceptance_gate(tmp_path):
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    assert runtime.acceptance_gate is not None
+
+
 def test_runtime_exposes_build_and_test_managers(tmp_path):
     from core.runtime import AgentRuntime
 
