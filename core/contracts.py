@@ -78,8 +78,12 @@ class VerificationResult:
 @dataclass
 class Budget:
     max_tool_calls: int = 50
+    max_model_calls: int = 20
     max_recovery_cycles: int = 3
+    max_runtime_seconds: float = 900.0
+    max_output_chars: int = 100_000
     tool_calls: int = 0
+    model_calls: int = 0
     recovery_cycles: int = 0
 
     def can_use_tool(self) -> bool:
@@ -89,6 +93,22 @@ class Budget:
         if not self.can_use_tool():
             raise RuntimeError("TOOL_BUDGET_EXCEEDED")
         self.tool_calls += 1
+
+    def can_use_model(self) -> bool:
+        return self.model_calls < self.max_model_calls
+
+    def consume_model(self) -> None:
+        if not self.can_use_model():
+            raise RuntimeError("MODEL_BUDGET_EXCEEDED")
+        self.model_calls += 1
+
+    def can_recover(self) -> bool:
+        return self.recovery_cycles < self.max_recovery_cycles
+
+    def consume_recovery(self) -> None:
+        if not self.can_recover():
+            raise RuntimeError("RECOVERY_BUDGET_EXCEEDED")
+        self.recovery_cycles += 1
 
 
 @dataclass
