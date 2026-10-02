@@ -11,6 +11,7 @@ class PlanStatus(str, Enum):
     PROPOSED = "PROPOSED"
     VALIDATED = "VALIDATED"
     EXECUTING = "EXECUTING"
+    WAITING = "WAITING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -82,6 +83,23 @@ class TaskGraph:
     def is_complete(self) -> bool:
         return bool(self.tasks) and all(
             task.status == TaskStatus.COMPLETED for task in self.tasks.values()
+        )
+
+    def active(self) -> tuple[Task, ...]:
+        return tuple(
+            task for task in self.tasks.values()
+            if task.status in (
+                TaskStatus.READY,
+                TaskStatus.RUNNING,
+                TaskStatus.VERIFYING,
+                TaskStatus.WAITING,
+            )
+        )
+
+    def failed(self) -> tuple[Task, ...]:
+        return tuple(
+            task for task in self.tasks.values()
+            if task.status in (TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.BLOCKED)
         )
 
 
