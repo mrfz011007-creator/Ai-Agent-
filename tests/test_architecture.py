@@ -417,7 +417,7 @@ def test_tool_router_redacts_secrets_and_limits_structured_output(tmp_path):
     assert result.success
     assert "[REDACTED_SECRET]" in result.data["stdout"]
     assert len(result.data["stdout"]) <= 50
-    assert "[REDACTED_SECRET]" in result.data["stderr"]
+    assert result.data["stderr"] == "***"
 
 
 def test_runtime_tool_execution_completion(tmp_path):
