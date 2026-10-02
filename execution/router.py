@@ -54,7 +54,7 @@ class ToolRouter:
                 )
 
         if self._capability_policy is not None:
-            capability = self._capability_policy.decide(request.tool)
+            capability = self._capability_policy.decide(request.tool, metadata)
             if not capability.allowed:
                 return ToolResult(
                     False,
