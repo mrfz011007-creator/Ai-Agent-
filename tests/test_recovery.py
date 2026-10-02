@@ -2,7 +2,9 @@ from core.contracts import Task, TaskStatus
 from core.task_manager import TaskManager
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
-from core.recovery import RecoveryManager, ReconcileOutcome
+from core.recovery import RecoveryManager, ReconcileOutcome, FailureClass, classify_failure
+from core.budget import BudgetManager
+from core.contracts import Budget
 from core.contracts import ToolResult
 from verification.evidence import EvidenceStore
 
@@ -126,3 +128,63 @@ def test_invalid_evidence_cannot_resume(tmp_path):
         assert False, "invalid evidence should not authorize retry"
     except ValueError as exc:
         assert "evidence" in str(exc).lower()
+
+
+def test_transient_failure_consumes_recovery_budget_and_retries(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    task = manager.create(Task("R6", "retry"))
+    task.status = TaskStatus.READY
+    manager.start("R6")
+    budget = BudgetManager(Budget(max_recovery_cycles=1))
+    recovery = RecoveryManager(manager, EvidenceStore(store), budget)
+
+    result = recovery.retry_after_failure(
+        "R6", status="error", error="connection temporarily unavailable"
+    )
+
+    assert result.action == "RETRY"
+    assert result.status == TaskStatus.RUNNING
+    assert manager.get("R6").attempts == 2
+    assert budget.budget.recovery_cycles == 1
+
+
+def test_non_retryable_failure_does_not_retry(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    task = manager.create(Task("R7", "deny"))
+    task.status = TaskStatus.READY
+    manager.start("R7")
+    budget = BudgetManager(Budget(max_recovery_cycles=3))
+    recovery = RecoveryManager(manager, EvidenceStore(store), budget)
+
+    result = recovery.retry_after_failure(
+        "R7", status="guard_denied", error="DESTRUCTIVE_COMMAND_DENIED"
+    )
+
+    assert result.action == FailureClass.NON_RETRYABLE.value
+    assert result.status == TaskStatus.RUNNING
+    assert budget.budget.recovery_cycles == 0
+
+
+def test_recovery_budget_exhaustion_fails_task(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    task = manager.create(Task("R8", "retry limit"))
+    task.status = TaskStatus.READY
+    manager.start("R8")
+    budget = BudgetManager(Budget(max_recovery_cycles=0))
+    recovery = RecoveryManager(manager, EvidenceStore(store), budget)
+
+    result = recovery.retry_after_failure(
+        "R8", status="timeout", error="timed out"
+    )
+
+    assert result.action == "BLOCK"
+    assert result.status == TaskStatus.FAILED
+    assert manager.get("R8").status == TaskStatus.FAILED
+
+
+def test_failure_classifier_is_conservative():
+    assert classify_failure("timeout", "request timed out") == FailureClass.RETRYABLE
+    assert classify_failure("guard_denied", "DESTRUCTIVE_COMMAND_DENIED") == FailureClass.NON_RETRYABLE
