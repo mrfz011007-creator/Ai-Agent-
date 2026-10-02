@@ -157,7 +157,7 @@ class StateStore:
     def load_evidence_for_task(self, task_id: str) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT evidence_id,task_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE task_id=? ORDER BY rowid ASC",
+                "SELECT evidence_id,task_id,attempt_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE task_id=? ORDER BY rowid ASC",
                 (task_id,),
             ).fetchall()
         results = []
@@ -173,8 +173,8 @@ class StateStore:
             db.execute(
                 """INSERT INTO artifacts(
                     artifact_id,task_id,attempt_id,path,kind,sha256,size,
-                    source_commit,payload
-                ) VALUES (?,?,?,?,?,?,?,?,?)""",
+                    source_commit,evidence_id,payload
+                ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (
                     artifact["artifact_id"],
                     artifact["task_id"],
