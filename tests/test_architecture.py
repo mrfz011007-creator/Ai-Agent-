@@ -445,3 +445,31 @@ def test_runtime_tool_execution_completion(tmp_path):
         task.task_id, [result.evidence_id]
     )
     assert completed.status == TaskStatus.COMPLETED
+
+
+def test_tool_router_bounds_arbitrary_string_data(tmp_path):
+    from core.budget import BudgetManager
+    from core.contracts import Budget, ToolRequest
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+
+    registry = {
+        "huge": {
+            "permission": "safe",
+            "func": lambda: {"success": True, "isi": "x" * 200},
+        }
+    }
+    budget = BudgetManager(Budget(max_output_chars=32))
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=budget,
+        evidence=__import__("verification.evidence", fromlist=["EvidenceStore"]).EvidenceStore(
+            __import__("core.state_store", fromlist=["StateStore"]).StateStore(tmp_path / "state.sqlite3")
+        ),
+    )
+
+    result = router.execute(ToolRequest(tool="huge", action="execute", arguments={}))
+    assert result.success is True
+    assert len(result.data["isi"]) == 32
+    assert result.data["output_truncated"] is True
