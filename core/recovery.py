@@ -161,3 +161,90 @@ class RecoveryManager:
             if decision is not None:
                 decisions.append(decision)
         return decisions
+
+
+class RecoveryController:
+    """Single failure entry point for model and tool execution recovery."""
+
+    def __init__(self, recovery_manager: RecoveryManager, task_manager: TaskManager):
+        self.recovery_manager = recovery_manager
+        self.task_manager = task_manager
+
+    def handle_tool_failure(
+        self,
+        task_id: str,
+        *,
+        status: str,
+        error: str | None = None,
+    ) -> RecoveryDecision:
+        task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+        if task is None:
+            raise KeyError(f"Unknown task: {task_id}")
+
+        failure_class = classify_failure(status, error)
+        if failure_class == FailureClass.RETRYABLE:
+            return self.recovery_manager.retry_after_failure(
+                task_id, status=status, error=error
+            )
+
+        reason = error or status
+        previous = task.status
+        if failure_class == FailureClass.HUMAN_REQUIRED:
+            if task.status == TaskStatus.RUNNING:
+                task.status = TaskStatus.WAITING
+                self.task_manager.persist(task_id)
+                self.task_manager.checkpoint(
+                    task_id, event="recovery_human_required", reason=reason
+                )
+            task = self.task_manager.block(task_id, reason)
+            return RecoveryDecision(
+                task_id, previous, task.status, "HUMAN_REQUIRED", reason
+            )
+
+        task = self.task_manager.fail(task_id, reason)
+        return RecoveryDecision(
+            task_id, previous, task.status, "FAIL", reason
+        )
+
+    def handle_model_failure(
+        self,
+        task_id: str | None,
+        error: Exception,
+    ) -> RecoveryDecision | None:
+        if task_id is None:
+            return None
+
+        message = str(error)
+        if any(
+            marker in message
+            for marker in (
+                "MODEL_CREDENTIALS_EXHAUSTED",
+                "NO_MODEL_CREDENTIAL_AVAILABLE",
+            )
+        ):
+            task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+            if task is None:
+                raise KeyError(f"Unknown task: {task_id}")
+            previous = task.status
+            if task.status == TaskStatus.RUNNING:
+                task.status = TaskStatus.WAITING
+                self.task_manager.persist(task_id)
+                self.task_manager.checkpoint(
+                    task_id, event="model_waiting", reason=message
+                )
+            return RecoveryDecision(
+                task_id, previous, task.status, "WAIT_FOR_MODEL", message
+            )
+
+        if "MODEL_BUDGET_EXCEEDED" in message:
+            task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+            if task is None:
+                raise KeyError(f"Unknown task: {task_id}")
+            previous = task.status
+            if task.status in (TaskStatus.RUNNING, TaskStatus.VERIFYING):
+                task = self.task_manager.fail(task_id, message)
+            return RecoveryDecision(
+                task_id, previous, task.status, "FAIL", message
+            )
+
+        return None
