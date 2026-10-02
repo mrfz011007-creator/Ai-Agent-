@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.budget import BudgetManager
+from core.model_gateway import ModelGateway, gemini_credentials
 from core.contracts import Budget, ToolRequest
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
@@ -37,6 +38,7 @@ class AgentRuntime:
     build_manager: BuildManager
     test_manager: TestManager
     acceptance_gate: AcceptanceGate
+    model_gateway: ModelGateway
 
     @classmethod
     def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":
@@ -51,6 +53,11 @@ class AgentRuntime:
         recovery_manager = RecoveryManager(task_manager, evidence_store)
         artifact_manager = ArtifactManager(state_store)
         budget_manager = BudgetManager(Budget())
+        model_gateway = ModelGateway(
+            credentials=gemini_credentials(),
+            client_factory=lambda api_key: __import__("google.genai", fromlist=["Client"]).Client(api_key=api_key),
+            budget=budget_manager,
+        )
 
         runtime_registry = dict(TOOL_REGISTRY)
         runtime_registry["run_command"] = {
@@ -89,6 +96,7 @@ class AgentRuntime:
             build_manager=build_manager,
             test_manager=test_manager,
             acceptance_gate=acceptance_gate,
+            model_gateway=model_gateway,
         )
 
     def build(self, **kwargs):
