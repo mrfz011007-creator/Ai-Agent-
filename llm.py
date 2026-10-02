@@ -4,7 +4,7 @@ from google.genai import types
 
 from registry import TOOL_REGISTRY
 
-from core.model_gateway import ModelGateway, gemini_credentials
+from core.runtime import get_runtime
 
 
 # ============================================================
@@ -73,11 +73,6 @@ def buat_tool_definitions():
 # REQUEST GEMINI
 # ============================================================
 
-_model_gateway = ModelGateway(
-    credentials=gemini_credentials(),
-    client_factory=lambda api_key: genai.Client(api_key=api_key),
-)
-
 
 def tanya_gemini(pertanyaan, tools):
     """Send one bounded model request through the provider gateway."""
@@ -95,4 +90,4 @@ def tanya_gemini(pertanyaan, tools):
             ),
         )
 
-    return _model_gateway.call(invoke)
+    return get_runtime().model_gateway.call(invoke)
