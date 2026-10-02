@@ -27,6 +27,7 @@ from registry import TOOL_REGISTRY
 from permissions import minta_konfirmasi
 from execution.command import run_command
 from security.guard import GuardEngine
+from security.capabilities import CapabilityPolicy
 
 
 @dataclass
@@ -69,6 +70,7 @@ class AgentRuntime:
 
         registry_getter = runtime_registry.get
         policy_engine = PolicyEngine(registry_getter)
+        capability_policy = CapabilityPolicy(registry_getter)
         workspace_root = Path(
             os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
         ).resolve()
@@ -81,6 +83,7 @@ class AgentRuntime:
             confirmation=minta_konfirmasi,
             guard=guard,
             task_getter=task_manager.get,
+            capability_policy=capability_policy,
         )
         build_manager = BuildManager(artifact_manager, tool_router)
         test_manager = TestManager(tool_router)
