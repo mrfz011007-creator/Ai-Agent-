@@ -173,7 +173,7 @@ class GoalRunner:
             plan = self._persist(plan, PlanStatus.WAITING)
             return plan, graph
 
-        return self._run_graph(plan, graph, max_steps=max_steps)
+        return self._run_graph(plan, graph, max_steps=max_steps, project_id=project_id, context=context)
 
     @staticmethod
     def _new_plan_id() -> str:
