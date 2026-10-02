@@ -19,7 +19,7 @@ class ExecutionProposal:
 class ModelExecutionService:
     """Decode model execution intent, then delegate authorization to ToolRouter."""
 
-    def __init__(self, model_call: Callable[[str], str], tool_catalog: Mapping[str, str] | None = None):
+    def __init__(self, model_call: Callable[[str], str], tool_catalog: Mapping[str, Any] | None = None):
         self.model_call = model_call
         self.tool_catalog = dict(tool_catalog or {})
 
