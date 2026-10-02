@@ -92,10 +92,16 @@ def main():
 
             while True:
 
-                response = tanya_gemini(
-                    memory.get_contents(),
-                    tools
-                )
+                try:
+                    response = tanya_gemini(
+                        memory.get_contents(),
+                        tools
+                    )
+                except RuntimeError as error:
+                    runtime.handle_model_failure(execution_task_id, error)
+                    print("\n❌ Model tidak dapat melanjutkan:")
+                    print(error)
+                    break
 
                 kandidat = response.candidates[0]
                 model_content = kandidat.content
