@@ -119,7 +119,6 @@ def run_command(
                 return
             cpu_seconds = max(1, int(timeout) + 1)
             resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
-            resource.setrlimit(resource.RLIMIT_FSIZE, (output_limit, output_limit))
             resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
             resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
 
