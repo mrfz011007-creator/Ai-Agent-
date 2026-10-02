@@ -153,3 +153,67 @@ def test_gateway_rejects_provider_mismatch():
             provider=FakeProvider(),
             config=ModelConfig(provider="gemini", model="test-model"),
         )
+
+
+def test_unavailable_error_rotates_with_bounded_backoff(monkeypatch):
+    monkeypatch.setenv("K1", "secret-1")
+    monkeypatch.setenv("K2", "secret-2")
+    now = [100.0]
+    calls = []
+
+    gateway = ModelGateway(
+        credentials=[Credential("k1", "K1"), Credential("k2", "K2")],
+        client_factory=lambda secret: secret,
+        clock=lambda: now[0],
+        cooldown_seconds=60,
+    )
+
+    def invoke(client):
+        calls.append(client)
+        if client == "secret-1":
+            raise RuntimeError("503 unavailable")
+        return "ok"
+
+    assert gateway.call(invoke) == "ok"
+    assert calls == ["secret-1", "secret-2"]
+    assert gateway.credentials[0].state == CredentialState.COOLDOWN
+    assert gateway.credentials[0].cooldown_until == 102.0
+
+
+def test_missing_credentials_fail_without_provider_call(monkeypatch):
+    monkeypatch.delenv("K1", raising=False)
+    calls = []
+    gateway = ModelGateway(
+        credentials=[Credential("k1", "K1")],
+        client_factory=lambda secret: calls.append(secret),
+    )
+
+    with pytest.raises(RuntimeError, match="NO_MODEL_CREDENTIAL_AVAILABLE"):
+        gateway.call(lambda _: "must not run")
+
+    assert calls == []
+
+
+def test_model_budget_failure_does_not_rotate_or_retry(monkeypatch):
+    from core.budget import BudgetManager
+    from core.contracts import Budget
+
+    monkeypatch.setenv("K1", "secret-1")
+    monkeypatch.setenv("K2", "secret-2")
+    budget = BudgetManager(Budget(max_model_calls=1))
+    calls = []
+    gateway = ModelGateway(
+        credentials=[Credential("k1", "K1"), Credential("k2", "K2")],
+        client_factory=lambda secret: secret,
+        budget=budget,
+    )
+
+    assert gateway.call(lambda client: calls.append(client) or "ok") == "ok"
+    with pytest.raises(RuntimeError, match="MODEL_BUDGET_EXCEEDED"):
+        gateway.call(lambda client: calls.append(client) or "should-not-run")
+
+    assert calls == ["secret-1"]
+    assert [c.state for c in gateway.credentials] == [
+        CredentialState.HEALTHY,
+        CredentialState.UNKNOWN,
+    ]
