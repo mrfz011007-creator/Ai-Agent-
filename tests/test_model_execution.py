@@ -66,3 +66,16 @@ def test_runtime_model_execution_uses_router_and_evidence(tmp_path):
     result = runtime.execute_model_proposal(proposal, task_id="T-RUN")
     assert result.success
     assert result.evidence_id is not None
+
+
+def test_execution_prompt_receives_tool_catalog():
+    prompts = []
+    service = ModelExecutionService(
+        lambda prompt: prompts.append(prompt) or '{"tool":"baca_file","action":"execute","arguments":{"nama":"README.md"}}',
+        tool_catalog={"baca_file": "Read a workspace file", "patch_file": "Apply an exact patch"},
+    )
+    service.propose("inspect README")
+
+    assert prompts
+    assert "baca_file" in prompts[0]
+    assert "patch_file" in prompts[0]
