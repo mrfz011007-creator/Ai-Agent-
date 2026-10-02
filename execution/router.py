@@ -8,7 +8,7 @@ from core.contracts import Decision, ToolRequest, ToolResult
 from security.policy import PolicyContext, PolicyEngine
 from verification.evidence import EvidenceStore
 from security.guard import GuardEngine
-from security.capabilities import CapabilityPolicy
+from security.capabilities import CapabilityPolicy, capabilities_for_tool
 from security.schema import SchemaValidationError, validate_tool_arguments
 from security.redaction import redact_text, redact_value
 
@@ -52,6 +52,9 @@ class ToolRouter:
                     request.tool,
                     error=f"Tool not allowed by execution contract: {request.tool}",
                 )
+
+        if contract is not None and not contract.allows_capabilities(capabilities_for_tool(metadata)):
+            return ToolResult(False, "contract_capability_denied", request.tool, error=f"Tool capabilities exceed execution contract: {request.tool}")
 
         if self._capability_policy is not None:
             capability = self._capability_policy.decide(request.tool, metadata)
