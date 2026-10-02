@@ -184,7 +184,7 @@ def test_acceptance_criteria_reject_artifact_from_wrong_attempt(tmp_path):
     result = gate.verify(
         task_id="A1",
         build_evidence_id="build-1",
-        artifact_ids=(),
+        artifact_ids=(artifact.artifact_id,),
         expected_attempt_id="attempt-current",
         criteria=(
             AcceptanceCriterion(
