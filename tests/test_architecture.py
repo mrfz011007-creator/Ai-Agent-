@@ -1,10 +1,10 @@
 from core.budget import BudgetManager
 from core.contracts import (
     Budget,
-    Decision,
     Task,
     TaskStatus,
     ToolRequest,
+    VerificationResult,
     VerificationStatus,
 )
 from core.task_manager import TaskManager
@@ -62,11 +62,16 @@ def test_confirm_tool_requires_approval():
     assert result.status == "cancelled"
 
 
-def test_tool_execution_creates_evidence():
+def test_tool_execution_creates_evidence_and_can_be_verified():
     router, evidence, _ = make_router()
-    result = router.execute(ToolRequest("safe_tool", "execute", task_id="T1"))
+    result = router.execute(
+        ToolRequest("safe_tool", "execute", task_id="T1")
+    )
     assert result.success is True
     assert result.evidence_id in evidence.records
+
+    verification = Verifier(evidence).verify_evidence(result.evidence_id)
+    assert verification.status == VerificationStatus.PASSED
 
 
 def test_budget_is_hard():
@@ -83,12 +88,14 @@ def test_completed_requires_verification():
     task.status = TaskStatus.READY
     manager.start("T1")
     manager.begin_verification("T1")
-    verifier = VerificationResult(
+
+    failed = VerificationResult(
         status=VerificationStatus.FAILED,
         reason="not proven",
     )
+
     try:
-        manager.complete("T1", verifier)
+        manager.complete("T1", failed)
         assert False, "Completion without PASS must fail"
     except ValueError:
         pass
