@@ -9,7 +9,8 @@ from llm import (
 )
 
 from core.runtime import execute_tool, get_runtime
-from core.contracts import Task
+from core.contracts import Task, TaskStatus
+from core.model_execution import ExecutionProposal
 
 from conversation import ConversationMemory
 
@@ -121,10 +122,18 @@ def main():
 
                     if execution_task_id is not None:
                         if evidence_ids:
-                            runtime.verify_tool_execution(
-                                execution_task_id,
-                                evidence_ids,
+                            task = runtime.task_manager.get(execution_task_id)
+                            expected_attempt_id = (
+                                f"{execution_task_id}:attempt:{task.attempts}"
+                                if task is not None
+                                else None
                             )
+                            if task is not None and task.status == TaskStatus.RUNNING:
+                                runtime.verify_tool_execution(
+                                    execution_task_id,
+                                    evidence_ids,
+                                    expected_attempt_id,
+                                )
                         else:
                             task = runtime.task_manager.get(execution_task_id)
                             if task is not None and task.status.value == "RUNNING":
@@ -157,10 +166,13 @@ def main():
                         )
                         runtime.task_manager.start(execution_task_id)
 
-                    result = runtime.execute_with_recovery(
-                        nama_tool,
-                        args,
-                        source="model",
+                    proposal = ExecutionProposal(
+                        tool=nama_tool,
+                        action="execute",
+                        arguments=args,
+                    )
+                    result = runtime.execute_model_proposal(
+                        proposal,
                         task_id=execution_task_id,
                     )
                     hasil = {
