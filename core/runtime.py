@@ -15,6 +15,8 @@ from execution.router import ToolRouter
 from verification.evidence import EvidenceStore
 from verification.artifacts import ArtifactManager
 from verification.build import BuildManager, TestManager
+from verification.verifier import Verifier
+from verification.acceptance import AcceptanceGate
 from registry import TOOL_REGISTRY
 from permissions import minta_konfirmasi
 from execution.command import run_command
@@ -34,6 +36,7 @@ class AgentRuntime:
     artifact_manager: ArtifactManager
     build_manager: BuildManager
     test_manager: TestManager
+    acceptance_gate: AcceptanceGate
 
     @classmethod
     def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":
@@ -72,6 +75,7 @@ class AgentRuntime:
         )
         build_manager = BuildManager(artifact_manager, tool_router)
         test_manager = TestManager(tool_router)
+        acceptance_gate = AcceptanceGate(Verifier(evidence_store), artifact_manager)
         return cls(
             state_store=state_store,
             checkpoint_manager=checkpoint_manager,
@@ -84,6 +88,7 @@ class AgentRuntime:
             artifact_manager=artifact_manager,
             build_manager=build_manager,
             test_manager=test_manager,
+            acceptance_gate=acceptance_gate,
         )
 
     def build(self, **kwargs):
@@ -91,6 +96,9 @@ class AgentRuntime:
 
     def run_tests(self, **kwargs):
         return self.test_manager.run(**kwargs)
+
+    def verify_acceptance(self, **kwargs):
+        return self.acceptance_gate.verify(**kwargs)
 
     def recover_task(self, task_id: str):
         return self.recovery_manager.recover_task(task_id)
