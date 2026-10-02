@@ -1,6 +1,6 @@
 from core.orchestrator import Orchestrator
 from core.plan import Planner, PlanProposal
-from core.contracts import Task, TaskStatus
+from core.contracts import Task, TaskStatus, ToolResult, VerificationResult, VerificationStatus
 
 
 class FakeRuntime:
