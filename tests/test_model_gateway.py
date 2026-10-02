@@ -116,3 +116,40 @@ def test_exhausted_model_failure_can_put_running_task_in_waiting(tmp_path):
 
     assert result.status == TaskStatus.WAITING
     assert runtime.task_manager.get("MODEL-R1").status == TaskStatus.WAITING
+
+
+def test_gateway_structured_generation_uses_provider_and_model_config(monkeypatch):
+    from core.model_config import ModelConfig
+
+    monkeypatch.setenv("K1", "secret-1")
+
+    class FakeProvider:
+        name = "gemini"
+
+        def generate(self, secret, *, contents, config, model):
+            assert secret == "secret-1"
+            assert contents == "hello"
+            assert model == "test-model"
+            return {"ok": True}
+
+    gateway = ModelGateway(
+        credentials=[Credential("k1", "K1")],
+        provider=FakeProvider(),
+        config=ModelConfig(provider="gemini", model="test-model"),
+    )
+
+    assert gateway.generate(contents="hello", config={"x": 1}) == {"ok": True}
+
+
+def test_gateway_rejects_provider_mismatch():
+    from core.model_config import ModelConfig
+
+    class FakeProvider:
+        name = "other"
+
+    with pytest.raises(ValueError, match="provider mismatch"):
+        ModelGateway(
+            credentials=[],
+            provider=FakeProvider(),
+            config=ModelConfig(provider="gemini", model="test-model"),
+        )
