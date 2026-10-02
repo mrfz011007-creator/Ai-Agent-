@@ -9,7 +9,7 @@ from core.contracts import (
 )
 from core.task_manager import TaskManager
 from security.policy import PolicyEngine
-from tools.router import ToolRouter
+from execution.router import ToolRouter
 from verification.evidence import EvidenceStore
 from verification.verifier import Verifier
 
