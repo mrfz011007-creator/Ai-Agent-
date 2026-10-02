@@ -209,3 +209,45 @@ def test_runtime_factory_does_not_create_state_until_requested(tmp_path):
     runtime = AgentRuntime.create(tmp_path / "runtime.sqlite3")
     assert runtime.state_store.path.exists()
     assert runtime.task_manager.store is runtime.state_store
+
+
+def test_recovery_moves_interrupted_task_to_waiting(tmp_path):
+    from core.state_store import StateStore
+    from core.checkpoint import CheckpointManager
+    from core.recovery import RecoveryManager
+
+    store = StateStore(tmp_path / "recovery.sqlite3")
+    manager = TaskManager(
+        store=store,
+        checkpoints=CheckpointManager(store),
+    )
+    task = manager.create(Task("T4", "interrupted"))
+    task.status = TaskStatus.READY
+    manager.start("T4")
+
+    recovery = RecoveryManager(manager)
+    decision = recovery.recover_task("T4")
+
+    assert decision.status == TaskStatus.WAITING
+    assert decision.action == "WAIT_FOR_RECONCILIATION"
+    assert manager.get("T4").status == TaskStatus.WAITING
+    assert manager.checkpoints.latest("T4")["payload"]["event"] == "recovery_required"
+
+
+def test_recovery_does_not_change_completed_task(tmp_path):
+    from core.state_store import StateStore
+    from core.checkpoint import CheckpointManager
+    from core.recovery import RecoveryManager
+
+    store = StateStore(tmp_path / "recovery.sqlite3")
+    manager = TaskManager(
+        store=store,
+        checkpoints=CheckpointManager(store),
+    )
+    task = manager.create(Task("T5", "done"))
+    task.status = TaskStatus.COMPLETED
+
+    decision = RecoveryManager(manager).recover_task("T5")
+
+    assert decision.action == "NO_ACTION"
+    assert decision.status == TaskStatus.COMPLETED
