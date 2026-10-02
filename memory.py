@@ -33,7 +33,7 @@ def memory_file() -> Path:
 def _tokenize(value: Any) -> set[str]:
     return {
         token
-        for token in re.findall(r"[a-zA-Z0-9_:.\\-/]+", str(value).lower())
+        for token in re.findall(r"[a-zA-Z0-9_:.\\/-]+", str(value).lower())
         if len(token) >= 2
     }
 
