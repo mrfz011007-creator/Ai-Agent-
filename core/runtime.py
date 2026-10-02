@@ -18,6 +18,7 @@ from verification.build import BuildManager, TestManager
 from registry import TOOL_REGISTRY
 from permissions import minta_konfirmasi
 from execution.command import run_command
+from security.guard import GuardEngine
 
 
 @dataclass
@@ -57,12 +58,17 @@ class AgentRuntime:
 
         registry_getter = runtime_registry.get
         policy_engine = PolicyEngine(registry_getter)
+        workspace_root = Path(
+            os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
+        ).resolve()
+        guard = GuardEngine(workspace_root)
         tool_router = ToolRouter(
             registry_getter=registry_getter,
             policy=policy_engine,
             budget=budget_manager,
             evidence=evidence_store,
             confirmation=minta_konfirmasi,
+            guard=guard,
         )
         build_manager = BuildManager(artifact_manager, tool_router)
         test_manager = TestManager(tool_router)
