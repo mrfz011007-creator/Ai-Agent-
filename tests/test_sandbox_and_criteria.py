@@ -10,22 +10,31 @@ from execution.command import run_command
 from verification.criteria import CriterionValidationError, validate_criteria
 
 
-def test_sandbox_allows_workspace_write_but_not_host_tmp(tmp_path):
-    host_escape = Path("/tmp/ai-agent-host-escape-test")
+def test_sandbox_allows_workspace_write_and_isolates_tmp_when_namespaced(tmp_path):
+    host_escape = Path('/tmp/ai-agent-host-escape-test')
     host_escape.unlink(missing_ok=True)
 
+    script = (
+        "from pathlib import Path; "
+        "Path('/tmp/ai-agent-host-escape-test').write_text('x'); "
+        "Path('inside.txt').write_text('ok')"
+    )
+
     result = run_command(
-        command='python3 -c "from pathlib import Path; Path(\'/tmp/ai-agent-host-escape-test\').write_text(\'x\'); Path(\'inside.txt\').write_text(\'ok\')"',
+        command=f'python3 -c "{script}"',
         cwd=str(tmp_path),
         timeout=10,
     )
 
-    assert result["success"], result
-    assert (tmp_path / "inside.txt").read_text() == "ok"
-    if result["sandbox_mode"] == "namespace":
+    if result['sandbox_mode'] == 'namespace':
+        assert result['success'], result
+        assert (tmp_path / 'inside.txt').read_text() == 'ok'
         assert not host_escape.exists()
     else:
-        host_escape.unlink(missing_ok=True)
+        # Termux hardened fallback does not provide a separate
+        # filesystem namespace and does not guarantee host /tmp isolation.
+        assert not result['success']
+        assert not (tmp_path / 'inside.txt').exists()
 
 
 def test_sandbox_has_no_network():

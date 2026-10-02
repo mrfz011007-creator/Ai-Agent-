@@ -136,7 +136,14 @@ def run_command(
                 resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
             if hasattr(resource, "RLIMIT_NPROC"):
                 resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
-            if hasattr(resource, "RLIMIT_AS"):
+            # Android/Bionic may fail during process startup when RLIMIT_AS
+            # is applied. Keep this limit on other POSIX systems, but skip it
+            # on Android/Termux. CPU, NOFILE, NPROC and wall-clock limits remain.
+            is_android = (
+                os.environ.get("PREFIX", "").startswith("/data/")
+                or Path("/system/bin").exists()
+            )
+            if hasattr(resource, "RLIMIT_AS") and not is_android:
                 resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
 
         process = subprocess.Popen(

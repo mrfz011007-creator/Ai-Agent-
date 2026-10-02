@@ -65,6 +65,19 @@ def _resolve_executable(argv: list[str]) -> str:
     resolved = shutil.which(executable)
     if resolved is None:
         raise SandboxPolicyError(f"Executable not found: {executable}")
+
+    # Termux exposes several coreutils commands (for example pwd and ls)
+    # through symlinks to the multi-call `coreutils` binary. Resolving those
+    # symlinks changes `pwd` into `coreutils` without its required applet
+    # name and therefore breaks execution. Preserve the original executable
+    # path on Android/Termux; keep canonical resolution on regular POSIX.
+    is_android = (
+        os.environ.get("PREFIX", "").startswith("/data/")
+        or Path("/system/bin").exists()
+    )
+    if is_android:
+        return resolved
+
     return str(Path(resolved).resolve())
 
 
