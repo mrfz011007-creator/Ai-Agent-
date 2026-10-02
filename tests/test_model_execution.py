@@ -79,3 +79,29 @@ def test_execution_prompt_receives_tool_catalog():
     assert prompts
     assert "baca_file" in prompts[0]
     assert "patch_file" in prompts[0]
+
+
+def test_execution_prompt_receives_bounded_previous_context():
+    prompts = []
+    service = ModelExecutionService(
+        lambda prompt: prompts.append(prompt) or '{"tool":"patch_file","action":"execute","arguments":{"nama":"app.py","expected_sha256":"abc"}}'
+    )
+    service.propose(
+        "edit app.py",
+        context={"inspect": {"tool": "baca_file", "data": {"sha256": "abc", "isi": "print(1)"}}},
+    )
+
+    assert prompts
+    assert '"sha256": "abc"' in prompts[0]
+    assert len(prompts[0]) < 20000
+
+
+def test_execution_context_is_truncated_before_model_prompt():
+    prompts = []
+    service = ModelExecutionService(
+        lambda prompt: prompts.append(prompt) or '{"tool":"baca_file","action":"execute","arguments":{"nama":"app.py"}}'
+    )
+    service.propose("inspect", context={"large": "x" * 30000})
+
+    assert "[CONTEXT_TRUNCATED]" in prompts[0]
+    assert len(prompts[0]) < 20000
