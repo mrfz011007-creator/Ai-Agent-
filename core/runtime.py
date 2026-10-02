@@ -10,7 +10,7 @@ from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
 from core.task_manager import TaskManager
-from core.recovery import RecoveryManager
+from core.recovery import RecoveryManager, RecoveryController
 from security.policy import PolicyEngine
 from execution.router import ToolRouter
 from verification.evidence import EvidenceStore
@@ -30,6 +30,7 @@ class AgentRuntime:
     checkpoint_manager: CheckpointManager
     task_manager: TaskManager
     recovery_manager: RecoveryManager
+    recovery_controller: RecoveryController
     evidence_store: EvidenceStore
     budget_manager: BudgetManager
     policy_engine: PolicyEngine
@@ -53,6 +54,7 @@ class AgentRuntime:
         artifact_manager = ArtifactManager(state_store)
         budget_manager = BudgetManager(Budget())
         recovery_manager = RecoveryManager(task_manager, evidence_store, budget_manager)
+        recovery_controller = RecoveryController(recovery_manager, task_manager)
         model_gateway = ModelGateway(
             credentials=gemini_credentials(),
             client_factory=lambda api_key: __import__("google.genai", fromlist=["Client"]).Client(api_key=api_key),
@@ -88,6 +90,7 @@ class AgentRuntime:
             checkpoint_manager=checkpoint_manager,
             task_manager=task_manager,
             recovery_manager=recovery_manager,
+            recovery_controller=recovery_controller,
             evidence_store=evidence_store,
             budget_manager=budget_manager,
             policy_engine=policy_engine,
@@ -100,22 +103,7 @@ class AgentRuntime:
         )
 
     def handle_model_failure(self, task_id: str | None, error: Exception):
-        """Translate exhausted provider failures into an explicit task state."""
-        if task_id is None:
-            return None
-        message = str(error)
-        if "MODEL_CREDENTIALS_EXHAUSTED" in message or "NO_MODEL_CREDENTIAL_AVAILABLE" in message:
-            task = self.task_manager.get(task_id)
-            if task is not None and task.status == TaskStatus.RUNNING:
-                task.status = task.status.WAITING
-                self.task_manager.persist(task_id)
-                self.task_manager.checkpoint(
-                    task_id,
-                    event="model_waiting",
-                    reason=message,
-                )
-            return task
-        return None
+        return self.recovery_controller.handle_model_failure(task_id, error)
 
     def execute_with_recovery(self, name: str, args: dict, *, source: str = "agent", task_id: str | None = None):
         """Execute a tool and perform at most one bounded recovery retry."""
@@ -123,7 +111,7 @@ class AgentRuntime:
         if result.success or task_id is None:
             return result
 
-        decision = self.recovery_manager.retry_after_failure(
+        decision = self.recovery_controller.handle_tool_failure(
             task_id,
             status=result.status,
             error=result.error,
