@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 
 from execution.command import run_command
@@ -29,7 +30,7 @@ def path_aman(nama: str) -> Path:
 def jalankan(command):
     """Run a command through the bounded command executor."""
     result = run_command(
-        command=command,
+        command=shlex.join(command) if not isinstance(command, str) else command,
         cwd=str(workspace_root()),
     )
     return {
