@@ -56,6 +56,7 @@ class GoalRunner:
                 execute_proposal=self.runtime.execute_model_proposal,
                 verify_execution=self.runtime.verify_execution_evidence,
                 handle_model_failure=self.runtime.handle_model_failure,
+                tool_catalog=self.runtime.tool_catalog(),
             )
             status = self._status_for_graph(graph)
             plan = self._persist(plan, status)
