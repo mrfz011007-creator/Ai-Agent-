@@ -1,5 +1,6 @@
 from core.budget import BudgetManager
 from core.contracts import Budget, Task, TaskStatus, ToolRequest
+from core.execution_contract import ExecutionContract
 from execution.router import ToolRouter
 from security.policy import PolicyEngine
 from verification.evidence import EvidenceStore
