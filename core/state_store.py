@@ -101,7 +101,7 @@ class StateStore:
         placeholders = ",".join("?" for _ in statuses)
         with self._connect() as db:
             rows = db.execute(
-                f"SELECT task_id,status,attempts,payload,updated_at FROM tasks WHERE status IN ({placeholders}) ORDER BY updated_at ASC",
+                f"SELECT task_id,status,attempts,payload,updated_at FROM tasks WHERE status IN ({placeholders}) ORDER BY updated_at ASC",  # nosec B608: placeholders are generated internally; values are bound parameters.
                 tuple(statuses),
             ).fetchall()
         results = []
