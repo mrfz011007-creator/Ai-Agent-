@@ -228,6 +228,12 @@ class AgentRuntime:
             )
         )
 
+    def pending_reflections(self):
+        return self.memory.pending_reflections()
+
+    def review_reflection(self, review_id: str, *, approve: bool, reviewer: str = "human"):
+        return self.memory.review_reflection(review_id, approve=approve, reviewer=reviewer)
+
     def build(self, **kwargs):
         return self.build_manager.build(**kwargs)
 
