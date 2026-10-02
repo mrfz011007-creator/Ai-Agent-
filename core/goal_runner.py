@@ -52,7 +52,7 @@ class GoalRunner:
 
             task = self.runtime.orchestrator.execute_model_step(
                 graph,
-                model_call=self.runtime.model_gateway.generate_text,
+                model_call=self.runtime.model_gateway.text,
                 execute_proposal=self.runtime.execute_model_proposal,
                 verify_execution=self.runtime.verify_execution_evidence,
                 handle_model_failure=self.runtime.handle_model_failure,
