@@ -74,7 +74,17 @@ class ToolRouter:
 
         try:
             data = function(**dict(request.arguments))
-            if isinstance(data, str) and len(data) > self._budget.budget.max_output_chars:
+            if isinstance(data, dict) and "success" in data:
+                result = ToolResult(
+                    bool(data.get("success")),
+                    str(data.get("status", "success" if data.get("success") else "error")).lower(),
+                    request.tool,
+                    data=data,
+                    error=None if data.get("success") else str(
+                        data.get("stderr") or data.get("error") or "Command failed"
+                    ),
+                )
+            elif isinstance(data, str) and len(data) > self._budget.budget.max_output_chars:
                 data = data[: self._budget.budget.max_output_chars]
                 result = ToolResult(
                     True,
