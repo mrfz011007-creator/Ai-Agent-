@@ -165,7 +165,6 @@ class Orchestrator:
             return failed
 
         current_attempt_id = f"{task.task_id}:attempt:{current.attempts}"
-        self.task_manager.begin_verification(task.task_id)
         try:
             verification = verify_execution(
                 task_id=task.task_id,
