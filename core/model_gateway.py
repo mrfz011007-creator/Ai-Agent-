@@ -7,6 +7,8 @@ from enum import Enum
 from typing import Any, Callable
 
 from core.budget import BudgetManager
+from core.model_config import ModelConfig
+from core.providers.gemini import GeminiProvider
 
 
 class CredentialState(str, Enum):
@@ -35,24 +37,30 @@ class Credential:
 
 
 class ModelGateway:
-    """Provider-neutral model gateway with bounded credential rotation."""
+    """Single model-entry boundary with bounded credential rotation."""
 
     def __init__(
         self,
         *,
         credentials: list[Credential],
-        client_factory: Callable[[str], Any],
+        client_factory: Callable[[str], Any] | None = None,
+        provider: Any | None = None,
         clock: Callable[[], float] = time.monotonic,
         cooldown_seconds: float = 60.0,
         max_attempts: int | None = None,
         budget: BudgetManager | None = None,
+        config: ModelConfig | None = None,
     ):
+        if provider is not None and client_factory is not None:
+            raise ValueError("Choose provider or client_factory, not both")
         self.credentials = credentials
+        self.provider = provider
         self.client_factory = client_factory
         self.clock = clock
         self.cooldown_seconds = cooldown_seconds
         self.max_attempts = max_attempts or max(1, len(credentials))
         self.budget = budget
+        self.config = config or ModelConfig.from_environment()
 
     @staticmethod
     def classify_error(error: Exception) -> ProviderErrorKind:
@@ -82,6 +90,7 @@ class ModelGateway:
         return available
 
     def call(self, invoke: Callable[[Any], Any]) -> Any:
+        """Low-level provider-neutral boundary retained for deterministic tests."""
         attempts = 0
         last_error: Exception | None = None
         tried: set[str] = set()
@@ -103,8 +112,11 @@ class ModelGateway:
                 continue
 
             try:
-                client = self.client_factory(secret)
-                result = invoke(client)
+                if self.provider is not None:
+                    result = invoke(self.provider, secret)
+                else:
+                    client = self.client_factory(secret)
+                    result = invoke(client)
                 credential.state = CredentialState.HEALTHY
                 credential.failures = 0
                 return result
@@ -134,9 +146,64 @@ class ModelGateway:
             raise RuntimeError("MODEL_CREDENTIALS_EXHAUSTED") from last_error
         raise RuntimeError("NO_MODEL_CREDENTIAL_AVAILABLE")
 
+    def generate_text(
+        self,
+        *,
+        prompt: str,
+        system_instruction: str,
+        response_mime_type: str | None = None,
+    ) -> str:
+        """High-level model API used by planners and execution services."""
+        if self.provider is None:
+            raise RuntimeError("MODEL_PROVIDER_NOT_CONFIGURED")
+
+        def invoke(provider, secret):
+            return provider.text(
+                secret,
+                prompt=prompt,
+                system_instruction=system_instruction,
+                model=self.config.model,
+                response_mime_type=response_mime_type,
+            )
+
+        return self.call(invoke)
+
+    def generate(
+        self,
+        *,
+        contents: Any,
+        config: Any,
+    ) -> Any:
+        """Provider-neutral structured generation endpoint."""
+        if self.provider is None:
+            raise RuntimeError("MODEL_PROVIDER_NOT_CONFIGURED")
+
+        def invoke(provider, secret):
+            return provider.generate(
+                secret,
+                contents=contents,
+                config=config,
+                model=self.config.model,
+            )
+
+        return self.call(invoke)
+
 
 def gemini_credentials() -> list[Credential]:
     return [
         Credential(f"GEMINI_API_KEY_{i}", f"GEMINI_API_KEY_{i}")
         for i in range(1, 4)
     ]
+
+
+def create_gemini_gateway(
+    *,
+    budget: BudgetManager | None = None,
+    config: ModelConfig | None = None,
+) -> ModelGateway:
+    return ModelGateway(
+        credentials=gemini_credentials(),
+        provider=GeminiProvider(),
+        budget=budget,
+        config=config,
+    )
