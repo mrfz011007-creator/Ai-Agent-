@@ -40,6 +40,7 @@ def test_runtime_plan_goal_uses_model_gateway_boundary(tmp_path, monkeypatch):
 def test_router_bounds_omitted_command_timeout_to_remaining_runtime(tmp_path, monkeypatch):
     import time
 
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
     runtime.tool_router._confirmation = lambda tool, args: True
     runtime.budget_manager.budget.max_runtime_seconds = 5.0
