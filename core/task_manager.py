@@ -80,6 +80,19 @@ class TaskManager:
 
     def start(self, task_id: str) -> Task:
         task = self._require(task_id)
+        # Direct callers must not bypass dependency validation performed by the
+        # scheduler. PENDING tasks may be promoted automatically only when all
+        # dependencies are already completed; otherwise start is rejected.
+        if task.status == TaskStatus.PENDING:
+            if any(
+                self._require(dep).status != TaskStatus.COMPLETED
+                for dep in task.dependencies
+            ):
+                raise ValueError("Task dependencies are not completed")
+            task.status = TaskStatus.READY
+            self._persist(task)
+        if task.status != TaskStatus.READY:
+            raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
         task.attempts += 1
         task.mark_running()
         self._persist(task)
