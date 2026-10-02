@@ -188,3 +188,59 @@ def test_recovery_budget_exhaustion_fails_task(tmp_path):
 def test_failure_classifier_is_conservative():
     assert classify_failure("timeout", "request timed out") == FailureClass.RETRYABLE
     assert classify_failure("guard_denied", "DESTRUCTIVE_COMMAND_DENIED") == FailureClass.NON_RETRYABLE
+
+
+def test_recovery_controller_fails_non_retryable_tool_error(tmp_path):
+    from core.contracts import Task, TaskStatus
+    from core.recovery import RecoveryController, RecoveryManager
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task("CTRL-1", "guard failure"))
+    runtime.task_manager.start(task.task_id)
+
+    controller = RecoveryController(runtime.recovery_manager, runtime.task_manager)
+    decision = controller.handle_tool_failure(
+        task.task_id,
+        status="guard_denied",
+        error="DESTRUCTIVE_COMMAND_DENIED",
+    )
+
+    assert decision.action == "FAIL"
+    assert runtime.task_manager.get(task.task_id).status == TaskStatus.FAILED
+
+
+def test_recovery_controller_blocks_human_required_failure(tmp_path):
+    from core.contracts import Task, TaskStatus
+    from core.recovery import RecoveryController
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task("CTRL-2", "budget failure"))
+    runtime.task_manager.start(task.task_id)
+
+    controller = RecoveryController(runtime.recovery_manager, runtime.task_manager)
+    decision = controller.handle_tool_failure(
+        task.task_id,
+        status="budget_exceeded",
+        error="TOOL_BUDGET_EXCEEDED",
+    )
+
+    assert decision.action == "HUMAN_REQUIRED"
+    assert runtime.task_manager.get(task.task_id).status == TaskStatus.BLOCKED
+
+
+def test_recovery_controller_handles_model_exhaustion(tmp_path):
+    from core.contracts import Task, TaskStatus
+    from core.recovery import RecoveryController
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task("CTRL-3", "model exhaustion"))
+    runtime.task_manager.start(task.task_id)
+
+    controller = RecoveryController(runtime.recovery_manager, runtime.task_manager)
+    decision = controller.handle_model_failure(
+        task.task_id,
+        RuntimeError("MODEL_CREDENTIALS_EXHAUSTED"),
+    )
+
+    assert decision.action == "WAIT_FOR_MODEL"
+    assert runtime.task_manager.get(task.task_id).status == TaskStatus.WAITING
