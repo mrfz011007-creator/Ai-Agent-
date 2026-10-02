@@ -24,6 +24,7 @@ def test_runtime_run_goal_completes_through_execution_and_acceptance(tmp_path, m
     evidence = runtime.state_store.load_evidence_for_task("inspect")
     assert evidence
     assert all(item["success"] for item in evidence)
+    assert all(item["attempt_id"] == "inspect:attempt:1" for item in evidence)
 
 
 def test_runtime_run_goal_respects_step_boundary(tmp_path, monkeypatch):
