@@ -42,6 +42,7 @@ class ToolRouter:
         if metadata is None:
             return ToolResult(False, "denied", request.tool, error="Unknown tool")
 
+        contract = None
         if self._task_getter is not None and request.task_id is not None:
             task = self._task_getter(request.task_id)
             contract = getattr(task, "execution_contract", None) if task is not None else None
