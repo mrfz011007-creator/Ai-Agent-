@@ -157,6 +157,7 @@ class Task:
     attempts: int = 0
     result: Any = None
     execution_contract: ExecutionContract | None = None
+    tool_calls: int = 0
 
     def mark_running(self) -> None:
         if self.status not in (TaskStatus.READY, TaskStatus.PENDING):
