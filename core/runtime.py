@@ -109,17 +109,12 @@ class AgentRuntime:
         )
 
     def tool_catalog(self) -> dict[str, str]:
-        """Return tool names/descriptions for model planning without granting authority."""
-        registry = getattr(self.tool_router, "_registry_getter", None)
-        if registry is None:
-            return {}
-        names = ("lihat", "lokasi", "baca_file", "cari_teks", "patch_file", "buat_file", "tulis_file", "jalankan_python", "run_command")
-        catalog = {}
-        for name in names:
-            tool = registry(name)
-            if tool is not None:
-                catalog[name] = str(tool.get("description", ""))
-        return catalog
+        """Return non-authoritative tool descriptions from the registry API."""
+        from registry import get_tool_catalog
+        return {
+            name: str(metadata.get("description", ""))
+            for name, metadata in get_tool_catalog().items()
+        }
 
     def run_goal(
         self,
