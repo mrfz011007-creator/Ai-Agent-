@@ -87,6 +87,7 @@ class BuildResult:
     command: str
     exit_code: int | None
     artifact_ids: tuple[str, ...] = ()
+    evidence_id: str | None = None
     error: str | None = None
 
 
@@ -95,6 +96,7 @@ class TestResult:
     success: bool
     command: str
     exit_code: int | None
+    evidence_id: str | None = None
     error: str | None = None
 
 
