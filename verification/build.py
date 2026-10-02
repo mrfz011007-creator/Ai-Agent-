@@ -71,6 +71,7 @@ class BuildManager:
                 arguments={"command": command, "cwd": str(cwd), "timeout": timeout},
                 source="build_manager",
                 task_id=task_id,
+                attempt_id=attempt_id,
             )
         )
         data = result.data if isinstance(result.data, dict) else {}
@@ -112,6 +113,7 @@ class TestManager:
                 arguments={"command": command, "cwd": str(cwd), "timeout": timeout},
                 source="test_manager",
                 task_id=task_id,
+                attempt_id=attempt_id,
             )
         )
         data = result.data if isinstance(result.data, dict) else {}
