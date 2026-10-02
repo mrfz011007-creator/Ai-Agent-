@@ -16,10 +16,10 @@ class EvidenceStore:
         *,
         evidence_id: str,
         task_id: str | None,
-        attempt_id: str | None = None,
         tool: str,
         action: str,
         result: ToolResult,
+        attempt_id: str | None = None,
     ) -> Evidence:
         if evidence_id in self.records or (self.store and self.store.load_evidence(evidence_id)):
             raise ValueError(f"Evidence already exists: {evidence_id}")
