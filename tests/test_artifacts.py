@@ -58,3 +58,33 @@ def test_verifier_validates_all_task_evidence():
 
     wrong_task = verifier.verify_task_evidence("A2", ("E-A1",))
     assert wrong_task.status == VerificationStatus.FAILED
+
+
+from verification.build import BuildManager, TestManager
+
+
+def test_build_manager_registers_artifact(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    output = tmp_path / "app-debug.apk"
+    output.write_bytes(b"apk")
+    manager = BuildManager(ArtifactManager(store))
+
+    result = manager.build(
+        task_id="B1",
+        command="python -c \"from pathlib import Path; Path('app-debug.apk').write_bytes(b'apk')\"",
+        cwd=tmp_path,
+        artifact_paths=["app-debug.apk"],
+        attempt_id="attempt-1",
+    )
+
+    assert result.success
+    assert len(result.artifact_ids) == 1
+
+
+def test_test_manager_reports_exit_status(tmp_path):
+    result = TestManager().run(
+        command="python -c \"print('ok')\"",
+        cwd=tmp_path,
+    )
+    assert result.success
+    assert result.exit_code == 0
