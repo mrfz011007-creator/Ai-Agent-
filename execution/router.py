@@ -8,6 +8,7 @@ from core.contracts import Decision, ToolRequest, ToolResult
 from security.policy import PolicyContext, PolicyEngine
 from verification.evidence import EvidenceStore
 from security.guard import GuardEngine
+from security.redaction import redact_text, redact_value
 
 
 class ToolRouter:
@@ -91,14 +92,21 @@ class ToolRouter:
         try:
             data = function(**dict(request.arguments))
             if isinstance(data, dict) and "success" in data:
+                safe_data = redact_value(data)
+                max_output = self._budget.budget.max_output_chars
+                for key in ("stdout", "stderr"):
+                    value = safe_data.get(key)
+                    if isinstance(value, str) and len(value) > max_output:
+                        safe_data[key] = value[:max_output]
+                        safe_data["output_truncated"] = True
                 result = ToolResult(
-                    bool(data.get("success")),
-                    str(data.get("status", "success" if data.get("success") else "error")).lower(),
+                    bool(safe_data.get("success")),
+                    str(safe_data.get("status", "success" if safe_data.get("success") else "error")).lower(),
                     request.tool,
-                    data=data,
-                    error=None if data.get("success") else str(
-                        data.get("stderr") or data.get("error") or "Command failed"
-                    ),
+                    data=safe_data,
+                    error=None if safe_data.get("success") else redact_text(str(
+                        safe_data.get("stderr") or safe_data.get("error") or "Command failed"
+                    )),
                 )
             elif isinstance(data, str) and len(data) > self._budget.budget.max_output_chars:
                 data = data[: self._budget.budget.max_output_chars]
@@ -110,9 +118,9 @@ class ToolRouter:
                     error="OUTPUT_TRUNCATED",
                 )
             else:
-                result = ToolResult(True, "success", request.tool, data=data)
+                result = ToolResult(True, "success", request.tool, data=redact_value(data))
         except Exception as error:
-            result = ToolResult(False, "error", request.tool, error=str(error))
+            result = ToolResult(False, "error", request.tool, error=redact_text(str(error)))
 
         self._evidence.record(
             evidence_id=evidence_id,
