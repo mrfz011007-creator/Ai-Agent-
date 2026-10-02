@@ -17,7 +17,7 @@ def redact_text(value: str) -> str:
         if pattern.pattern.startswith(r"\bAIza") or pattern.pattern.startswith(r"\bsk-"):
             result = pattern.sub("[REDACTED_SECRET]", result)
         else:
-            result = pattern.sub(lambda match: f"{match.group(1)}[REDACTED_SECRET]", result)
+            result = pattern.sub(lambda match: f"{match.group(1)}***REDACTED***", result)
     return result
 
 def redact_value(value: Any) -> Any:
