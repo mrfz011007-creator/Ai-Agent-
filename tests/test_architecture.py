@@ -434,9 +434,9 @@ def test_runtime_tool_execution_completion(tmp_path):
 
     result = runtime.tool_router.execute(
         ToolRequest(
-            tool="lokasi",
+            tool="search_memory",
             action="execute",
-            arguments={},
+            arguments={"query": "e2e"},
             task_id=task.task_id,
             source="test",
         )
