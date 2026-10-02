@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, gemini_credentials
-from core.contracts import Budget, ToolRequest
+from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
 from core.task_manager import TaskManager
@@ -106,7 +106,7 @@ class AgentRuntime:
         message = str(error)
         if "MODEL_CREDENTIALS_EXHAUSTED" in message or "NO_MODEL_CREDENTIAL_AVAILABLE" in message:
             task = self.task_manager.get(task_id)
-            if task is not None and task.status == task.status.RUNNING:
+            if task is not None and task.status == TaskStatus.RUNNING:
                 task.status = task.status.WAITING
                 self.task_manager.persist(task_id)
                 self.task_manager.checkpoint(
