@@ -108,6 +108,31 @@ class AgentRuntime:
             orchestrator=orchestrator,
         )
 
+    def run_goal(
+        self,
+        goal: str,
+        *,
+        plan_id: str | None = None,
+        max_steps: int | None = None,
+    ):
+        """Execute a complete bounded goal through the persistent GoalRunner."""
+        from core.goal_runner import GoalRunner
+        return GoalRunner(self).run(
+            goal,
+            plan_id=plan_id,
+            max_steps=max_steps,
+        )
+
+    def resume_goal(
+        self,
+        plan_id: str,
+        *,
+        max_steps: int | None = None,
+    ):
+        """Resume one persisted goal without touching unrelated plans."""
+        from core.goal_runner import GoalRunner
+        return GoalRunner(self).resume(plan_id, max_steps=max_steps)
+
     def plan_goal(self, goal: str, *, plan_id: str | None = None):
         """Create a validated model-proposed plan and persist it without executing it."""
         import uuid
