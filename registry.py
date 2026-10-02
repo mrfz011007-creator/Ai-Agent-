@@ -26,6 +26,7 @@ from memory_context import (
 TOOL_REGISTRY = {
 
     "lihat": {
+        "capabilities": ["workspace.read"],
         "func": lihat,
         "permission": "safe",
         "description": "Menampilkan isi direktori kerja saat ini.",
@@ -36,6 +37,7 @@ TOOL_REGISTRY = {
     },
 
     "lokasi": {
+        "capabilities": ["workspace.read"],
         "func": lokasi,
         "permission": "safe",
         "description": "Menampilkan lokasi direktori kerja saat ini.",
@@ -46,6 +48,7 @@ TOOL_REGISTRY = {
     },
 
     "siapa": {
+        "capabilities": ["workspace.read"],
         "func": siapa,
         "permission": "safe",
         "description": "Menampilkan username pengguna Termux saat ini.",
@@ -56,6 +59,7 @@ TOOL_REGISTRY = {
     },
 
     "cari_teks": {
+        "capabilities": ["workspace.read"],
         "func": cari_teks,
         "permission": "safe",
         "description": "Mencari teks di dalam file workspace.",
@@ -70,6 +74,7 @@ TOOL_REGISTRY = {
     },
 
     "patch_file": {
+        "capabilities": ["workspace.write"],
         "func": patch_file,
         "permission": "confirm",
         "description": "Menerapkan penggantian teks yang exact dan bounded pada file workspace.",
@@ -87,6 +92,7 @@ TOOL_REGISTRY = {
     },
 
     "baca_file": {
+        "capabilities": ["workspace.read"],
         "func": baca_file,
         "permission": "safe",
         "description": "Membaca isi sebuah file.",
@@ -103,6 +109,7 @@ TOOL_REGISTRY = {
     },
 
     "buat_folder": {
+        "capabilities": ["workspace.write"],
         "func": buat_folder,
         "permission": "confirm",
         "description": "Membuat folder baru.",
@@ -119,6 +126,7 @@ TOOL_REGISTRY = {
     },
 
     "buat_file": {
+        "capabilities": ["workspace.write"],
         "func": buat_file,
         "permission": "confirm",
         "description": "Membuat file kosong baru.",
@@ -135,6 +143,7 @@ TOOL_REGISTRY = {
     },
 
     "tulis_file": {
+        "capabilities": ["workspace.write"],
         "func": tulis_file,
         "permission": "confirm",
         "description": "Menulis atau mengganti isi sebuah file.",
@@ -159,6 +168,7 @@ TOOL_REGISTRY = {
     },
 
     "run_command": {
+        "capabilities": ["process.execute"],
         "func": run_command,
         "permission": "confirm",
         "description": "Menjalankan satu command proyek melalui execution boundary yang dibatasi.",
@@ -173,6 +183,7 @@ TOOL_REGISTRY = {
     },
 
     "jalankan_python": {
+        "capabilities": ["process.execute"],
         "func": jalankan_python,
         "permission": "confirm",
         "description": "Menjalankan file Python.",
@@ -189,6 +200,7 @@ TOOL_REGISTRY = {
     },
 
     "remember": {
+        "capabilities": ["workspace.write"],
         "func": remember,
         "permission": "confirm",
         "description": "Menyimpan informasi ke memory agent.",
@@ -209,6 +221,7 @@ TOOL_REGISTRY = {
     },
 
     "recall": {
+        "capabilities": ["workspace.read"],
         "func": recall_memory,
         "permission": "safe",
         "description": "Mengambil informasi dari memory agent berdasarkan key.",
@@ -225,6 +238,7 @@ TOOL_REGISTRY = {
     },
 
     "search_memory": {
+        "capabilities": ["workspace.read"],
         "func": search_memory_tool,
         "permission": "safe",
         "description": "Mencari informasi di memory berdasarkan key atau value.",
@@ -281,6 +295,7 @@ def get_tool_catalog():
             "description": entry["description"],
             "parameters": entry["parameters"],
             "permission": entry["permission"],
+            "capabilities": entry.get("capabilities", []),
         }
         for name, entry in TOOL_REGISTRY.items()
     }
