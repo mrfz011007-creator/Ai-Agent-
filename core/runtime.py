@@ -66,11 +66,6 @@ class AgentRuntime:
         )
 
         runtime_registry = dict(TOOL_REGISTRY)
-        runtime_registry["run_command"] = {
-            "func": run_command,
-            "permission": "confirm",
-            "description": "Run one bounded project command through the execution boundary.",
-        }
 
         registry_getter = runtime_registry.get
         policy_engine = PolicyEngine(registry_getter)
