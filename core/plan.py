@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Iterable, Mapping
 
 from core.contracts import Task, TaskStatus
-from core.execution_contract import ExecutionContract, ExecutionContractError
+from core.execution_contract import ExecutionContract, ExecutionContractError\nfrom verification.criteria import validate_criteria, CriterionValidationError
 
 
 class PlanStatus(str, Enum):
@@ -198,7 +198,7 @@ class PlanDecoder:
                     objective=title.strip(),
                     allowed_tools=cls._SAFE_READ_ONLY_TOOLS,
                     allowed_capabilities=("workspace.read",),
-                    completion_conditions=("Successful execution evidence exists",),
+                    completion_conditions=({"type": "evidence_success", "task_id": task_id},),
                 )
             else:
                 try:
