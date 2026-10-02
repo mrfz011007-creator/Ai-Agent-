@@ -105,3 +105,25 @@ def test_execution_context_is_truncated_before_model_prompt():
 
     assert "[CONTEXT_TRUNCATED]" in prompts[0]
     assert len(prompts[0]) < 20000
+
+
+def test_execution_prompt_exposes_patch_snapshot_schema():
+    prompts = []
+    service = ModelExecutionService(
+        lambda prompt: prompts.append(prompt) or '{"tool":"patch_file","action":"execute","arguments":{}}',
+        tool_catalog={
+            "patch_file": {
+                "description": "Apply exact patch",
+                "parameters": {
+                    "properties": {
+                        "nama": {"type": "string"},
+                        "expected_sha256": {"type": "string"},
+                    }
+                },
+                "permission": "confirm",
+            }
+        },
+    )
+    service.propose("edit file")
+
+    assert '"expected_sha256"' in prompts[0]
