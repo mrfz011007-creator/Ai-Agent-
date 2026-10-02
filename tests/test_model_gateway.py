@@ -81,3 +81,21 @@ def test_all_credentials_exhausted(monkeypatch):
         gateway.call(lambda _: (_ for _ in ()).throw(RuntimeError("429 quota")))
 
     assert all(c.state == CredentialState.COOLDOWN for c in gateway.credentials)
+
+
+def test_model_gateway_consumes_model_budget(monkeypatch):
+    from core.budget import BudgetManager
+    from core.contracts import Budget
+
+    monkeypatch.setenv("K1", "secret-1")
+    budget = BudgetManager(Budget(max_model_calls=1))
+    gateway = ModelGateway(
+        credentials=[Credential("k1", "K1")],
+        client_factory=lambda secret: secret,
+        budget=budget,
+    )
+
+    assert gateway.call(lambda client: client) == "secret-1"
+    with pytest.raises(RuntimeError, match="MODEL_CALL_BUDGET_EXCEEDED"):
+        gateway.call(lambda client: client)
+    assert budget.budget.model_calls == 1
