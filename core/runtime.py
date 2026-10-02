@@ -70,6 +70,12 @@ class AgentRuntime:
             test_manager=test_manager,
         )
 
+    def build(self, **kwargs):
+        return self.build_manager.build(**kwargs)
+
+    def run_tests(self, **kwargs):
+        return self.test_manager.run(**kwargs)
+
     def recover_task(self, task_id: str):
         return self.recovery_manager.recover_task(task_id)
 
