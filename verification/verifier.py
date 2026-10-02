@@ -31,3 +31,39 @@ class Verifier:
             evidence.error or "Tool execution failed",
             (evidence_id,),
         )
+
+    def verify_task_evidence(
+        self, task_id: str, evidence_ids: tuple[str, ...]
+    ) -> VerificationResult:
+        if not evidence_ids:
+            return VerificationResult(
+                VerificationStatus.UNKNOWN,
+                "No evidence supplied",
+            )
+
+        for evidence_id in evidence_ids:
+            evidence = self.evidence_store.get(evidence_id)
+            if evidence is None:
+                return VerificationResult(
+                    VerificationStatus.UNKNOWN,
+                    f"Evidence not found: {evidence_id}",
+                    evidence_ids,
+                )
+            if evidence.task_id != task_id:
+                return VerificationResult(
+                    VerificationStatus.FAILED,
+                    f"Evidence belongs to another task: {evidence_id}",
+                    evidence_ids,
+                )
+            if not evidence.success:
+                return VerificationResult(
+                    VerificationStatus.FAILED,
+                    evidence.error or f"Evidence failed: {evidence_id}",
+                    evidence_ids,
+                )
+
+        return VerificationResult(
+            VerificationStatus.PASSED,
+            "All supplied evidence belongs to the task and is successful",
+            evidence_ids,
+        )
