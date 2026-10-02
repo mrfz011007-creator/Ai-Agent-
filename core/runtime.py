@@ -100,6 +100,11 @@ class AgentRuntime:
     def verify_acceptance(self, **kwargs):
         return self.acceptance_gate.verify(**kwargs)
 
+    def verify_and_complete(self, task_id: str, **kwargs):
+        verification = self.acceptance_gate.verify(task_id=task_id, **kwargs)
+        self.task_manager.begin_verification(task_id)
+        return self.task_manager.complete_with_gate(task_id, verification)
+
     def recover_task(self, task_id: str):
         return self.recovery_manager.recover_task(task_id)
 
