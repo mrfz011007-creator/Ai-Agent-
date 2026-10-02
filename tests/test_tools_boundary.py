@@ -99,7 +99,7 @@ def test_search_and_exact_patch_are_workspace_bounded(monkeypatch, tmp_path):
 
     rejected = patch_file("sample.py", "beta", "gamma", expected_count=1)
     assert rejected["success"] is False
-    assert "beta\nbeta" == target.read_text(encoding="utf-8").strip()
+    assert target.read_text(encoding="utf-8") == "alpha\nbeta\nbeta\n"
 
     applied = patch_file("sample.py", "beta", "gamma", expected_count=2)
     assert applied["success"] is True
