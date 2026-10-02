@@ -124,6 +124,8 @@ class TaskManager:
         """Complete only from a verification result already produced by the acceptance gate."""
         if verification.status != VerificationStatus.PASSED:
             raise ValueError("Task completion requires acceptance-gate verification to PASS")
+        if verification.authority != "acceptance_gate":
+            raise ValueError("Task completion requires an acceptance-gate verification result")
         return self.complete(task_id, verification)
 
     def fail(self, task_id: str, reason: str) -> Task:
