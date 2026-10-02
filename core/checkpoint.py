@@ -35,7 +35,12 @@ class CheckpointManager:
         self.store.save_checkpoint(
             checkpoint.checkpoint_id,
             checkpoint.task_id,
-            asdict(checkpoint),
+            {
+                **checkpoint.payload,
+                "status": checkpoint.status,
+                "attempt": checkpoint.attempt,
+                "created_at": checkpoint.created_at,
+            },
         )
         return checkpoint
 
