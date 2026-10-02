@@ -55,3 +55,29 @@ def test_legacy_command_uses_workspace(monkeypatch, tmp_path):
 
     assert result["success"] is True
     assert Path(result["stdout"].strip()).resolve() == workspace.resolve()
+
+
+def test_memory_is_scoped_to_workspace(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    from memory import recall, remember
+
+    remember("scope", "workspace-only")
+
+    assert (workspace / "memory.json").exists()
+    assert recall("scope")["value"] == "workspace-only"
+
+
+def test_command_output_is_redacted():
+    from execution.command import run_command
+
+    result = run_command(
+        command="python -c \"print('AIzaSyA12345678901234567890')\"",
+        cwd=".",
+    )
+
+    assert result["success"] is True
+    assert "AIzaSyA12345678901234567890" not in result["stdout"]
+    assert "[REDACTED_SECRET]" in result["stdout"]
