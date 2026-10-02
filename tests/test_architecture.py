@@ -417,6 +417,7 @@ def test_tool_router_redacts_secrets_and_limits_structured_output(tmp_path):
     assert result.success
     assert "[REDACTED_SECRET]" in result.data["stdout"]
     assert len(result.data["stdout"]) <= 50
+    assert isinstance(result.data["stderr"], str)
     assert "AIza1234567890123456789012345" not in result.data["stderr"]
 
 
