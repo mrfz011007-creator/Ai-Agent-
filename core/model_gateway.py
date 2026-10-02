@@ -152,6 +152,14 @@ class ModelGateway:
             raise RuntimeError("MODEL_CREDENTIALS_EXHAUSTED") from last_error
         raise RuntimeError("NO_MODEL_CREDENTIAL_AVAILABLE")
 
+    def text(self, prompt: str, *, system_instruction: str = "", response_mime_type: str | None = None) -> str:
+        """Compatibility adapter for planner/execution callbacks."""
+        return self.generate_text(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            response_mime_type=response_mime_type,
+        )
+
     def generate_text(
         self,
         *,
