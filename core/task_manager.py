@@ -93,6 +93,17 @@ class TaskManager:
 
     def complete(self, task_id: str, verification: VerificationResult) -> Task:
         task = self._require(task_id)
+        if self.store is not None:
+            if not verification.evidence_ids:
+                raise ValueError("COMPLETED requires evidence-backed verification")
+            for evidence_id in verification.evidence_ids:
+                evidence = self.store.load_evidence(evidence_id)
+                if evidence is None:
+                    raise ValueError(f"Verification evidence not found: {evidence_id}")
+                if evidence["task_id"] != task_id:
+                    raise ValueError(f"Verification evidence belongs to another task: {evidence_id}")
+                if not evidence["success"]:
+                    raise ValueError(f"Verification evidence is unsuccessful: {evidence_id}")
         task.complete(verification)
         self._persist(task)
         self._checkpoint(task, event="completed")
