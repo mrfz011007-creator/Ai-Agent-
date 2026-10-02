@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable
 
-from core.contracts import Task
+from core.contracts import Task, TaskStatus
 
 
 class PlanStatus(str, Enum):
@@ -67,8 +67,8 @@ class TaskGraph:
         self.validate()
         return tuple(
             task for task in self.tasks.values()
-            if task.status == task.status.PENDING
-            and all(self.tasks[dep].status == task.status.COMPLETED for dep in task.dependencies)
+            if task.status == TaskStatus.PENDING
+            and all(self.tasks[dep].status == TaskStatus.COMPLETED for dep in task.dependencies)
         )
 
     def blocked_by(self, task_id: str) -> tuple[str, ...]:
@@ -81,7 +81,7 @@ class TaskGraph:
 
     def is_complete(self) -> bool:
         return bool(self.tasks) and all(
-            task.status == task.status.COMPLETED for task in self.tasks.values()
+            task.status == TaskStatus.COMPLETED for task in self.tasks.values()
         )
 
 
