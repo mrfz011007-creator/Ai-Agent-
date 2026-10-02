@@ -26,7 +26,7 @@ class Plan:
     goal: str
     task_ids: tuple[str, ...]
     status: PlanStatus = PlanStatus.PROPOSED
-    acceptance_criteria: tuple[str, ...] = ()
+    acceptance_criteria: tuple[Mapping[str, object], ...] = ()
 
 
 class PlanGraphError(ValueError):
@@ -110,7 +110,7 @@ class TaskGraph:
 class PlanProposal:
     goal: str
     tasks: tuple[Task, ...]
-    acceptance_criteria: tuple[str, ...] = ()
+    acceptance_criteria: tuple[Mapping[str, object], ...] = ()
 
     def graph(self) -> TaskGraph:
         graph = TaskGraph()
@@ -123,11 +123,11 @@ class PlanProposal:
 class Planner:
     """Deterministic plan validator/builder. Models may propose; Planner validates."""
 
-    def propose(self, goal: str, tasks: Iterable[Task], acceptance_criteria: Iterable[str] = ()) -> PlanProposal:
+    def propose(self, goal: str, tasks: Iterable[Task], acceptance_criteria: Iterable[Mapping[str, object]] = ()) -> PlanProposal:
         goal = goal.strip()
         if not goal:
             raise PlanGraphError("Goal cannot be empty")
-        proposal = PlanProposal(goal, tuple(tasks), tuple(acceptance_criteria))
+        try:\n            criteria = validate_criteria(tuple(acceptance_criteria))\n        except CriterionValidationError as error:\n            raise PlanGraphError(f"Invalid machine-verifiable acceptance criteria: {error}") from error\n        proposal = PlanProposal(goal, tuple(tasks), criteria)
         proposal.graph()
         return proposal
 
