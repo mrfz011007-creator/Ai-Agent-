@@ -88,6 +88,7 @@ class CriteriaEvaluator:
                 task_evidence=task_evidence,
                 all_task_ids=(task_id,),
                 completed_task_ids=(),
+                failed_task_ids=(),
             )
             if not ok:
                 return False, reason, tuple(item.evidence_id for item in task_evidence)
@@ -101,6 +102,7 @@ class CriteriaEvaluator:
         criteria: Sequence[Mapping],
         task_ids: Sequence[str],
         completed_task_ids: Sequence[str],
+        failed_task_ids: Sequence[str] = (),
     ) -> tuple[bool, str, tuple[str, ...]]:
         normalized = validate_criteria(criteria)
         evidence_ids: list[str] = []
@@ -121,6 +123,7 @@ class CriteriaEvaluator:
                 task_evidence=task_evidence,
                 all_task_ids=tuple(task_ids),
                 completed_task_ids=tuple(completed_task_ids),
+                failed_task_ids=tuple(failed_task_ids),
             )
             if not ok:
                 return False, reason, tuple(evidence_ids)
@@ -134,6 +137,7 @@ class CriteriaEvaluator:
         task_evidence,
         all_task_ids: Sequence[str],
         completed_task_ids: Sequence[str],
+        failed_task_ids: Sequence[str],
     ) -> tuple[bool, str]:
         kind = condition["type"]
 
@@ -142,7 +146,7 @@ class CriteriaEvaluator:
             return ok, "Not all tasks are completed" if not ok else "All tasks completed"
 
         if kind == "no_failed_tasks":
-            ok = set(all_task_ids).isdisjoint(set())
+            ok = not failed_task_ids
             return ok, "A task failed" if not ok else "No failed tasks"
 
         if task_id not in all_task_ids:
