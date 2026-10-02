@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-MEMORY_SCHEMA_VERSION = 1
+MEMORY_SCHEMA_VERSION = 2
 MEMORY_TYPES = frozenset({"fact", "decision", "experience", "preference"})
-MEMORY_STATUSES = frozenset({"active", "invalidated"})
+MEMORY_STATUSES = frozenset({"active", "invalidated", "superseded", "archived"})\nMEMORY_RETENTION_POLICIES = frozenset({"normal", "durable", "ephemeral"})
 
 
 class MemoryValidationError(ValueError):
@@ -75,7 +75,7 @@ def _validate_record(record: Mapping[str, Any]) -> None:
     required = {
         "id", "type", "key", "value", "project_id", "task_id", "context",
         "source", "provenance", "created_at", "updated_at", "version",
-        "status", "invalidated_at", "invalidated_by", "supersedes_id", "tags",
+        "status", "invalidated_at", "invalidated_by", "supersedes_id", "tags",\n        "importance", "confidence", "retention", "summary", "evidence_refs", "last_accessed_at",
     }
     missing = required - set(record)
     if missing:
@@ -148,6 +148,14 @@ def _load_store() -> dict[str, Any]:
         if not isinstance(records, list):
             raise RuntimeError("MEMORY_RECORDS_INVALID")
         store = {"schema_version": MEMORY_SCHEMA_VERSION, "records": [dict(r) for r in records]}
+        if schema_version == 1:
+            for record in store["records"]:
+                record.setdefault("importance", 0.5)
+                record.setdefault("confidence", 0.5)
+                record.setdefault("retention", "normal")
+                record.setdefault("summary", str(record.get("value", ""))[:500])
+                record.setdefault("evidence_refs", [])
+                record.setdefault("last_accessed_at", None)
 
     for record in store["records"]:
         _validate_record(record)
@@ -283,7 +291,7 @@ def remember(
     now = _utc_now()
 
     for record in previous:
-        record["status"] = "invalidated"
+        record["status"] = "superseded"
         record["invalidated_at"] = now
         record["invalidated_by"] = "revision"
         record["updated_at"] = now
@@ -418,7 +426,7 @@ def _score_record(
         for key, value in context.items():
             if record["context"].get(key) == value:
                 score += 2.0
-    score += min(record["version"], 10) * 0.05
+    score += min(record["version"], 10) * 0.05\n    score += float(record.get("importance", 0.5)) * 2.0\n    score += float(record.get("confidence", 0.5))
     return score
 
 
