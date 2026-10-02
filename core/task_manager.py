@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from core.contracts import VerificationStatus, VerificationResult
-
-from core.contracts import Task, TaskStatus, VerificationResult
+from core.contracts import Task, TaskStatus, VerificationResult, VerificationStatus
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
 
@@ -161,6 +159,15 @@ class TaskManager:
     def _persist(self, task: Task) -> None:
         if self.store is None:
             return
+        result = task.result
+        if isinstance(result, VerificationResult):
+            result = {
+                "type": "VerificationResult",
+                "status": result.status.value,
+                "reason": result.reason,
+                "evidence_ids": list(result.evidence_ids),
+                "authority": result.authority,
+            }
         self.store.save_task(
             task_id=task.task_id,
             status=task.status.value,
@@ -168,7 +175,7 @@ class TaskManager:
             payload={
                 "title": task.title,
                 "dependencies": task.dependencies,
-                "result": task.result,
+                "result": result,
             },
         )
 
