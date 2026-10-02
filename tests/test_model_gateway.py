@@ -65,7 +65,7 @@ def test_bad_request_does_not_rotate(monkeypatch):
         gateway.call(invoke)
 
     assert calls == ["secret-1"]
-    assert gateway.credentials[0].state == CredentialState.UNKNOWN
+    assert gateway.credentials[0].state == CredentialState.HEALTHY
     assert ModelGateway.classify_error(RuntimeError("429 quota")) == ProviderErrorKind.RATE_LIMIT
 
 
