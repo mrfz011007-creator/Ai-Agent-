@@ -8,8 +8,6 @@ from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, create_gemini_gateway
 from core.model_planner import ModelPlanService
 from core.memory_service import MemoryService
-from core.plan import Plan, TaskGraph
-from core.model_execution import ExecutionProposal
 from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
@@ -26,7 +24,6 @@ from verification.verifier import Verifier
 from verification.acceptance import AcceptanceGate
 from registry import TOOL_REGISTRY
 from permissions import minta_konfirmasi
-from execution.command import run_command
 from security.guard import GuardEngine
 from security.capabilities import CapabilityPolicy
 
