@@ -430,16 +430,11 @@ def test_runtime_tool_execution_completion(tmp_path):
     )
     runtime.task_manager.start(task.task_id)
 
-    from core.contracts import ToolRequest
-
-    result = runtime.tool_router.execute(
-        ToolRequest(
-            tool="search_memory",
-            action="execute",
-            arguments={"query": "e2e"},
-            task_id=task.task_id,
-            source="test",
-        )
+    result = runtime.execute_with_recovery(
+        "search_memory",
+        {"query": "e2e"},
+        source="test",
+        task_id=task.task_id,
     )
 
     assert result.success
