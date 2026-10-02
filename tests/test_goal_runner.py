@@ -1,4 +1,4 @@
-from core.contracts import TaskStatus
+from core.contracts import TaskStatus, ToolResult
 from core.runtime import AgentRuntime
 
 
@@ -16,9 +16,24 @@ def test_runtime_run_goal_completes_through_execution_and_acceptance(tmp_path, m
 
     monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
 
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        evidence_id = "ev-goal-inspect"
+        result = ToolResult(True, "success", proposal.tool, data={"ok": True}, evidence_id=evidence_id)
+        runtime.evidence_store.record(
+            evidence_id=evidence_id,
+            task_id=task_id,
+            attempt_id=attempt_id,
+            tool=proposal.tool,
+            action=proposal.action,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+
     plan, graph = runtime.run_goal("inspect workspace", plan_id="plan-run")
 
-    assert plan.status.value == "COMPLETED", graph.tasks["inspect"].result
+    assert plan.status.value == "COMPLETED"
     assert graph.tasks["inspect"].status == TaskStatus.COMPLETED
     assert runtime.state_store.load_plan("plan-run")["status"] == "COMPLETED"
     evidence = runtime.state_store.load_evidence_for_task("inspect")
@@ -42,9 +57,24 @@ def test_runtime_run_goal_respects_step_boundary(tmp_path, monkeypatch):
 
     monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
 
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        evidence_id = f"ev-{task_id}"
+        result = ToolResult(True, "success", proposal.tool, data={"ok": True}, evidence_id=evidence_id)
+        runtime.evidence_store.record(
+            evidence_id=evidence_id,
+            task_id=task_id,
+            attempt_id=attempt_id,
+            tool=proposal.tool,
+            action=proposal.action,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+
     plan, graph = runtime.run_goal("bounded", plan_id="plan-bound", max_steps=1)
 
-    assert plan.status.value == "WAITING", graph.tasks["one"].result
+    assert plan.status.value == "WAITING"
     assert graph.tasks["one"].status == TaskStatus.COMPLETED
     assert graph.tasks["two"].status == TaskStatus.PENDING
     assert runtime.state_store.load_plan("plan-bound")["status"] == "WAITING"
