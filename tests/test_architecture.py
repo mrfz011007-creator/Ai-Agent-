@@ -423,11 +423,12 @@ def test_tool_router_redacts_secrets_and_limits_structured_output(tmp_path):
 
 def test_runtime_tool_execution_completion(tmp_path):
     from core.contracts import Task, TaskStatus
+    from core.execution_contract import ExecutionContract
     from core.runtime import AgentRuntime
 
     runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
     task = runtime.task_manager.create(
-        Task(task_id="task-e2e", title="evidence-backed tool execution")
+        Task(task_id="task-e2e", title="evidence-backed tool execution", execution_contract=ExecutionContract(objective="evidence-backed tool execution", allowed_tools=("search_memory",), allowed_capabilities=("workspace.read",), completion_conditions=({"type": "evidence_success", "task_id": "task-e2e"},)))
     )
     runtime.task_manager.start(task.task_id)
 
