@@ -11,6 +11,22 @@ class GuardResult:
     reason: str
 
 
+_DESTRUCTIVE_EXECUTABLES = {
+    "rm",
+    "rmdir",
+    "dd",
+    "mkfs",
+    "mkfs.ext4",
+    "shutdown",
+    "reboot",
+    "poweroff",
+    "halt",
+    "kill",
+    "killall",
+    "pkill",
+}
+
+
 class GuardEngine:
     """Concrete safety checks after permission and before execution."""
 
@@ -39,7 +55,26 @@ class GuardEngine:
             if not argv:
                 return GuardResult(False, "COMMAND_EMPTY")
 
+            executable = Path(argv[0]).name.lower()
+            if executable in _DESTRUCTIVE_EXECUTABLES:
+                return GuardResult(False, "DESTRUCTIVE_COMMAND_DENIED")
+
+            if executable == "git" and self._destructive_git(argv[1:]):
+                return GuardResult(False, "DESTRUCTIVE_GIT_COMMAND_DENIED")
+
         return GuardResult(True, "GUARD_ALLOWED")
+
+    @staticmethod
+    def _destructive_git(args: list[str]) -> bool:
+        if not args:
+            return False
+        if args[0] == "reset" and "--hard" in args:
+            return True
+        if args[0] == "clean" and any(flag.startswith("-") and "f" in flag for flag in args):
+            return True
+        if args[0] == "checkout" and "--" in args:
+            return True
+        return False
 
     def _inside_workspace(self, path: Path) -> bool:
         try:
