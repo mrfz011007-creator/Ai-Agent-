@@ -19,13 +19,15 @@ class ExecutionProposal:
 class ModelExecutionService:
     """Decode model execution intent, then delegate authorization to ToolRouter."""
 
-    def __init__(self, model_call: Callable[[str], str]):
+    def __init__(self, model_call: Callable[[str], str], tool_catalog: Mapping[str, str] | None = None):
         self.model_call = model_call
+        self.tool_catalog = dict(tool_catalog or {})
 
     def propose(self, task_title: str) -> ExecutionProposal:
         raw = self.model_call(
             'Return ONLY JSON: {"tool":"string","action":"execute","arguments":{}}. '
             "Choose one tool needed for the task. Do not include secrets or markdown. "
+            f"AVAILABLE TOOLS: {json.dumps(self.tool_catalog, ensure_ascii=False)} "
             f"TASK: {task_title}"
         )
         if not isinstance(raw, str):
