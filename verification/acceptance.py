@@ -146,6 +146,17 @@ class AcceptanceGate:
                             tuple(evidence_ids),
                         )
                     continue
+                if (
+                    expected_attempt_id is not None
+                    and artifact.attempt_id != expected_attempt_id
+                ):
+                    if criterion.required:
+                        return VerificationResult(
+                            VerificationStatus.FAILED,
+                            f"Acceptance criterion {criterion.criterion_id} artifact belongs to another attempt",
+                            tuple(evidence_ids),
+                        )
+                    continue
                 valid, reason = self.artifacts.verify(artifact_id, task_id=task_id)
                 if not valid and criterion.required:
                     return VerificationResult(
