@@ -34,6 +34,7 @@ class StateStore:
                 CREATE TABLE IF NOT EXISTS evidence (
                     evidence_id TEXT PRIMARY KEY,
                     task_id TEXT,
+                    attempt_id TEXT,
                     tool TEXT NOT NULL,
                     action TEXT NOT NULL,
                     success INTEGER NOT NULL,
@@ -43,6 +44,9 @@ class StateStore:
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(evidence)").fetchall()}
+            if "attempt_id" not in columns:
+                db.execute("ALTER TABLE evidence ADD COLUMN attempt_id TEXT")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS artifacts (
                     artifact_id TEXT PRIMARY KEY,
@@ -53,10 +57,14 @@ class StateStore:
                     sha256 TEXT NOT NULL,
                     size INTEGER NOT NULL,
                     source_commit TEXT,
+                    evidence_id TEXT,
                     payload TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            artifact_columns = {row[1] for row in db.execute("PRAGMA table_info(artifacts)").fetchall()}
+            if "evidence_id" not in artifact_columns:
+                db.execute("ALTER TABLE artifacts ADD COLUMN evidence_id TEXT")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     checkpoint_id TEXT PRIMARY KEY,
@@ -109,6 +117,7 @@ class StateStore:
         self,
         evidence_id: str,
         task_id: str | None,
+        attempt_id: str | None,
         tool: str,
         action: str,
         success: bool,
@@ -118,10 +127,11 @@ class StateStore:
     ) -> None:
         with self._connect() as db:
             db.execute(
-                "INSERT INTO evidence(evidence_id,task_id,tool,action,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO evidence(evidence_id,task_id,attempt_id,tool,action,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     evidence_id,
                     task_id,
+                    attempt_id,
                     tool,
                     action,
                     int(success),
@@ -134,7 +144,7 @@ class StateStore:
     def load_evidence(self, evidence_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute(
-                "SELECT evidence_id,task_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE evidence_id=?",
+                "SELECT evidence_id,task_id,attempt_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE evidence_id=?",
                 (evidence_id,),
             ).fetchone()
         if row is None:
@@ -174,6 +184,7 @@ class StateStore:
                     artifact["sha256"],
                     int(artifact["size"]),
                     artifact.get("source_commit"),
+                    artifact.get("evidence_id"),
                     json.dumps(artifact, sort_keys=True, default=str),
                 ),
             )
@@ -181,7 +192,7 @@ class StateStore:
     def load_artifact(self, artifact_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute(
-                "SELECT artifact_id,task_id,attempt_id,path,kind,sha256,size,source_commit,payload,created_at "
+                "SELECT artifact_id,task_id,attempt_id,path,kind,sha256,size,source_commit,evidence_id,payload,created_at "
                 "FROM artifacts WHERE artifact_id=?",
                 (artifact_id,),
             ).fetchone()
