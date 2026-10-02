@@ -168,3 +168,32 @@ def test_completion_requires_acceptance_gate_authority(tmp_path):
         assert False, "manual verifier result must not complete a gated task"
     except ValueError as exc:
         assert "acceptance-gate" in str(exc)
+
+def test_acceptance_criteria_reject_artifact_from_wrong_attempt(tmp_path):
+    _, evidence, artifacts, gate, _ = _setup(tmp_path)
+    path = tmp_path / "app.apk"
+    path.write_bytes(b"apk")
+    artifact = artifacts.register(
+        task_id="A1",
+        path=path,
+        kind="APK",
+        attempt_id="attempt-old",
+        evidence_id="build-1",
+    )
+    _evidence(evidence, "A1", "build-1", attempt_id="attempt-current")
+    result = gate.verify(
+        task_id="A1",
+        build_evidence_id="build-1",
+        artifact_ids=(),
+        expected_attempt_id="attempt-current",
+        criteria=(
+            AcceptanceCriterion(
+                "apk",
+                "APK belongs to the current attempt",
+                artifact_ids=(artifact.artifact_id,),
+            ),
+        ),
+    )
+    assert result.status == VerificationStatus.FAILED
+    assert "another attempt" in result.reason
+
