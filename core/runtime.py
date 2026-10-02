@@ -101,7 +101,7 @@ class AgentRuntime:
 
     def execute_with_recovery(self, name: str, args: dict, *, source: str = "agent", task_id: str | None = None):
         """Execute a tool and perform at most one bounded recovery retry."""
-        result = execute_tool(name, args, source=source, task_id=task_id)
+        result = self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id))
         if result.success or task_id is None:
             return result
 
@@ -113,7 +113,7 @@ class AgentRuntime:
         if decision.action != "RETRY":
             return result
 
-        return execute_tool(name, args, source=source, task_id=task_id)
+        return self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id))
 
     def build(self, **kwargs):
         return self.build_manager.build(**kwargs)
