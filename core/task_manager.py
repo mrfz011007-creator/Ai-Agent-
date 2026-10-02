@@ -109,6 +109,12 @@ class TaskManager:
         self._checkpoint(task, event="completed")
         return task
 
+    def complete_with_gate(self, task_id: str, verification: VerificationResult) -> Task:
+        """Complete only from a verification result already produced by the acceptance gate."""
+        if verification.status != VerificationStatus.PASSED:
+            raise ValueError("Task completion requires acceptance-gate verification to PASS")
+        return self.complete(task_id, verification)
+
     def fail(self, task_id: str, reason: str) -> Task:
         task = self._require(task_id)
         if task.status not in (TaskStatus.RUNNING, TaskStatus.VERIFYING):
