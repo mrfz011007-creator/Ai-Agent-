@@ -78,6 +78,7 @@ TOOL_REGISTRY = {
                 "old": {"type": "string"},
                 "new": {"type": "string"},
                 "expected_count": {"type": "integer"},
+                "expected_sha256": {"type": "string"},
             },
             "required": ["nama", "old", "new"],
         },
