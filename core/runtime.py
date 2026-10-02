@@ -7,6 +7,7 @@ from pathlib import Path
 from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, create_gemini_gateway
 from core.model_planner import ModelPlanService
+from core.memory_service import MemoryService
 from core.plan import Plan, TaskGraph
 from core.model_execution import ExecutionProposal
 from core.contracts import Budget, ToolRequest, TaskStatus
@@ -47,6 +48,7 @@ class AgentRuntime:
     acceptance_gate: AcceptanceGate
     model_gateway: ModelGateway
     orchestrator: Orchestrator
+    memory: MemoryService
 
     @classmethod
     def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":
@@ -90,6 +92,7 @@ class AgentRuntime:
         test_manager = TestManager(tool_router)
         acceptance_gate = AcceptanceGate(Verifier(evidence_store), artifact_manager)
         orchestrator = Orchestrator(task_manager, Planner(), store=state_store)
+        memory = MemoryService(project_id=os.environ.get("AI_AGENT_PROJECT_ID"))
         return cls(
             state_store=state_store,
             checkpoint_manager=checkpoint_manager,
@@ -106,6 +109,7 @@ class AgentRuntime:
             acceptance_gate=acceptance_gate,
             model_gateway=model_gateway,
             orchestrator=orchestrator,
+            memory=memory,
         )
 
     def tool_catalog(self) -> dict[str, dict]:
@@ -138,13 +142,13 @@ class AgentRuntime:
         from core.goal_runner import GoalRunner
         return GoalRunner(self).resume(plan_id, max_steps=max_steps)
 
-    def plan_goal(self, goal: str, *, plan_id: str | None = None):
+    def plan_goal(self, goal: str, *, plan_id: str | None = None, project_id: str | None = None, context=None):
         """Create a validated model-proposed plan and persist it without executing it."""
         import uuid
         if not goal.strip():
             raise ValueError("Goal cannot be empty")
-        proposer = ModelPlanService(self.model_gateway.generate_text)
-        proposal = proposer.propose(goal)
+        proposer = ModelPlanService(self.model_gateway.generate_text, memory=self.memory)
+        proposal = proposer.propose(goal, project_id=project_id, context=context)
         resolved_plan_id = plan_id or f"plan-{uuid.uuid4().hex[:12]}"
         return self.orchestrator.materialize(proposal, resolved_plan_id)
 
