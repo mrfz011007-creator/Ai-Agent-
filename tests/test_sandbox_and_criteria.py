@@ -89,3 +89,16 @@ def test_execution_contract_round_trips_structured_conditions():
     )
     restored = ExecutionContract.from_dict(contract.to_dict())
     assert restored == contract
+
+
+def test_workspace_file_tools_enforce_size_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("AI_AGENT_MAX_FILE_BYTES", "8")
+    (tmp_path / "large.txt").write_text("0123456789", encoding="utf-8")
+
+    from tools import baca_file, cari_teks, patch_file, tulis_file
+
+    assert baca_file("large.txt")["code"] == "FILE_TOO_LARGE"
+    assert cari_teks("0", pola="*.txt")["hasil"] == []
+    assert patch_file("large.txt", "0", "x")["success"] is False
+    assert tulis_file("new.txt", "0123456789")["code"] == "FILE_TOO_LARGE"
