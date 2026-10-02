@@ -57,11 +57,18 @@ def _safe_env(source: dict[str, str], workspace: Path) -> dict[str, str]:
 
 def _resolve_executable(argv: list[str]) -> str:
     executable = argv[0]
+    is_android = (
+        os.environ.get("PREFIX", "").startswith("/data/")
+        or Path("/system/bin").exists()
+    )
+
     if executable.startswith("./") or executable.startswith("../") or "/" in executable:
         resolved = Path(executable).resolve()
         if not resolved.exists():
             raise SandboxPolicyError(f"Executable not found: {executable}")
-        return str(resolved)
+        # Preserve Termux symlink entry points even when the caller supplies
+        # an explicit executable path (for example .../bin/pwd).
+        return str(Path(executable)) if is_android else str(resolved)
     resolved = shutil.which(executable)
     if resolved is None:
         raise SandboxPolicyError(f"Executable not found: {executable}")
@@ -71,10 +78,6 @@ def _resolve_executable(argv: list[str]) -> str:
     # symlinks changes `pwd` into `coreutils` without its required applet
     # name and therefore breaks execution. Preserve the original executable
     # path on Android/Termux; keep canonical resolution on regular POSIX.
-    is_android = (
-        os.environ.get("PREFIX", "").startswith("/data/")
-        or Path("/system/bin").exists()
-    )
     if is_android:
         return resolved
 
@@ -251,4 +254,21 @@ def prepare_sandbox(
 
 
 def cleanup_sandbox(root: str) -> None:
-    shutil.rmtree(root, ignore_errors=True)
+    root_path = Path(root)
+    shutil.rmtree(root_path, ignore_errors=True)
+
+    # The namespace launcher lives beside the temporary root and must be
+    # removed separately. Otherwise every sandbox invocation can leak one
+    # executable shell script into the host temporary directory.
+    prefix = ".ai-agent-root-"
+    name = root_path.name
+    if not name.startswith(prefix):
+        return
+    token = name[len(prefix):].rstrip("-")
+    if not token or any(char not in "0123456789abcdef" for char in token.lower()):
+        return
+    launcher = root_path.parent / f".ai-agent-launcher-{token}.sh"
+    try:
+        launcher.unlink()
+    except FileNotFoundError:
+        pass
