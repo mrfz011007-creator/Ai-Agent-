@@ -33,7 +33,8 @@ class Verifier:
         )
 
     def verify_task_evidence(
-        self, task_id: str, evidence_ids: tuple[str, ...]
+        self, task_id: str, evidence_ids: tuple[str, ...],
+        expected_attempt_id: str | None = None,
     ) -> VerificationResult:
         if not evidence_ids:
             return VerificationResult(
@@ -53,6 +54,12 @@ class Verifier:
                 return VerificationResult(
                     VerificationStatus.FAILED,
                     f"Evidence belongs to another task: {evidence_id}",
+                    evidence_ids,
+                )
+            if expected_attempt_id is not None and evidence.attempt_id != expected_attempt_id:
+                return VerificationResult(
+                    VerificationStatus.FAILED,
+                    f"Evidence belongs to another attempt: {evidence_id}",
                     evidence_ids,
                 )
             if not evidence.success:
