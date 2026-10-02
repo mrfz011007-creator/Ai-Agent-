@@ -245,3 +245,66 @@ def test_recovery_controller_handles_model_exhaustion(tmp_path):
 
     assert decision.action == "WAIT_FOR_MODEL"
     assert runtime.task_manager.get(task.task_id).status == TaskStatus.WAITING
+
+
+def test_runtime_retry_creates_new_attempt_and_current_evidence_only(tmp_path):
+    from execution.router import ToolRouter
+    from core.contracts import ToolResult, ToolRequest
+    from security.policy import PolicyEngine
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task("R9", "retry execution", status=TaskStatus.READY))
+    runtime.task_manager.start("R9")
+
+    calls = []
+
+    def flaky_tool():
+        calls.append("call")
+        if len(calls) == 1:
+            return {
+                "success": False,
+                "status": "error",
+                "stderr": "connection temporarily unavailable",
+            }
+        return {
+            "success": True,
+            "status": "success",
+            "stdout": "ok",
+        }
+
+    registry = {
+        "flaky": {
+            "func": flaky_tool,
+            "permission": "safe",
+        }
+    }
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=runtime.budget_manager,
+        evidence=runtime.evidence_store,
+    )
+    runtime.tool_router = router
+
+    result = runtime.execute_with_recovery(
+        "flaky",
+        {},
+        task_id="R9",
+        source="test",
+    )
+
+    assert result.success
+    assert len(calls) == 2
+    assert runtime.task_manager.get("R9").attempts == 2
+
+    first = runtime.evidence_store.get(result.evidence_id)
+    assert first is not None
+    assert first.attempt_id == "R9:attempt:2"
+
+    evidence_rows = [
+        runtime.evidence_store.get(eid)
+        for eid in (
+            result.evidence_id,
+        )
+    ]
+    assert all(item.task_id == "R9" for item in evidence_rows)
