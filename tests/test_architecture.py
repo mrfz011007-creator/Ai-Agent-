@@ -159,3 +159,21 @@ def test_state_store_persists_task_and_checkpoint(tmp_path):
     latest = manager.latest("T1")
     assert latest["checkpoint_id"] == checkpoint.checkpoint_id
     assert latest["payload"]["workspace"] == "demo"
+
+
+def test_task_manager_persists_transitions_and_checkpoints(tmp_path):
+    from core.state_store import StateStore
+    from core.checkpoint import CheckpointManager
+
+    store = StateStore(tmp_path / "state.sqlite3")
+    checkpoints = CheckpointManager(store)
+    manager = TaskManager(store=store, checkpoints=checkpoints)
+    manager.create(Task("T2", "persisted"))
+    task = manager.get("T2")
+    task.status = TaskStatus.READY
+    manager.start("T2")
+
+    saved = store.load_task("T2")
+    assert saved["status"] == "RUNNING"
+    assert saved["attempts"] == 1
+    assert checkpoints.latest("T2") is not None
