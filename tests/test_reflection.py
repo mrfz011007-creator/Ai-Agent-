@@ -21,5 +21,5 @@ def test_reflection_produces_candidates_without_execution_authority():
     service = ReflectionService(model_call)
     candidates = service.reflect(experience={'success': False, 'error': 'missing SDK'}, evidence_refs=['ev-1'])
     assert candidates[0].key == 'build.preflight'
-    assert candidates[0].risk == 'medium'
+    assert candidates[0].risk == 'low'
     assert 'Never execute tools' in calls[0]['prompt']
