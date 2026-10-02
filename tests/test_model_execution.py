@@ -72,7 +72,21 @@ def test_execution_prompt_receives_tool_catalog():
     prompts = []
     service = ModelExecutionService(
         lambda prompt: prompts.append(prompt) or '{"tool":"baca_file","action":"execute","arguments":{"nama":"README.md"}}',
-        tool_catalog={"baca_file": "Read a workspace file", "patch_file": "Apply an exact patch"},
+        tool_catalog={
+            "baca_file": {
+                "description": "Read a workspace file",
+                "parameters": {"type": "object", "properties": {"nama": {"type": "string"}}},
+                "permission": "safe",
+            },
+            "patch_file": {
+                "description": "Apply an exact patch",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"expected_sha256": {"type": "string"}},
+                },
+                "permission": "confirm",
+            },
+        },
     )
     service.propose("inspect README")
 
@@ -127,3 +141,16 @@ def test_execution_prompt_exposes_patch_snapshot_schema():
     service.propose("edit file")
 
     assert '"expected_sha256"' in prompts[0]
+
+
+def test_runtime_tool_catalog_exposes_snapshot_schema():
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(":memory:")
+    catalog = runtime.tool_catalog()
+
+    assert "patch_file" in catalog
+    assert "parameters" in catalog["patch_file"]
+    assert "expected_sha256" in catalog["patch_file"]["parameters"]["properties"]
+    assert catalog["patch_file"]["permission"] == "confirm"
+    assert "run_command" in catalog
