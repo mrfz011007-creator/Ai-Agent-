@@ -66,6 +66,16 @@ class StateStore:
             if "evidence_id" not in artifact_columns:
                 db.execute("ALTER TABLE artifacts ADD COLUMN evidence_id TEXT")
             db.execute("""
+                CREATE TABLE IF NOT EXISTS plans (
+                    plan_id TEXT PRIMARY KEY,
+                    goal TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    task_ids TEXT NOT NULL,
+                    acceptance_criteria TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     checkpoint_id TEXT PRIMARY KEY,
                     task_id TEXT,
@@ -236,4 +246,44 @@ class StateStore:
             return None
         result = dict(row)
         result["payload"] = json.loads(result["payload"])
+        return result
+
+    def save_plan(
+        self,
+        plan_id: str,
+        goal: str,
+        status: str,
+        task_ids: list[str] | tuple[str, ...],
+        acceptance_criteria: list[str] | tuple[str, ...],
+    ) -> None:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO plans(plan_id,goal,status,task_ids,acceptance_criteria)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT(plan_id) DO UPDATE SET
+                   goal=excluded.goal,status=excluded.status,
+                   task_ids=excluded.task_ids,
+                   acceptance_criteria=excluded.acceptance_criteria,
+                   updated_at=CURRENT_TIMESTAMP""",
+                (
+                    plan_id,
+                    goal,
+                    status,
+                    json.dumps(list(task_ids)),
+                    json.dumps(list(acceptance_criteria)),
+                ),
+            )
+
+    def load_plan(self, plan_id: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT plan_id,goal,status,task_ids,acceptance_criteria,updated_at "
+                "FROM plans WHERE plan_id=?",
+                (plan_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["task_ids"] = json.loads(result["task_ids"])
+        result["acceptance_criteria"] = json.loads(result["acceptance_criteria"])
         return result
