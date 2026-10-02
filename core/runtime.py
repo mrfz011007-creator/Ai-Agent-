@@ -84,6 +84,7 @@ class AgentRuntime:
             guard=guard,
             task_getter=task_manager.get,
             capability_policy=capability_policy,
+            task_tool_call_consumer=task_manager.consume_tool_call,
         )
         build_manager = BuildManager(artifact_manager, tool_router)
         test_manager = TestManager(tool_router)
