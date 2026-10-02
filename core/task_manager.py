@@ -147,6 +147,12 @@ class TaskManager:
                     raise ValueError(f"Verification evidence not found: {evidence_id}")
                 if evidence["task_id"] != task_id:
                     raise ValueError(f"Verification evidence belongs to another task: {evidence_id}")
+                expected_attempt_id = f"{task_id}:attempt:{task.attempts}"
+                if evidence["attempt_id"] != expected_attempt_id:
+                    raise ValueError(
+                        "Verification evidence must belong to the current task attempt "
+                        f"({expected_attempt_id}): {evidence_id}"
+                    )
                 if not evidence["success"]:
                     raise ValueError(f"Verification evidence is unsuccessful: {evidence_id}")
         task.complete(verification)
