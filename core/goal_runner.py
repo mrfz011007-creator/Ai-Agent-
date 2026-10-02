@@ -54,7 +54,7 @@ class GoalRunner:
                 graph,
                 model_call=self.runtime.model_gateway.generate_text,
                 execute_proposal=self.runtime.execute_model_proposal,
-                verify_execution=self.runtime.verify_tool_execution,
+                verify_execution=self.runtime.verify_execution_evidence,
                 handle_model_failure=self.runtime.handle_model_failure,
             )
             status = self._status_for_graph(graph)
