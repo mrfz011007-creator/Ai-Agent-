@@ -385,6 +385,7 @@ def recall(
         return {"status": "not_found", "success": True, "key": key}
     record = records[0]
     record["last_accessed_at"] = _utc_now()
+    save_memory(store)
     return {
         "status": "success",
         "success": True,
