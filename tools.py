@@ -161,7 +161,12 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
     path = path_aman(nama)
     raw = path.read_bytes()
     if len(raw) > _max_file_bytes():
-        raise ValueError("FILE_TOO_LARGE")
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "File melebihi batas ukuran patch.",
+        }
     text = raw.decode("utf-8")
     current_sha256 = _sha256_text(text)
     if expected_sha256 is not None and current_sha256 != expected_sha256:
