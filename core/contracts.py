@@ -170,6 +170,8 @@ class Task:
             raise ValueError(f"Invalid transition: {self.status} -> COMPLETED")
         if verification.status != VerificationStatus.PASSED:
             raise ValueError("COMPLETED requires VerificationStatus.PASSED")
+        if not verification.evidence_ids:
+            raise ValueError("COMPLETED requires evidence-backed verification")
         if verification.authority != "acceptance_gate":
             raise ValueError("COMPLETED requires acceptance-gate authority")
         if not verification.evidence_ids:
