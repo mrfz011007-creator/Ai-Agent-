@@ -123,6 +123,8 @@ class AgentRuntime:
         *,
         plan_id: str | None = None,
         max_steps: int | None = None,
+        project_id: str | None = None,
+        context=None,
     ):
         """Execute a complete bounded goal through the persistent GoalRunner."""
         from core.goal_runner import GoalRunner
@@ -130,6 +132,8 @@ class AgentRuntime:
             goal,
             plan_id=plan_id,
             max_steps=max_steps,
+            project_id=project_id,
+            context=context,
         )
 
     def resume_goal(
