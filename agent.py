@@ -126,10 +126,12 @@ def main():
                                 evidence_ids,
                             )
                         else:
-                            runtime.task_manager.fail(
-                                execution_task_id,
-                                "No tool evidence produced",
-                            )
+                            task = runtime.task_manager.get(execution_task_id)
+                            if task is not None and task.status.value == "RUNNING":
+                                runtime.task_manager.fail(
+                                    execution_task_id,
+                                    "No tool evidence produced",
+                                )
                     break
 
                 function_response_parts = []
@@ -189,6 +191,14 @@ def main():
                             response=hasil
                         )
                     )
+
+                    current_task = runtime.task_manager.get(execution_task_id)
+                    if current_task is not None and current_task.status.value != "RUNNING":
+                        print(
+                            f"\n⏸️ Task dihentikan oleh recovery controller: "
+                            f"{current_task.status.value}"
+                        )
+                        break
 
                 memory.add_tool_response(
                     function_response_parts
