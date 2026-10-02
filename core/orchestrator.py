@@ -119,6 +119,7 @@ class Orchestrator:
         execute_proposal,
         verify_execution,
         handle_model_failure=None,
+        tool_catalog=None,
     ) -> Task | None:
         """Execute one task from model intent through runtime authorization and a completion gate."""
         task = self.start_next(graph)
@@ -126,7 +127,7 @@ class Orchestrator:
             return None
         attempt_id = f"{task.task_id}:attempt:{task.attempts}"
         try:
-            proposal = ModelExecutionService(model_call).propose(task.title)
+            proposal = ModelExecutionService(model_call, tool_catalog=tool_catalog).propose(task.title)
             result = execute_proposal(
                 proposal,
                 task_id=task.task_id,
@@ -195,6 +196,7 @@ class Orchestrator:
         verify_execution,
         max_steps: int | None = None,
         handle_model_failure=None,
+        tool_catalog=None,
     ) -> tuple[Task, ...]:
         """Run a bounded model-driven task graph until blocked or complete."""
         completed = []
@@ -208,6 +210,7 @@ class Orchestrator:
                 execute_proposal=execute_proposal,
                 verify_execution=verify_execution,
                 handle_model_failure=handle_model_failure,
+                tool_catalog=tool_catalog,
             )
             if task is None or task.status != TaskStatus.COMPLETED:
                 break
