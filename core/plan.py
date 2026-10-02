@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any, Iterable, Mapping
 
 from core.contracts import Task, TaskStatus
+from core.execution_contract import ExecutionContract, ExecutionContractError
 
 
 class PlanStatus(str, Enum):
@@ -145,28 +146,81 @@ class Planner:
 class PlanDecoder:
     """Convert untrusted model output into a validated PlanProposal."""
 
-    @staticmethod
-    def from_mapping(payload: Mapping[str, Any]) -> PlanProposal:
+    _SAFE_READ_ONLY_TOOLS = (
+        "lihat",
+        "lokasi",
+        "siapa",
+        "cari_teks",
+        "baca_file",
+        "recall",
+        "search_memory",
+    )
+
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, Any]) -> PlanProposal:
+        if not isinstance(payload, Mapping):
+            raise PlanGraphError("Model plan must be an object")
+
         goal = payload.get("goal")
         raw_tasks = payload.get("tasks")
         criteria = payload.get("acceptance_criteria", ())
+
         if not isinstance(goal, str) or not goal.strip():
             raise PlanGraphError("Model plan goal must be a non-empty string")
-        if not isinstance(raw_tasks, list):
-            raise PlanGraphError("Model plan tasks must be a list")
-        if not isinstance(criteria, (list, tuple)) or not all(isinstance(item, str) and item.strip() for item in criteria):
+        if not isinstance(raw_tasks, list) or not raw_tasks:
+            raise PlanGraphError("Model plan tasks must be a non-empty list")
+        if not isinstance(criteria, (list, tuple)) or not all(
+            isinstance(item, str) and item.strip() for item in criteria
+        ):
             raise PlanGraphError("Model acceptance criteria must be non-empty strings")
+
         tasks = []
         for item in raw_tasks:
             if not isinstance(item, Mapping):
                 raise PlanGraphError("Each model task must be an object")
-            task_id, title = item.get("task_id"), item.get("title")
+
+            task_id = item.get("task_id")
+            title = item.get("title")
             dependencies = item.get("dependencies", ())
+
             if not isinstance(task_id, str) or not task_id.strip():
                 raise PlanGraphError("Task ID must be a non-empty string")
             if not isinstance(title, str) or not title.strip():
                 raise PlanGraphError(f"Task title missing: {task_id}")
-            if not isinstance(dependencies, (list, tuple)) or not all(isinstance(dep, str) and dep.strip() for dep in dependencies):
+            if not isinstance(dependencies, (list, tuple)) or not all(
+                isinstance(dep, str) and dep.strip() for dep in dependencies
+            ):
                 raise PlanGraphError(f"Invalid dependencies: {task_id}")
-            tasks.append(Task(task_id=task_id, title=title, dependencies=list(dependencies)))
-        return PlanProposal(goal=goal.strip(), tasks=tuple(tasks), acceptance_criteria=tuple(item.strip() for item in criteria))
+
+            contract_payload = item.get("execution_contract")
+            if contract_payload is None:
+                execution_contract = ExecutionContract(
+                    objective=title.strip(),
+                    allowed_tools=cls._SAFE_READ_ONLY_TOOLS,
+                    allowed_capabilities=("workspace.read",),
+                    completion_conditions=("Successful execution evidence exists",),
+                )
+            else:
+                try:
+                    execution_contract = ExecutionContract.from_dict(contract_payload)
+                except (ExecutionContractError, TypeError, ValueError) as error:
+                    raise PlanGraphError(
+                        f"Invalid execution contract: {task_id}: {error}"
+                    ) from error
+
+            tasks.append(
+                Task(
+                    task_id=task_id.strip(),
+                    title=title.strip(),
+                    dependencies=list(dependencies),
+                    execution_contract=execution_contract,
+                )
+            )
+
+        proposal = PlanProposal(
+            goal=goal.strip(),
+            tasks=tuple(tasks),
+            acceptance_criteria=tuple(item.strip() for item in criteria),
+        )
+        proposal.graph()
+        return proposal
