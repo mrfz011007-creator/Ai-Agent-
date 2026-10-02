@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from core.contracts import Task, TaskStatus, VerificationResult
 from core.plan import Plan, PlanProposal, Planner, TaskGraph, PlanStatus
 from core.task_manager import TaskManager
+from core.state_store import StateStore
 from core.model_execution import ModelExecutionService
 from core.model_planner import ModelPlanService
 
@@ -15,6 +16,7 @@ class Orchestrator:
 
     task_manager: TaskManager
     planner: Planner
+    store: StateStore | None = None
 
     def materialize(self, proposal: PlanProposal, plan_id: str) -> tuple[Plan, TaskGraph]:
         plan = self.planner.materialize(proposal, plan_id)
@@ -24,6 +26,48 @@ class Orchestrator:
                 raise ValueError(f"Task already exists: {task.task_id}")
         for task in graph.tasks.values():
             self.task_manager.create(task)
+        self._persist_plan(plan)
+        return plan, graph
+
+    def _persist_plan(self, plan: Plan) -> None:
+        if self.store is None:
+            return
+        self.store.save_plan(
+            plan.plan_id,
+            plan.goal,
+            plan.status.value,
+            plan.task_ids,
+            plan.acceptance_criteria,
+        )
+
+    def persist_plan(self, plan: Plan) -> None:
+        self._persist_plan(plan)
+
+    def restore_plan(self, plan_id: str) -> Plan | None:
+        if self.store is None:
+            return None
+        saved = self.store.load_plan(plan_id)
+        if saved is None:
+            return None
+        return Plan(
+            plan_id=saved["plan_id"],
+            goal=saved["goal"],
+            task_ids=tuple(saved["task_ids"]),
+            status=PlanStatus(saved["status"]),
+            acceptance_criteria=tuple(saved["acceptance_criteria"]),
+        )
+
+    def restore_graph(self, plan_id: str) -> tuple[Plan, TaskGraph] | None:
+        plan = self.restore_plan(plan_id)
+        if plan is None:
+            return None
+        graph = TaskGraph()
+        for task_id in plan.task_ids:
+            task = self.task_manager.restore(task_id)
+            if task is None:
+                raise RuntimeError(f"Persisted task missing: {task_id}")
+            graph.add(task)
+        graph.validate()
         return plan, graph
 
     def next_ready(self, graph: TaskGraph) -> Task | None:
