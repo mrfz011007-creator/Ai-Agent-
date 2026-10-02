@@ -172,3 +172,71 @@ def test_tool_router_bounds_total_structured_output(monkeypatch, tmp_path):
     assert result.success is True
     assert result.data["output_truncated"] is True
     assert sum(len(item) for item in result.data["items"]) <= 100
+
+
+
+def test_router_inspect_edit_rejects_stale_snapshot_and_records_evidence(monkeypatch, tmp_path):
+    from core.budget import Budget, BudgetManager
+    from core.contracts import ToolRequest
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+    from verification.evidence import EvidenceStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    target = workspace / "app.py"
+    target.write_text("version = 1\\n", encoding="utf-8")
+
+    registry = {
+        "baca_file": {"func": tools.baca_file, "permission": "safe"},
+        "patch_file": {"func": tools.patch_file, "permission": "safe"},
+    }
+    evidence = EvidenceStore()
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=evidence,
+    )
+
+    inspected = router.execute(ToolRequest(
+        tool="baca_file", action="execute", arguments={"nama": "app.py"},
+        task_id="e2e", attempt_id="e2e:attempt:1",
+    ))
+    assert inspected.success is True
+    snapshot_sha = inspected.data["sha256"]
+    assert evidence.get(inspected.evidence_id).success is True
+
+    target.write_text("version = 2\\n", encoding="utf-8")
+    stale = router.execute(ToolRequest(
+        tool="patch_file", action="execute",
+        arguments={
+            "nama": "app.py", "old": "version = 2", "new": "version = 3",
+            "expected_sha256": snapshot_sha,
+        },
+        task_id="e2e", attempt_id="e2e:attempt:1",
+    ))
+    assert stale.success is False
+    assert stale.data["code"] == "FILE_CHANGED"
+    assert target.read_text(encoding="utf-8") == "version = 2\\n"
+    stale_evidence = evidence.get(stale.evidence_id)
+    assert stale_evidence is not None
+    assert stale_evidence.success is False
+    assert stale_evidence.attempt_id == "e2e:attempt:1"
+
+    refreshed = router.execute(ToolRequest(
+        tool="baca_file", action="execute", arguments={"nama": "app.py"},
+        task_id="e2e", attempt_id="e2e:attempt:1",
+    ))
+    applied = router.execute(ToolRequest(
+        tool="patch_file", action="execute",
+        arguments={
+            "nama": "app.py", "old": "version = 2", "new": "version = 3",
+            "expected_sha256": refreshed.data["sha256"],
+        },
+        task_id="e2e", attempt_id="e2e:attempt:1",
+    ))
+    assert applied.success is True
+    assert target.read_text(encoding="utf-8") == "version = 3\\n"
+    assert evidence.get(applied.evidence_id).success is True
