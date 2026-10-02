@@ -129,7 +129,6 @@ class ToolRouter:
             tool=request.tool,
             action=request.action,
             result=result,
-            attempt_id=request.attempt_id,
         )
 
         result.evidence_id = evidence_id
