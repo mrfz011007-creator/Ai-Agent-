@@ -57,3 +57,77 @@ def test_orchestrator_model_loop_runs_one_task_and_verifies():
     assert len(done) == 1
     assert done[0].status == TaskStatus.COMPLETED
     assert runtime.calls[0][0] == "lihat"
+
+
+def test_model_failure_can_pause_task_for_recovery():
+    from core.task_manager import TaskManager
+
+    orchestrator = Orchestrator(TaskManager(), Planner())
+    proposal = orchestrator.planner.propose(
+        "model wait", [Task("wait", "Wait for model")]
+    )
+    _, graph = orchestrator.materialize(proposal, "plan-model-wait")
+    calls = {"count": 0}
+
+    def model_call(_):
+        calls["count"] += 1
+        raise RuntimeError("MODEL_CREDENTIALS_EXHAUSTED")
+
+    def handle_failure(task_id, error):
+        task = orchestrator.task_manager.get(task_id)
+        task.status = TaskStatus.WAITING
+        return type("Decision", (), {"action": "WAIT_FOR_MODEL"})()
+
+    result = orchestrator.run_model_plan(
+        graph,
+        model_call=model_call,
+        execute_proposal=lambda *args, **kwargs: None,
+        verify_execution=lambda **kwargs: None,
+        handle_model_failure=handle_failure,
+        max_steps=1,
+    )
+
+    assert result == ()
+    assert calls["count"] == 1
+    assert graph.tasks["wait"].status == TaskStatus.WAITING
+
+
+def test_recovered_execution_is_verified_against_new_attempt():
+    from core.task_manager import TaskManager
+    from core.contracts import ToolResult
+
+    orchestrator = Orchestrator(TaskManager(), Planner())
+    proposal = orchestrator.planner.propose(
+        "retry", [Task("retry", "Retry command")]
+    )
+    _, graph = orchestrator.materialize(proposal, "plan-retry")
+    attempts = []
+
+    def model_call(_):
+        return '{"tool":"lihat","action":"execute","arguments":{}}'
+
+    def execute_proposal(p, *, task_id, attempt_id):
+        attempts.append(attempt_id)
+        if len(attempts) == 1:
+            task = orchestrator.task_manager.get(task_id)
+            task.status = TaskStatus.WAITING
+            orchestrator.task_manager.retry(task_id)
+        return ToolResult(True, "SUCCESS", p.tool, evidence_id="ev-retry")
+
+    def verify_execution(*, task_id, evidence_ids, expected_attempt_id):
+        assert expected_attempt_id == "retry:attempt:2"
+        return VerificationResult(
+            VerificationStatus.PASSED,
+            "verified",
+            evidence_ids,
+            authority="acceptance_gate",
+        )
+
+    result = orchestrator.run_model_plan(
+        graph,
+        model_call=model_call,
+        execute_proposal=execute_proposal,
+        verify_execution=verify_execution,
+        max_steps=1,
+    )
+    assert result[0].status == TaskStatus.COMPLETED
