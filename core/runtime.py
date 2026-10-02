@@ -256,9 +256,15 @@ class AgentRuntime:
 
     def verify_tool_execution(self, task_id: str, evidence_ids: list[str], expected_attempt_id: str | None = None):
         """Verify execution evidence through the acceptance gate."""
+        task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        if task.execution_contract is None:
+            raise ValueError("Task has no execution contract")
         verification = self.acceptance_gate.verify_execution(
             task_id=task_id,
             evidence_ids=tuple(evidence_ids),
+            completion_conditions=task.execution_contract.completion_conditions,
             expected_attempt_id=expected_attempt_id,
         )
         if verification.status.value != "PASSED":
