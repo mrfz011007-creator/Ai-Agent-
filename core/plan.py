@@ -127,7 +127,11 @@ class Planner:
         goal = goal.strip()
         if not goal:
             raise PlanGraphError("Goal cannot be empty")
-        try:\n            criteria = validate_criteria(tuple(acceptance_criteria))\n        except CriterionValidationError as error:\n            raise PlanGraphError(f"Invalid machine-verifiable acceptance criteria: {error}") from error\n        proposal = PlanProposal(goal, tuple(tasks), criteria)
+        try:
+            criteria = validate_criteria(tuple(acceptance_criteria))
+        except CriterionValidationError as error:
+            raise PlanGraphError(f"Invalid machine-verifiable acceptance criteria: {error}") from error
+        proposal = PlanProposal(goal, tuple(tasks), criteria)
         proposal.graph()
         return proposal
 
