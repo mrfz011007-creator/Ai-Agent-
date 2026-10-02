@@ -74,7 +74,7 @@ class GoalRunner:
                     "result": result.data if result.success else None,
                     "error": result.error,
                 },
-                task_id=task_id, context=context,
+                task_id=task_id, project_id=project_id, context=context,
                 source={"kind": "execution", "ref": result.evidence_id or task_id},
                 provenance={"reason": "bounded task execution result", "task_id": task_id},
                 tags=["execution", "success" if result.success else "failure"],
