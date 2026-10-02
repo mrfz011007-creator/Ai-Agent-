@@ -36,6 +36,7 @@ def test_safe_resume_requires_explicit_reason(tmp_path):
         "R2",
         ReconcileOutcome.SAFE_TO_RESUME,
         "Workspace state matches checkpoint.",
+        evidence_ids=("E-R2",),
     )
     assert result.status == TaskStatus.RUNNING
     assert result.action == "RESUME"
