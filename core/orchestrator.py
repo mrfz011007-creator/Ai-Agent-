@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from core.contracts import Task, TaskStatus, VerificationResult
 from core.plan import Plan, PlanProposal, Planner, TaskGraph
 from core.task_manager import TaskManager
+from core.model_execution import ModelExecutionService
 
 
 @dataclass
@@ -64,6 +65,101 @@ class Orchestrator:
     def pending_dependencies(self, graph: TaskGraph, task_id: str) -> tuple[str, ...]:
         return graph.blocked_by(task_id)
 
+
+
+    def execute_model_step(
+        self,
+        graph: TaskGraph,
+        *,
+        model_call,
+        execute_proposal,
+        verify_execution,
+    ) -> Task | None:
+        """Execute one task from model intent through runtime authorization and a completion gate."""
+        task = self.start_next(graph)
+        if task is None:
+            return None
+        attempt_id = f"{task.task_id}:attempt:{task.attempts}"
+        try:
+            proposal = ModelExecutionService(model_call).propose(task.title)
+            result = execute_proposal(
+                proposal,
+                task_id=task.task_id,
+                attempt_id=attempt_id,
+            )
+        except Exception as error:
+            failed = self.task_manager.fail(task.task_id, str(error))
+            graph.tasks[task.task_id] = failed
+            return failed
+
+        current = self.task_manager.get(task.task_id)
+        if current is None:
+            raise KeyError(task.task_id)
+        if not result.success:
+            if current.status in (TaskStatus.WAITING, TaskStatus.BLOCKED, TaskStatus.FAILED):
+                graph.tasks[task.task_id] = current
+                return current
+            failed = self.task_manager.fail(
+                task.task_id, result.error or result.status
+            )
+            graph.tasks[task.task_id] = failed
+            return failed
+
+        evidence_id = result.evidence_id
+        if not evidence_id:
+            failed = self.task_manager.fail(
+                task.task_id, "Successful execution produced no evidence"
+            )
+            graph.tasks[task.task_id] = failed
+            return failed
+
+        self.task_manager.begin_verification(task.task_id)
+        try:
+            verification = verify_execution(
+                task_id=task.task_id,
+                evidence_ids=(evidence_id,),
+                expected_attempt_id=attempt_id,
+            )
+        except Exception as error:
+            failed = self.task_manager.fail(task.task_id, str(error))
+            graph.tasks[task.task_id] = failed
+            return failed
+
+        if verification.status.value != "PASSED":
+            failed = self.task_manager.fail(task.task_id, verification.reason)
+            graph.tasks[task.task_id] = failed
+            return failed
+
+        completed = self.task_manager.complete_with_gate(task.task_id, verification)
+        graph.tasks[task.task_id] = completed
+        return completed
+
+    def run_model_plan(
+        self,
+        graph: TaskGraph,
+        *,
+        model_call,
+        execute_proposal,
+        verify_execution,
+        max_steps: int | None = None,
+    ) -> tuple[Task, ...]:
+        """Run a bounded model-driven task graph until blocked or complete."""
+        completed = []
+        steps = 0
+        while not self.plan_complete(graph):
+            if max_steps is not None and steps >= max_steps:
+                break
+            task = self.execute_model_step(
+                graph,
+                model_call=model_call,
+                execute_proposal=execute_proposal,
+                verify_execution=verify_execution,
+            )
+            if task is None or task.status != TaskStatus.COMPLETED:
+                break
+            completed.append(task)
+            steps += 1
+        return tuple(completed)
 
     def execute_step(self, graph: TaskGraph, *, execute, verify) -> Task | None:
         """Run exactly one ready task through execution and verification callbacks."""
