@@ -81,3 +81,39 @@ def test_command_output_is_redacted():
     assert result["success"] is True
     assert "AIzaSyA12345678901234567890" not in result["stdout"]
     assert "[REDACTED_SECRET]" in result["stdout"]
+
+
+def test_search_and_exact_patch_are_workspace_bounded(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    from tools import cari_teks, patch_file
+
+    target = workspace / "sample.py"
+    target.write_text("alpha\nbeta\nbeta\n", encoding="utf-8")
+
+    found = cari_teks("beta")
+    assert found["success"] is True
+    assert [item["line"] for item in found["hasil"]] == [2, 3]
+
+    rejected = patch_file("sample.py", "beta", "gamma", expected_count=1)
+    assert rejected["success"] is False
+    assert "beta\nbeta" == target.read_text(encoding="utf-8").strip()
+
+    applied = patch_file("sample.py", "beta", "gamma", expected_count=2)
+    assert applied["success"] is True
+    assert target.read_text(encoding="utf-8") == "alpha\ngamma\ngamma\n"
+
+
+def test_search_does_not_follow_workspace_escape(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("secret-marker", encoding="utf-8")
+    (workspace / "inside.py").write_text("inside-marker", encoding="utf-8")
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    from tools import cari_teks
+
+    assert cari_teks("secret-marker")["hasil"] == []
