@@ -200,3 +200,31 @@ def test_build_artifact_registration_rejects_escape(tmp_path):
             cwd=tmp_path,
             artifact_paths=[tmp_path.parent / "outside.apk"],
         )
+
+def test_rejected_schema_call_does_not_consume_task_quota(tmp_path):
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task(
+        "Q", "quota", status=TaskStatus.READY,
+        execution_contract=ExecutionContract(
+            objective="quota",
+            allowed_tools=("search_memory",),
+            allowed_capabilities=("workspace.read",),
+            max_tool_calls=1,
+            completion_conditions=("evidence exists",),
+        ),
+    ))
+    runtime.task_manager.start("Q")
+
+    bad = runtime.execute_with_recovery(
+        "search_memory", {}, task_id="Q", source="model"
+    )
+    assert bad.status == "schema_invalid"
+    assert runtime.task_manager.get("Q").tool_calls == 0
+
+    good = runtime.execute_with_recovery(
+        "search_memory", {"query": "quota"}, task_id="Q", source="model"
+    )
+    assert good.success
+    assert runtime.task_manager.get("Q").tool_calls == 1
