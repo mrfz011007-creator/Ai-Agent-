@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import shlex
 from pathlib import Path
@@ -125,8 +126,12 @@ def cari_teks(query, pola="*.py"):
     return {"status": "success", "success": True, "query": query, "hasil": hasil}
 
 
-def patch_file(nama, old, new, expected_count=1):
-    """Apply an exact bounded text replacement inside the workspace."""
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
+    """Apply an exact bounded text replacement with optional optimistic locking."""
     if not isinstance(old, str) or not old:
         raise ValueError("Teks lama tidak boleh kosong.")
     if not isinstance(new, str):
@@ -136,6 +141,16 @@ def patch_file(nama, old, new, expected_count=1):
 
     path = path_aman(nama)
     text = path.read_text(encoding="utf-8")
+    current_sha256 = _sha256_text(text)
+    if expected_sha256 is not None and current_sha256 != expected_sha256:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_CHANGED",
+            "pesan": "Patch ditolak: isi file berubah sejak snapshot terakhir.",
+            "current_sha256": current_sha256,
+        }
+
     count = text.count(old)
     if count != expected_count:
         return {
@@ -144,8 +159,14 @@ def patch_file(nama, old, new, expected_count=1):
             "pesan": f"Patch ditolak: ditemukan {count} kecocokan, diharapkan {expected_count}.",
         }
 
-    path.write_text(text.replace(old, new), encoding="utf-8")
-    return {"status": "success", "success": True, "pesan": f"Patch diterapkan: {nama}"}
+    updated_text = text.replace(old, new)
+    path.write_text(updated_text, encoding="utf-8")
+    return {
+        "status": "success",
+        "success": True,
+        "pesan": f"Patch diterapkan: {nama}",
+        "sha256": _sha256_text(updated_text),
+    }
 
 
 def baca_file(nama):
@@ -155,6 +176,8 @@ def baca_file(nama):
             "status": "success",
             "success": True,
             "isi": isi,
+            "sha256": _sha256_text(isi),
+            "size": len(isi.encode("utf-8")),
         }
     except FileNotFoundError:
         return {
@@ -176,9 +199,28 @@ def baca_file(nama):
         }
 
 
-def tulis_file(nama, isi):
+def tulis_file(nama, isi, expected_sha256=None):
     try:
-        path_aman(nama).write_text(isi, encoding="utf-8")
+        path = path_aman(nama)
+        if expected_sha256 is not None:
+            if not path.exists():
+                return {
+                    "status": "error",
+                    "success": False,
+                    "code": "FILE_CHANGED",
+                    "pesan": "Penulisan ditolak: file yang diharapkan tidak ada.",
+                }
+            current = path.read_text(encoding="utf-8")
+            current_sha256 = _sha256_text(current)
+            if current_sha256 != expected_sha256:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "code": "FILE_CHANGED",
+                    "pesan": "Penulisan ditolak: isi file berubah sejak snapshot terakhir.",
+                    "current_sha256": current_sha256,
+                }
+        path.write_text(isi, encoding="utf-8")
         return {
             "status": "success",
             "success": True,
