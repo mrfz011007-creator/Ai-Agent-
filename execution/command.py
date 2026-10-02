@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -13,7 +14,7 @@ def run_command(
     """Execute one bounded process; authorization is owned by ToolRouter."""
     try:
         completed = subprocess.run(
-            command.split(),
+            shlex.split(command),
             cwd=str(Path(cwd).resolve()),
             capture_output=True,
             text=True,
