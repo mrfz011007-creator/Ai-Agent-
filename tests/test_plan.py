@@ -49,3 +49,27 @@ def test_graph_completion_requires_all_tasks():
     first = graph.add(Task("a", "a", status=TaskStatus.COMPLETED))
     graph.add(Task("b", "b", dependencies=["a"]))
     assert not graph.is_complete()
+
+
+def test_plan_decoder_rejects_malformed_model_plan():
+    from core.plan import PlanDecoder
+    try:
+        PlanDecoder.from_mapping({"goal": "build", "tasks": [{"task_id": "a"}]})
+        assert False, "malformed model plan must be rejected"
+    except PlanGraphError:
+        pass
+
+
+def test_plan_decoder_validates_model_dependencies():
+    from core.plan import PlanDecoder
+    proposal = PlanDecoder.from_mapping({
+        "goal": "build APK",
+        "tasks": [
+            {"task_id": "inspect", "title": "Inspect project"},
+            {"task_id": "build", "title": "Build APK", "dependencies": ["inspect"]},
+        ],
+        "acceptance_criteria": ["APK exists"],
+    })
+    proposal.graph().validate()
+    assert proposal.goal == "build APK"
+    assert proposal.tasks[1].dependencies == ["inspect"]
