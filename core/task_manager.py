@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from core.contracts import VerificationStatus
+from core.contracts import VerificationStatus, VerificationResult
 
 from core.contracts import Task, TaskStatus, VerificationResult
 from core.state_store import StateStore
@@ -32,6 +32,13 @@ class TaskManager:
             return None
         payload = saved["payload"]
         result = payload.get("result")
+        if isinstance(result, dict) and "status" in result and "reason" in result:
+            result = VerificationResult(
+                status=VerificationStatus(result["status"]),
+                reason=result["reason"],
+                evidence_ids=tuple(result.get("evidence_ids", ())),
+                authority=result.get("authority", "verifier"),
+            )
         task = Task(
             task_id=saved["task_id"],
             title=payload["title"],
