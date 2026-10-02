@@ -263,6 +263,7 @@ class Orchestrator:
                 status=PlanStatus.EXECUTING,
                 acceptance_criteria=plan.acceptance_criteria,
             )
+        self._persist_plan(plan)
         return plan, graph, completed
 
     def execute_step(self, graph: TaskGraph, *, execute, verify) -> Task | None:
