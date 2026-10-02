@@ -50,6 +50,22 @@ class StateStore:
                 (task_id, status, attempts, json.dumps(payload, sort_keys=True, default=str)),
             )
 
+    def load_tasks_by_status(self, statuses: list[str]) -> list[dict[str, Any]]:
+        if not statuses:
+            return []
+        placeholders = ",".join("?" for _ in statuses)
+        with self._connect() as db:
+            rows = db.execute(
+                f"SELECT task_id,status,attempts,payload,updated_at FROM tasks WHERE status IN ({placeholders}) ORDER BY updated_at ASC",
+                tuple(statuses),
+            ).fetchall()
+        results = []
+        for row in rows:
+            result = dict(row)
+            result["payload"] = json.loads(result["payload"])
+            results.append(result)
+        return results
+
     def load_task(self, task_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute(
