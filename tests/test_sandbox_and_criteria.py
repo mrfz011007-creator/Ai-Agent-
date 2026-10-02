@@ -102,3 +102,42 @@ def test_workspace_file_tools_enforce_size_limit(tmp_path, monkeypatch):
     assert cari_teks("0", pola="*.txt")["hasil"] == []
     assert patch_file("large.txt", "0", "x")["success"] is False
     assert tulis_file("new.txt", "0123456789")["code"] == "FILE_TOO_LARGE"
+
+
+def test_workspace_file_tools_check_existing_size_before_snapshot_read(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("AI_AGENT_MAX_FILE_BYTES", "8")
+    (tmp_path / "large.txt").write_text("0123456789", encoding="utf-8")
+
+    from tools import patch_file, tulis_file
+
+    assert patch_file(
+        "large.txt", "0", "x", expected_sha256="unused"
+    )["code"] == "FILE_TOO_LARGE"
+    assert tulis_file(
+        "large.txt", "ok", expected_sha256="unused"
+    )["code"] == "FILE_TOO_LARGE"
+
+
+def test_command_timeout_redacts_secret_output(tmp_path):
+    result = run_command(
+        command=(
+            'python3 -c "import time; '
+            'print(\\\"GEMINI_API_KEY_1=TOP-SECRET-VALUE\\\", flush=True); '
+            'time.sleep(2)"'
+        ),
+        cwd=str(tmp_path),
+        timeout=0.2,
+    )
+    assert result["status"] == "TIMEOUT"
+    assert "TOP-SECRET-VALUE" not in result["stdout"]
+    assert "[REDACTED_SECRET]" in result["stdout"]
+
+
+def test_termux_uses_hardened_fallback_before_namespace_layout(monkeypatch, tmp_path):
+    monkeypatch.setenv("PREFIX", "/data/data/com.termux/files/usr")
+
+    from execution.sandbox import SandboxUnavailable, prepare_sandbox
+
+    with pytest.raises(SandboxUnavailable):
+        prepare_sandbox(["python3", "-V"], cwd=str(tmp_path))
