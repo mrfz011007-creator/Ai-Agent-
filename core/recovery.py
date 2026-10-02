@@ -81,7 +81,7 @@ class RecoveryManager:
             reason="Execution state was interrupted and requires reconciliation before retry.",
         )
 
-    def retry_after_failure(self, task_id: str, *, status: str, error: str | None = None) -> RecoveryDecision:
+    def retry_after_failure(self, task_id: str, *, status: str, error: str | None = None, idempotent: bool = False) -> RecoveryDecision:
         task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
         if task is None:
             raise KeyError(f"Unknown task: {task_id}")
@@ -90,6 +90,11 @@ class RecoveryManager:
         failure_class = classify_failure(status, error)
         if failure_class != FailureClass.RETRYABLE:
             return RecoveryDecision(task_id, task.status, task.status, failure_class.value, error or status)
+        if idempotent is not True:
+            return RecoveryDecision(
+                task_id, task.status, task.status, "NO_RETRY",
+                "Automatic retry requires explicit idempotent=True.",
+            )
         if self.budget is None:
             raise RuntimeError("Recovery budget is not configured")
         try:
@@ -184,6 +189,7 @@ class RecoveryController:
         *,
         status: str,
         error: str | None = None,
+        idempotent: bool = False,
     ) -> RecoveryDecision:
         task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
         if task is None:
@@ -192,7 +198,7 @@ class RecoveryController:
         failure_class = classify_failure(status, error)
         if failure_class == FailureClass.RETRYABLE:
             return self.recovery_manager.retry_after_failure(
-                task_id, status=status, error=error
+                task_id, status=status, error=error, idempotent=idempotent
             )
 
         reason = error or status
