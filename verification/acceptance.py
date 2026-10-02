@@ -24,6 +24,31 @@ class AcceptanceGate:
         self.verifier = verifier
         self.artifacts = artifacts
 
+    def verify_execution(
+        self,
+        *,
+        task_id: str,
+        evidence_ids: tuple[str, ...],
+        expected_attempt_id: str | None = None,
+    ) -> VerificationResult:
+        """Acceptance gate for non-build tasks using successful execution evidence."""
+        if not evidence_ids:
+            return VerificationResult(
+                VerificationStatus.FAILED,
+                "No execution evidence supplied",
+            )
+        verification = self.verifier.verify_task_evidence(
+            task_id, evidence_ids, expected_attempt_id
+        )
+        if verification.status != VerificationStatus.PASSED:
+            return verification
+        return VerificationResult(
+            VerificationStatus.PASSED,
+            "Execution evidence verified",
+            verification.evidence_ids,
+            authority="acceptance_gate",
+        )
+
     def verify(
         self,
         *,
