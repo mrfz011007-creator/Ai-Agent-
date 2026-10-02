@@ -13,6 +13,8 @@ from core.recovery import RecoveryManager
 from security.policy import PolicyEngine
 from execution.router import ToolRouter
 from verification.evidence import EvidenceStore
+from verification.artifacts import ArtifactManager
+from verification.build import BuildManager, TestManager
 from registry import TOOL_REGISTRY
 from permissions import minta_konfirmasi
 
@@ -27,6 +29,9 @@ class AgentRuntime:
     budget_manager: BudgetManager
     policy_engine: PolicyEngine
     tool_router: ToolRouter
+    artifact_manager: ArtifactManager
+    build_manager: BuildManager
+    test_manager: TestManager
 
     @classmethod
     def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":
@@ -39,6 +44,9 @@ class AgentRuntime:
         )
         evidence_store = EvidenceStore(state_store)
         recovery_manager = RecoveryManager(task_manager, evidence_store)
+        artifact_manager = ArtifactManager(state_store)
+        build_manager = BuildManager(artifact_manager)
+        test_manager = TestManager()
         budget_manager = BudgetManager(Budget())
         policy_engine = PolicyEngine(TOOL_REGISTRY.get)
         tool_router = ToolRouter(
@@ -57,6 +65,9 @@ class AgentRuntime:
             budget_manager=budget_manager,
             policy_engine=policy_engine,
             tool_router=tool_router,
+            artifact_manager=artifact_manager,
+            build_manager=build_manager,
+            test_manager=test_manager,
         )
 
     def recover_task(self, task_id: str):
