@@ -5,6 +5,7 @@ from enum import Enum
 
 from core.contracts import TaskStatus
 from core.task_manager import TaskManager
+from verification.evidence import EvidenceStore
 
 
 class ReconcileOutcome(str, Enum):
@@ -28,8 +29,9 @@ class RecoveryManager:
 
     INTERRUPTED = (TaskStatus.RUNNING.value, TaskStatus.VERIFYING.value)
 
-    def __init__(self, task_manager: TaskManager):
+    def __init__(self, task_manager: TaskManager, evidence_store: EvidenceStore | None = None):
         self.task_manager = task_manager
+        self.evidence_store = evidence_store
 
     def recover_task(self, task_id: str) -> RecoveryDecision | None:
         task = self.task_manager.restore(task_id)
@@ -66,6 +68,7 @@ class RecoveryManager:
         task_id: str,
         outcome: ReconcileOutcome,
         reason: str,
+        evidence_ids: tuple[str, ...] = (),
     ) -> RecoveryDecision:
         task = self.task_manager.get(task_id)
         if task is None:
@@ -82,6 +85,11 @@ class RecoveryManager:
             raise ValueError("Reconciliation requires evidence-backed reason")
 
         if outcome in (ReconcileOutcome.SAFE_TO_RESUME, ReconcileOutcome.SAFE_TO_RETRY):
+            if not evidence_ids or self.evidence_store is None:
+                raise ValueError("Safe reconciliation requires persistent evidence IDs")
+            evidence = [self.evidence_store.get(eid) for eid in evidence_ids]
+            if any(item is None or not item.success for item in evidence):
+                raise ValueError("Safe reconciliation requires successful evidence")
             task = self.task_manager.resume(task_id)
             action = "RESUME" if outcome == ReconcileOutcome.SAFE_TO_RESUME else "RETRY"
             return RecoveryDecision(
