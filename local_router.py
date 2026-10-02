@@ -1,122 +1,42 @@
-from intent_router import (
-    deteksi_intent,
-)
-
-from registry import (
-    get_tool_function,
-)
+from intent_router import deteksi_intent
+from core.runtime import execute_tool
 
 
-# ============================================================
-# EKSEKUSI TOOL LOKAL
-# ============================================================
-
-def jalankan_tool_lokal(
-    nama_tool,
-    args
-):
-    """
-    Menjalankan tool lokal melalui
-    Tool Registry.
-    """
-
-    tool = get_tool_function(
-        nama_tool
+def jalankan_tool_lokal(nama_tool, args):
+    result = execute_tool(
+        nama_tool,
+        args,
+        source="local_router",
     )
 
-    if tool is None:
+    payload = {
+        "status": "local_" + result.status,
+        "tool": result.tool,
+    }
 
-        return {
-            "status": "error",
-            "pesan": (
-                f"Tool lokal tidak ditemukan: "
-                f"{nama_tool}"
-            )
-        }
+    if result.data is not None:
+        payload["hasil"] = result.data
 
-    try:
+    if result.error:
+        payload["pesan"] = result.error
 
-        hasil = tool(
-            **args
-        )
+    if result.evidence_id:
+        payload["evidence_id"] = result.evidence_id
 
-        return {
-            "status": "local_success",
-            "tool": nama_tool,
-            "hasil": hasil
-        }
+    return payload
 
-    except Exception as error:
-
-        return {
-            "status": "local_error",
-            "tool": nama_tool,
-            "pesan": str(error)
-        }
-
-
-# ============================================================
-# LOCAL-FIRST ENTRY POINT
-# ============================================================
 
 def jalankan_lokal(perintah):
-    """
-    Menjalankan perintah menggunakan
-    Intent Router.
-
-    Alur:
-
-        perintah
-            ↓
-        deteksi_intent()
-            ↓
-        intent ditemukan
-            ↓
-        tool lokal
-            ↓
-        hasil
-
-    Jika intent tidak ditemukan:
-
-        return None
-
-    agar Agent dapat meneruskannya
-    ke Gemini.
-    """
-
-    hasil_intent = deteksi_intent(
-        perintah
-    )
-
-    # ========================================================
-    # TIDAK ADA INTENT
-    # ========================================================
+    hasil_intent = deteksi_intent(perintah)
 
     if hasil_intent is None:
-
         return None
 
-    # ========================================================
-    # INTENT DITEMUKAN
-    # ========================================================
-
     nama_tool = hasil_intent["tool"]
-
     args = {}
 
-    # ========================================================
-    # MEMORY
-    # ========================================================
-
     if hasil_intent["jenis"] == "memory":
-
-        args = {
-            "key": hasil_intent["key"]
-        }
-
-    # ========================================================
-    # JALANKAN TOOL
-    # ========================================================
+        args = {"key": hasil_intent["key"]}
 
     return jalankan_tool_lokal(
         nama_tool,
