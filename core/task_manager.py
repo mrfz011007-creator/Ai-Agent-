@@ -89,6 +89,12 @@ class TaskManager:
         self._checkpoint(task, event="failed", reason=reason)
         return task
 
+    def persist(self, task_id: str) -> None:
+        self._persist(self._require(task_id))
+
+    def checkpoint(self, task_id: str, **payload) -> None:
+        self._checkpoint(self._require(task_id), **payload)
+
     def _require(self, task_id: str) -> Task:
         task = self.get(task_id)
         if task is None:
