@@ -93,21 +93,46 @@ class ToolRouter:
             data = function(**dict(request.arguments))
             safe_data = redact_value(data)
             max_output = self._budget.budget.max_output_chars
+            remaining = max_output
             output_truncated = False
+            max_items = 1000
 
             def bound(value):
-                nonlocal output_truncated
+                nonlocal remaining, output_truncated
+                if remaining <= 0:
+                    output_truncated = True
+                    return "[OUTPUT_TRUNCATED]"
                 if isinstance(value, str):
-                    if len(value) > max_output:
+                    if len(value) > remaining:
                         output_truncated = True
-                        return value[:max_output]
+                        result = value[:remaining]
+                        remaining = 0
+                        return result
+                    remaining -= len(value)
                     return value
                 if isinstance(value, dict):
-                    return {key: bound(item) for key, item in value.items()}
+                    result = {}
+                    for index, (key, item) in enumerate(value.items()):
+                        if index >= max_items or remaining <= 0:
+                            output_truncated = True
+                            break
+                        bounded = bound(item)
+                        result[key] = bounded
+                    if len(value) > max_items:
+                        output_truncated = True
+                    return result
                 if isinstance(value, list):
-                    return [bound(item) for item in value]
+                    result = []
+                    for index, item in enumerate(value):
+                        if index >= max_items or remaining <= 0:
+                            output_truncated = True
+                            break
+                        result.append(bound(item))
+                    if len(value) > max_items:
+                        output_truncated = True
+                    return result
                 if isinstance(value, tuple):
-                    return tuple(bound(item) for item in value)
+                    return tuple(bound(item) for item in value[:max_items])
                 return value
 
             safe_data = bound(safe_data)
