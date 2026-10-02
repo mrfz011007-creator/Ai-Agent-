@@ -59,3 +59,75 @@ def test_model_plan_has_bounded_task_count():
         assert False, "oversized model plan must be rejected"
     except PlanGraphError:
         pass
+
+
+def test_model_plan_bounds_goal_and_task_metadata():
+    from core.plan import MAX_GOAL_CHARS, MAX_TASK_ID_CHARS, MAX_TASK_TITLE_CHARS, PlanDecoder
+
+    base = {
+        "goal": "g",
+        "tasks": [{"task_id": "task", "title": "title", "dependencies": []}],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
+    }
+
+    for field, limit in (
+        ("goal", MAX_GOAL_CHARS),
+    ):
+        payload = dict(base)
+        payload[field] = "x" * (limit + 1)
+        try:
+            PlanDecoder.from_mapping(payload)
+            assert False, f"{field} over limit must be rejected"
+        except PlanGraphError:
+            pass
+
+    for field, limit in (
+        ("task_id", MAX_TASK_ID_CHARS),
+        ("title", MAX_TASK_TITLE_CHARS),
+    ):
+        task = dict(base["tasks"][0])
+        task[field] = "x" * (limit + 1)
+        payload = dict(base)
+        payload["tasks"] = [task]
+        try:
+            PlanDecoder.from_mapping(payload)
+            assert False, f"{field} over limit must be rejected"
+        except PlanGraphError:
+            pass
+
+
+def test_model_planner_bounds_historical_memory_context():
+    from core.model_planner import MAX_PLANNER_CONTEXT_CHARS, ModelPlanService
+
+    class Memory:
+        def retrieve(self, *args, **kwargs):
+            return {"results": [{
+                "record": {
+                    "type": "experience",
+                    "key": "large",
+                    "value": "x" * (MAX_PLANNER_CONTEXT_CHARS * 2),
+                    "project_id": None,
+                    "task_id": None,
+                    "context": {},
+                    "source": {"kind": "test", "ref": "memory"},
+                    "provenance": {},
+                    "importance": 0.5,
+                    "confidence": 0.5,
+                    "retention": "normal",
+                    "summary": "large",
+                    "version": 1,
+                    "updated_at": "now",
+                    "tags": [],
+                }
+            ]}
+
+    seen = {}
+
+    def model_call(prompt):
+        seen["prompt"] = prompt
+        return '{"goal":"bounded","tasks":[{"task_id":"inspect","title":"Inspect","dependencies":[]}],"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+
+    proposal = ModelPlanService(model_call, memory=Memory()).propose("bounded")
+    assert proposal.goal == "bounded"
+    assert len(seen["prompt"]) < 30000
+    assert "[MEMORY_CONTEXT_TRUNCATED]" in seen["prompt"]
