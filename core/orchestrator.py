@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.contracts import Task, TaskStatus, VerificationResult
-from core.plan import Plan, PlanProposal, Planner, TaskGraph
+from core.plan import Plan, PlanProposal, Planner, TaskGraph, PlanStatus
 from core.task_manager import TaskManager
 from core.model_execution import ModelExecutionService
 
@@ -170,6 +170,55 @@ class Orchestrator:
             completed.append(task)
             steps += 1
         return tuple(completed)
+
+    def run_goal(
+        self,
+        goal: str,
+        *,
+        plan_id: str,
+        plan_proposer,
+        model_call,
+        execute_proposal,
+        verify_execution,
+        max_steps: int | None = None,
+        handle_model_failure=None,
+    ) -> tuple[Plan, TaskGraph, tuple[Task, ...]]:
+        """Plan and execute one bounded goal without granting model output authority."""
+        proposal = plan_proposer.propose(goal)
+        plan, graph = self.materialize(proposal, plan_id)
+        completed = self.run_model_plan(
+            graph,
+            model_call=model_call,
+            execute_proposal=execute_proposal,
+            verify_execution=verify_execution,
+            max_steps=max_steps,
+            handle_model_failure=handle_model_failure,
+        )
+        if self.plan_complete(graph):
+            plan = Plan(
+                plan_id=plan.plan_id,
+                goal=plan.goal,
+                task_ids=plan.task_ids,
+                status=PlanStatus.COMPLETED,
+                acceptance_criteria=plan.acceptance_criteria,
+            )
+        elif graph.failed():
+            plan = Plan(
+                plan_id=plan.plan_id,
+                goal=plan.goal,
+                task_ids=plan.task_ids,
+                status=PlanStatus.FAILED,
+                acceptance_criteria=plan.acceptance_criteria,
+            )
+        elif graph.active():
+            plan = Plan(
+                plan_id=plan.plan_id,
+                goal=plan.goal,
+                task_ids=plan.task_ids,
+                status=PlanStatus.EXECUTING,
+                acceptance_criteria=plan.acceptance_criteria,
+            )
+        return plan, graph, completed
 
     def execute_step(self, graph: TaskGraph, *, execute, verify) -> Task | None:
         """Run exactly one ready task through execution and verification callbacks."""
