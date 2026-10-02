@@ -71,11 +71,29 @@ class ToolRouter:
                 )
 
         arguments = dict(request.arguments)
-        if request.tool == "run_command" and "timeout" in arguments:
-            timeout = arguments["timeout"]
-            if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
-                return ToolResult(False, "schema_invalid", request.tool, error="INVALID_TIMEOUT")
-            arguments["timeout"] = min(float(timeout), self._budget.remaining_runtime_seconds)
+        if request.tool == "run_command":
+            remaining_runtime = self._budget.remaining_runtime_seconds
+            if remaining_runtime <= 0:
+                return ToolResult(
+                    False,
+                    "budget_exceeded",
+                    request.tool,
+                    error="RUNTIME_BUDGET_EXCEEDED",
+                )
+            timeout = arguments.get("timeout", remaining_runtime)
+            if (
+                isinstance(timeout, bool)
+                or not isinstance(timeout, (int, float))
+                or not math.isfinite(timeout)
+                or timeout <= 0
+            ):
+                return ToolResult(
+                    False,
+                    "schema_invalid",
+                    request.tool,
+                    error="INVALID_TIMEOUT",
+                )
+            arguments["timeout"] = min(float(timeout), remaining_runtime)
 
         schema = metadata.get("parameters")
         if schema is not None:
