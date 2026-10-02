@@ -212,7 +212,7 @@ def test_rejected_schema_call_does_not_consume_task_quota(tmp_path):
             allowed_tools=("search_memory",),
             allowed_capabilities=("workspace.read",),
             max_tool_calls=1,
-            completion_conditions=("evidence exists",),
+            completion_conditions=({"type": "evidence_success", "task_id": "Q"},),
         ),
     ))
     runtime.task_manager.start("Q")
