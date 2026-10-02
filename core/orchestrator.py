@@ -6,6 +6,7 @@ from core.contracts import Task, TaskStatus, VerificationResult
 from core.plan import Plan, PlanProposal, Planner, TaskGraph, PlanStatus
 from core.task_manager import TaskManager
 from core.model_execution import ModelExecutionService
+from core.model_planner import ModelPlanService
 
 
 @dataclass
