@@ -125,6 +125,7 @@ class ToolRouter:
         self._evidence.record(
             evidence_id=evidence_id,
             task_id=request.task_id,
+            attempt_id=request.attempt_id,
             tool=request.tool,
             action=request.action,
             result=result,
