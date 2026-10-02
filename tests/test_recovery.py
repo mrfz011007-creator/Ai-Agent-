@@ -141,7 +141,7 @@ def test_transient_failure_consumes_recovery_budget_and_retries(tmp_path):
     recovery = RecoveryManager(manager, EvidenceStore(store), budget)
 
     result = recovery.retry_after_failure(
-        "R6", status="error", error="connection temporarily unavailable"
+        "R6", status="error", error="connection temporarily unavailable", idempotent=True
     )
 
     assert result.action == "RETRY"
@@ -149,6 +149,24 @@ def test_transient_failure_consumes_recovery_budget_and_retries(tmp_path):
     assert manager.get("R6").attempts == 2
     assert budget.budget.recovery_cycles == 1
 
+
+
+def test_recovery_manager_does_not_retry_without_explicit_idempotency(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    task = manager.create(Task("R11", "no implicit replay"))
+    manager.start("R11")
+    budget = BudgetManager(Budget(max_recovery_cycles=1))
+    recovery = RecoveryManager(manager, EvidenceStore(store), budget)
+
+    result = recovery.retry_after_failure(
+        "R11", status="timeout", error="connection timed out"
+    )
+
+    assert result.action == "NO_RETRY"
+    assert manager.get("R11").attempts == 1
+    assert manager.get("R11").status == TaskStatus.RUNNING
+    assert budget.budget.recovery_cycles == 0
 
 def test_non_retryable_failure_does_not_retry(tmp_path):
     store = StateStore(tmp_path / "state.sqlite3")
@@ -178,7 +196,7 @@ def test_recovery_budget_exhaustion_fails_task(tmp_path):
     recovery = RecoveryManager(manager, EvidenceStore(store), budget)
 
     result = recovery.retry_after_failure(
-        "R8", status="timeout", error="timed out"
+        "R8", status="timeout", error="timed out", idempotent=True
     )
 
     assert result.action == "BLOCK"
