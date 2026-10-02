@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from typing import Callable
 
@@ -75,10 +76,17 @@ class ToolRouter:
             except RuntimeError as error:
                 return ToolResult(False, "task_limit_exceeded", request.tool, error=str(error))
 
+        arguments = dict(request.arguments)
+        if request.tool == "run_command" and "timeout" in arguments:
+            timeout = arguments["timeout"]
+            if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+                return ToolResult(False, "schema_invalid", request.tool, error="INVALID_TIMEOUT")
+            arguments["timeout"] = min(float(timeout), self._budget.remaining_runtime_seconds)
+
         schema = metadata.get("parameters")
         if schema is not None:
             try:
-                validate_tool_arguments(schema, request.arguments)
+                validate_tool_arguments(schema, arguments)
             except SchemaValidationError as error:
                 return ToolResult(
                     False,
@@ -91,7 +99,7 @@ class ToolRouter:
             PolicyContext(
                 tool=request.tool,
                 action=request.action,
-                arguments=request.arguments,
+                arguments=arguments,
                 source=request.source,
                 task_id=request.task_id,
             )
@@ -102,7 +110,7 @@ class ToolRouter:
 
         if policy.decision == Decision.ASK:
             if self._confirmation is None or not self._confirmation(
-                request.tool, dict(request.arguments)
+                request.tool, arguments
             ):
                 return ToolResult(
                     False,
@@ -114,7 +122,7 @@ class ToolRouter:
         if self._guard is not None:
             guard = self._guard.check(
                 tool=request.tool,
-                arguments=dict(request.arguments),
+                arguments=arguments,
             )
             if not guard.allowed:
                 return ToolResult(
@@ -141,7 +149,7 @@ class ToolRouter:
         evidence_id = f"ev-{uuid.uuid4().hex[:12]}"
 
         try:
-            data = function(**dict(request.arguments))
+            data = function(**arguments)
             safe_data = redact_value(data)
             max_output = self._budget.budget.max_output_chars
             remaining = max_output
@@ -203,7 +211,7 @@ class ToolRouter:
                     )),
                 )
             elif isinstance(data, str) and len(data) > self._budget.budget.max_output_chars:
-                data = data[: self._budget.budget.max_output_chars]
+                data = safe_data[: self._budget.budget.max_output_chars]
                 result = ToolResult(
                     True,
                     "success",
