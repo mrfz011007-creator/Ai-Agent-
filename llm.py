@@ -1,5 +1,3 @@
-import os
-from google import genai
 from google.genai import types
 
 from registry import TOOL_REGISTRY
@@ -75,42 +73,29 @@ def buat_tool_definitions():
 
 
 def tanya_gemini(pertanyaan, tools):
-    """Send one bounded model request through the provider gateway."""
-
-    def invoke(client):
-        return client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=pertanyaan,
-            config=types.GenerateContentConfig(
-                tools=tools,
-                system_instruction=SYSTEM_INSTRUCTION,
-                automatic_function_calling=(
-                    types.AutomaticFunctionCallingConfig(disable=True)
-                ),
-            ),
-        )
-
-    return get_runtime().model_gateway.call(invoke)
+    """Generate one conversational response through the single model gateway."""
+    config = types.GenerateContentConfig(
+        tools=tools,
+        system_instruction=SYSTEM_INSTRUCTION,
+        automatic_function_calling=(
+            types.AutomaticFunctionCallingConfig(disable=True)
+        ),
+    )
+    return get_runtime().model_gateway.generate(
+        contents=pertanyaan,
+        config=config,
+    )
 
 
 def propose_plan_gemini(goal):
-    """Ask Gemini for a JSON-only plan; runtime validation remains authoritative."""
-    def invoke(client):
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=goal,
-            config=types.GenerateContentConfig(
-                system_instruction=(
-                    "Return ONLY a JSON plan with keys goal, tasks, "
-                    "acceptance_criteria. Each task has task_id, title, "
-                    "dependencies. Do not include commands, tool arguments, "
-                    "secrets, markdown, or executable instructions."
-                ),
-                response_mime_type="application/json",
-                automatic_function_calling=(
-                    types.AutomaticFunctionCallingConfig(disable=True)
-                ),
-            ),
-        )
-        return response.text or ""
-    return get_runtime().model_gateway.call(invoke)
+    """Ask the configured model for a JSON-only plan through the gateway."""
+    return get_runtime().model_gateway.generate_text(
+        prompt=goal,
+        system_instruction=(
+            "Return ONLY a JSON plan with keys goal, tasks, "
+            "acceptance_criteria. Each task has task_id, title, "
+            "dependencies. Do not include commands, tool arguments, "
+            "secrets, markdown, or executable instructions."
+        ),
+        response_mime_type="application/json",
+    )
