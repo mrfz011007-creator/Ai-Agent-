@@ -1,6 +1,7 @@
 import json
 
 from registry import get_tool_permission
+from security.redaction import redact_value
 
 
 def get_permission(nama_tool):
@@ -32,7 +33,7 @@ def minta_konfirmasi(nama_tool, args):
     print(
         "📦 Argumen:",
         json.dumps(
-            args,
+            redact_value(args),
             ensure_ascii=False
         )
     )
