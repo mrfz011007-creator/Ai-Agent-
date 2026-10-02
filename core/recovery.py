@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from core.contracts import TaskStatus
 from core.task_manager import TaskManager
+
+
+class ReconcileOutcome(str, Enum):
+    SAFE_TO_RESUME = "SAFE_TO_RESUME"
+    SAFE_TO_RETRY = "SAFE_TO_RETRY"
+    UNKNOWN = "UNKNOWN"
+    HUMAN_REQUIRED = "HUMAN_REQUIRED"
 
 
 @dataclass(frozen=True)
@@ -16,11 +24,7 @@ class RecoveryDecision:
 
 
 class RecoveryManager:
-    """Reconciles interrupted task state after a process restart.
-
-    Interrupted execution is never resumed blindly. RUNNING and VERIFYING
-    tasks are moved to WAITING until a later reconciliation/resume decision.
-    """
+    """Reconciles interrupted state without assuming an old process is gone safely."""
 
     INTERRUPTED = (TaskStatus.RUNNING.value, TaskStatus.VERIFYING.value)
 
@@ -55,6 +59,47 @@ class RecoveryManager:
             status=TaskStatus.WAITING,
             action="WAIT_FOR_RECONCILIATION",
             reason="Execution state was interrupted and requires reconciliation before retry.",
+        )
+
+    def reconcile(
+        self,
+        task_id: str,
+        outcome: ReconcileOutcome,
+        reason: str,
+    ) -> RecoveryDecision:
+        task = self.task_manager.get(task_id)
+        if task is None:
+            task = self.task_manager.restore(task_id)
+        if task is None:
+            raise KeyError(f"Unknown task: {task_id}")
+
+        if task.status != TaskStatus.WAITING:
+            raise ValueError(
+                f"Reconciliation requires WAITING task, got {task.status}"
+            )
+
+        if not reason.strip():
+            raise ValueError("Reconciliation requires evidence-backed reason")
+
+        if outcome in (ReconcileOutcome.SAFE_TO_RESUME, ReconcileOutcome.SAFE_TO_RETRY):
+            task = self.task_manager.resume(task_id)
+            action = "RESUME" if outcome == ReconcileOutcome.SAFE_TO_RESUME else "RETRY"
+            return RecoveryDecision(
+                task_id=task_id,
+                previous_status=TaskStatus.WAITING,
+                status=task.status,
+                action=action,
+                reason=reason,
+            )
+
+        task = self.task_manager.block(task_id, reason)
+        action = "BLOCK" if outcome == ReconcileOutcome.UNKNOWN else "HUMAN_REQUIRED"
+        return RecoveryDecision(
+            task_id=task_id,
+            previous_status=TaskStatus.WAITING,
+            status=task.status,
+            action=action,
+            reason=reason,
         )
 
     def recover_interrupted(self) -> list[RecoveryDecision]:
