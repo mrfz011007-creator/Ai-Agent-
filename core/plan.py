@@ -34,6 +34,8 @@ class PlanGraphError(ValueError):
 
 
 MAX_PLAN_TASKS = 50
+MAX_GOAL_CHARS = 12000
+MAX_TASK_ID_CHARS = 200
 MAX_TASK_TITLE_CHARS = 2000
 MAX_TASK_DEPENDENCIES = 50
 MAX_PLAN_CRITERIA = 50
@@ -178,6 +180,8 @@ class PlanDecoder:
 
         if not isinstance(goal, str) or not goal.strip():
             raise PlanGraphError("Model plan goal must be a non-empty string")
+        if len(goal.strip()) > MAX_GOAL_CHARS:
+            raise PlanGraphError(f"Model plan goal exceeds character limit: {MAX_GOAL_CHARS}")
         if not isinstance(raw_tasks, list) or not raw_tasks:
             raise PlanGraphError("Model plan tasks must be a non-empty list")
         if len(raw_tasks) > MAX_PLAN_TASKS:
@@ -203,8 +207,12 @@ class PlanDecoder:
 
             if not isinstance(task_id, str) or not task_id.strip():
                 raise PlanGraphError("Task ID must be a non-empty string")
+            if len(task_id.strip()) > MAX_TASK_ID_CHARS:
+                raise PlanGraphError(f"Task ID exceeds character limit: {MAX_TASK_ID_CHARS}")
             if not isinstance(title, str) or not title.strip():
                 raise PlanGraphError(f"Task title missing: {task_id}")
+            if len(title.strip()) > MAX_TASK_TITLE_CHARS:
+                raise PlanGraphError(f"Task title exceeds character limit: {MAX_TASK_TITLE_CHARS}")
             if not isinstance(dependencies, (list, tuple)) or not all(
                 isinstance(dep, str) and dep.strip() for dep in dependencies
             ):
