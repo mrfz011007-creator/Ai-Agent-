@@ -8,8 +8,8 @@ from core.state_store import StateStore
 
 @dataclass
 class EvidenceStore:
-    records: dict[str, Evidence] = field(default_factory=dict)
     store: StateStore | None = None
+    records: dict[str, Evidence] = field(default_factory=dict)
 
     def record(
         self,
