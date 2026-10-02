@@ -100,6 +100,54 @@ def buat_file(nama):
         }
 
 
+def cari_teks(query, pola="*.py"):
+    """Search text inside workspace files without leaving the workspace."""
+    query = str(query)
+    if not query:
+        raise ValueError("Query pencarian tidak boleh kosong.")
+
+    root = workspace_root()
+    hasil = []
+    for path in root.rglob(pola):
+        if not path.is_file():
+            continue
+        try:
+            resolved = path.resolve()
+            if not (resolved == root or root in resolved.parents):
+                continue
+            text = resolved.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for nomor, line in enumerate(text.splitlines(), 1):
+            if query.lower() in line.lower():
+                hasil.append({"path": str(resolved.relative_to(root)), "line": nomor, "text": line})
+
+    return {"status": "success", "success": True, "query": query, "hasil": hasil}
+
+
+def patch_file(nama, old, new, expected_count=1):
+    """Apply an exact bounded text replacement inside the workspace."""
+    if not isinstance(old, str) or not old:
+        raise ValueError("Teks lama tidak boleh kosong.")
+    if not isinstance(new, str):
+        raise TypeError("Teks baru harus berupa string.")
+    if expected_count < 1:
+        raise ValueError("expected_count harus >= 1.")
+
+    path = path_aman(nama)
+    text = path.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != expected_count:
+        return {
+            "status": "error",
+            "success": False,
+            "pesan": f"Patch ditolak: ditemukan {count} kecocokan, diharapkan {expected_count}.",
+        }
+
+    path.write_text(text.replace(old, new), encoding="utf-8")
+    return {"status": "success", "success": True, "pesan": f"Patch diterapkan: {nama}"}
+
+
 def baca_file(nama):
     try:
         isi = path_aman(nama).read_text(encoding="utf-8")
