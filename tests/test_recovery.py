@@ -32,6 +32,13 @@ def test_safe_resume_requires_explicit_reason(tmp_path):
     recovery = RecoveryManager(manager, EvidenceStore(store))
     recovery.recover_task("R2")
 
+    evidence.record(
+        evidence_id="E-R2",
+        task_id="R2",
+        tool="reconcile",
+        action="inspect",
+        result=ToolResult(True, "SUCCESS", "reconcile"),
+    )
     result = recovery.reconcile(
         "R2",
         ReconcileOutcome.SAFE_TO_RESUME,
