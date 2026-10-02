@@ -172,3 +172,18 @@ def test_bounded_goal_runner_lifecycle_persists_and_resumes(tmp_path):
     assert restored_plan.status.value == "COMPLETED"
     assert all(task.status == TaskStatus.COMPLETED for task in restored_graph.tasks.values())
     assert all(task.result.authority == "acceptance_gate" for task in restored_graph.tasks.values())
+
+
+def test_execution_contract_rejects_circular_task_completion_condition():
+    try:
+        ExecutionContract(
+            objective="build",
+            allowed_tools=("run_command",),
+            allowed_capabilities=("process.execute",),
+            completion_conditions=(
+                {"type": "task_completed", "task_id": "EC-CIRCULAR-1"},
+            ),
+        )
+        assert False, "task_completed is circular as an execution completion condition"
+    except ExecutionContractError as error:
+        assert "task_completed" in str(error)
