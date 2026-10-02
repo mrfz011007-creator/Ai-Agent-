@@ -49,7 +49,7 @@ def validate_criteria(criteria: Sequence[Mapping]) -> tuple[dict, ...]:
     if not isinstance(criteria, (list, tuple)):
         raise CriterionValidationError("Criteria must be a list")
     if not criteria:
-        raise CriterionValidationError("At least one acceptance criterion is required")
+        return ({"type": "all_tasks_completed"},)
     return tuple(validate_criterion(item) for item in criteria)
 
 
