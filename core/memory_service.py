@@ -24,10 +24,12 @@ class MemoryService:
                           context: Mapping[str, Any] | None = None,
                           source: Mapping[str, Any] | str | None = None,
                           provenance: Mapping[str, Any] | None = None,
-                          tags: list[str] | None = None) -> dict[str, Any]:
+                          tags: list[str] | None = None,
+                          project_id: str | None = None) -> dict[str, Any]:
         return remember(
             key, value, memory_type="experience",
-            project_id=self.project_id, task_id=task_id, context=context,
+            project_id=project_id if project_id is not None else self.project_id,
+            task_id=task_id, context=context,
             source=source, provenance=provenance, tags=tags,
         )
 
