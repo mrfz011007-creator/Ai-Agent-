@@ -130,8 +130,12 @@ class RecoveryManager:
             evidence = [self.evidence_store.get(eid) for eid in evidence_ids]
             if any(item is None or not item.success for item in evidence):
                 raise ValueError("Safe reconciliation requires successful evidence")
-            task = self.task_manager.resume(task_id)
-            action = "RESUME" if outcome == ReconcileOutcome.SAFE_TO_RESUME else "RETRY"
+            if outcome == ReconcileOutcome.SAFE_TO_RETRY:
+                task = self.task_manager.retry(task_id)
+                action = "RETRY"
+            else:
+                task = self.task_manager.resume(task_id)
+                action = "RESUME"
             return RecoveryDecision(
                 task_id=task_id,
                 previous_status=TaskStatus.WAITING,
@@ -150,17 +154,21 @@ class RecoveryManager:
             reason=reason,
         )
 
+    def recover_tasks(self, task_ids: tuple[str, ...] | list[str]) -> list[RecoveryDecision]:
+        """Recover only the supplied task IDs; unrelated plans remain untouched."""
+        decisions = []
+        for task_id in task_ids:
+            decision = self.recover_task(task_id)
+            if decision is not None:
+                decisions.append(decision)
+        return decisions
+
     def recover_interrupted(self) -> list[RecoveryDecision]:
         if self.task_manager.store is None:
             return []
 
         rows = self.task_manager.store.load_tasks_by_status(list(self.INTERRUPTED))
-        decisions = []
-        for row in rows:
-            decision = self.recover_task(row["task_id"])
-            if decision is not None:
-                decisions.append(decision)
-        return decisions
+        return self.recover_tasks(tuple(row["task_id"] for row in rows))
 
 
 class RecoveryController:
