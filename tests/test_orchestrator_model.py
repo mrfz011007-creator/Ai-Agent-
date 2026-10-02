@@ -131,3 +131,45 @@ def test_recovered_execution_is_verified_against_new_attempt():
         max_steps=1,
     )
     assert result[0].status == TaskStatus.COMPLETED
+
+
+def test_run_goal_is_bounded_and_reports_completed_plan():
+    from core.task_manager import TaskManager
+    from core.model_planner import ModelPlanService
+
+    orchestrator = Orchestrator(TaskManager(), Planner())
+
+    class StaticPlanner:
+        def propose(self, goal):
+            return Planner().propose(
+                goal,
+                [Task("one", "Do one")],
+                ["one completed"],
+            )
+
+    def model_call(_):
+        return '{"tool":"lihat","action":"execute","arguments":{}}'
+
+    def execute_proposal(p, *, task_id, attempt_id):
+        return ToolResult(True, "SUCCESS", p.tool, evidence_id="ev-one")
+
+    def verify_execution(*, task_id, evidence_ids, expected_attempt_id):
+        return VerificationResult(
+            VerificationStatus.PASSED,
+            "verified",
+            tuple(evidence_ids),
+            authority="acceptance_gate",
+        )
+
+    plan, graph, done = orchestrator.run_goal(
+        "bounded goal",
+        plan_id="goal-1",
+        plan_proposer=StaticPlanner(),
+        model_call=model_call,
+        execute_proposal=execute_proposal,
+        verify_execution=verify_execution,
+        max_steps=1,
+    )
+    assert plan.status.value == "COMPLETED"
+    assert graph.is_complete()
+    assert len(done) == 1
