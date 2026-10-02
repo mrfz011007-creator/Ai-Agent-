@@ -44,7 +44,7 @@ def _terminate_process(process: subprocess.Popen) -> None:
 
 def _redact_output(value: str) -> str:
     import re
-    value = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,;]+", r"\1[REDACTED_SECRET]", value)
+    value = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,;]+", r"\1***REDACTED***", value)
     value = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._\-+/=]{8,}", r"\1[REDACTED_SECRET]", value)
     value = re.sub(r"\bAIza[0-9A-Za-z_-]{20,}\b", "[REDACTED_SECRET]", value)
     value = re.sub(r"\bsk-[A-Za-z0-9_-]{20,}\b", "[REDACTED_SECRET]", value)
