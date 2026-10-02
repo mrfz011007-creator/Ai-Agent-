@@ -63,6 +63,20 @@ class GoalRunner:
                 "data": result.data,
                 "error": result.error,
             }
+            self.runtime.memory.record_experience(
+                key=f"task:{task_id}:execution",
+                value={
+                    "tool": proposal.tool, "action": proposal.action,
+                    "success": result.success, "status": result.status,
+                    "evidence_id": result.evidence_id,
+                    "result": result.data if result.success else None,
+                    "error": result.error,
+                },
+                task_id=task_id, context=context,
+                source={"kind": "execution", "ref": result.evidence_id or task_id},
+                provenance={"reason": "bounded task execution result", "task_id": task_id},
+                tags=["execution", "success" if result.success else "failure"],
+            )
             return result
 
         while not graph.is_complete():
