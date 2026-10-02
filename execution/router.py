@@ -48,7 +48,26 @@ class ToolRouter:
         contract = None
         if self._task_getter is not None and request.task_id is not None:
             task = self._task_getter(request.task_id)
-            contract = getattr(task, "execution_contract", None) if task is not None else None
+            if task is None:
+                return ToolResult(
+                    False,
+                    "task_not_found",
+                    request.tool,
+                    error=f"Unknown task: {request.task_id}",
+                )
+            # A task-scoped tool call is executable only while the task owns
+            # the execution phase. This prevents callers from performing new
+            # side effects after completion, during verification, or while
+            # waiting for reconciliation.
+            task_status = getattr(task, "status", None)
+            if getattr(task_status, "value", task_status) != "RUNNING":
+                return ToolResult(
+                    False,
+                    "task_not_executable",
+                    request.tool,
+                    error=f"Task is not executable in status: {task_status}",
+                )
+            contract = getattr(task, "execution_contract", None)
             if contract is not None and not contract.allows_tool(request.tool):
                 return ToolResult(
                     False,
