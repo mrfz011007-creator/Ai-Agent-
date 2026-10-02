@@ -9,8 +9,8 @@ from pathlib import Path
 
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|token|password|secret)(\\s*[=:]\\s*)([^\\s,;]+)"),
-    re.compile(r"(?i)(bearer\\s+)([A-Za-z0-9._~+/-]+)"),
+    re.compile(r"(?i)(api[_-]?key|token|password|secret)(\s*[=:]\s*)([^\s,;]+)"),
+    re.compile(r"(?i)(bearer\s+)([A-Za-z0-9._~+/-]+)"),
 )
 
 
