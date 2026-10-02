@@ -149,11 +149,22 @@ def main():
                         )
                         runtime.task_manager.start(execution_task_id)
 
-                    hasil = proses_tool(
+                    result = runtime.execute_with_recovery(
                         nama_tool,
                         args,
-                        execution_task_id,
+                        source="model",
+                        task_id=execution_task_id,
                     )
+                    hasil = {
+                        "status": result.status,
+                        "tool": result.tool,
+                    }
+                    if result.data is not None:
+                        hasil["hasil"] = result.data
+                    if result.error:
+                        hasil["pesan"] = result.error
+                    if result.evidence_id:
+                        hasil["evidence_id"] = result.evidence_id
 
                     if hasil.get("evidence_id"):
                         evidence_ids.append(hasil["evidence_id"])
