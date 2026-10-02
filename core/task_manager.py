@@ -80,6 +80,13 @@ class TaskManager:
 
     def start(self, task_id: str) -> Task:
         task = self._require(task_id)
+        if task.status != TaskStatus.READY:
+            raise ValueError(f"Task must be READY before start, got {task.status}")
+        if any(
+            self._require(dep).status != TaskStatus.COMPLETED
+            for dep in task.dependencies
+        ):
+            raise ValueError("Task dependencies are not completed")
         task.attempts += 1
         task.mark_running()
         self._persist(task)
