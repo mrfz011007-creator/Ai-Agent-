@@ -209,6 +209,11 @@ def _new_record(
     source: Any,
     provenance: Mapping[str, Any],
     tags: list[str],
+    importance: float = 0.5,
+    confidence: float = 0.5,
+    retention: str = "normal",
+    summary: str = "",
+    evidence_refs: list[str] | None = None,
     version: int = 1,
     supersedes_id: str | None = None,
     now: str | None = None,
@@ -241,11 +246,11 @@ def _new_record(
         "invalidated_by": None,
         "supersedes_id": supersedes_id,
         "tags": sorted(set(tags)),
-        "importance": 0.5,
-        "confidence": 0.5,
-        "retention": "normal",
-        "summary": str(value)[:500],
-        "evidence_refs": [],
+        "importance": float(importance),
+        "confidence": float(confidence),
+        "retention": retention,
+        "summary": summary or str(value)[:500],
+        "evidence_refs": sorted(set(evidence_refs or [])),
         "last_accessed_at": None,
     }
     _validate_record(record)
@@ -413,12 +418,12 @@ def update_memory(
                 context=record["context"],
                 source=record["source"],
                 provenance=provenance or {"reason": "memory_update", "previous_id": record_id},
-                tags=record["tags"],
-            importance=record.get("importance", 0.5),
+                    tags=record["tags"],
+                importance=record.get("importance", 0.5),
             confidence=record.get("confidence", 0.5),
             retention=record.get("retention", "normal"),
             summary=record.get("summary"),
-            evidence_refs=record.get("evidence_refs", []),
+                evidence_refs=record.get("evidence_refs", []),
             )
     return {"status": "not_found", "success": True, "record_id": record_id}
 
@@ -460,8 +465,6 @@ def _score_record(
             if record["context"].get(key) == value:
                 score += 2.0
     score += min(record["version"], 10) * 0.05
-    score += float(record.get("importance", 0.5)) * 2.0
-    score += float(record.get("confidence", 0.5))
     score += float(record.get("importance", 0.5)) * 2.0
     score += float(record.get("confidence", 0.5))
     return score
