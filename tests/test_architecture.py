@@ -443,6 +443,8 @@ def test_runtime_tool_execution_completion(tmp_path):
     )
 
     assert result.success
+    evidence = runtime.evidence_store.get(result.evidence_id)
+    assert evidence.attempt_id == "task-e2e:attempt:1"
     completed = runtime.verify_tool_execution(
         task.task_id, [result.evidence_id]
     )
