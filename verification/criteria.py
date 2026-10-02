@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from core.contracts import TaskStatus, VerificationStatus
 
 
 class CriterionValidationError(ValueError):
