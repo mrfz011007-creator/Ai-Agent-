@@ -300,3 +300,35 @@ def test_runtime_exposes_build_and_test_managers(tmp_path):
     assert runtime.artifact_manager is not None
     assert runtime.build_manager is not None
     assert runtime.test_manager is not None
+
+
+def test_workspace_guard_denies_command_outside_workspace(tmp_path):
+    from execution.router import ToolRouter
+    from security.guard import GuardEngine
+    from core.budget import BudgetManager
+    from core.contracts import Budget, ToolRequest
+    from verification.evidence import EvidenceStore
+    from security.policy import PolicyEngine
+
+    registry = {
+        "run_command": {
+            "func": lambda **kwargs: {"success": True},
+            "permission": "safe",
+        }
+    }
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=EvidenceStore(),
+        guard=GuardEngine(tmp_path),
+    )
+    result = router.execute(ToolRequest(
+        tool="run_command",
+        action="build",
+        arguments={"command": "python -c \"print('x')\"", "cwd": str(tmp_path.parent)},
+        task_id="GUARD-1",
+    ))
+    assert not result.success
+    assert result.status == "guard_denied"
+    assert result.error == "WORKSPACE_BOUNDARY_VIOLATION"
