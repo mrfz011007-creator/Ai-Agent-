@@ -12,7 +12,7 @@ try:
 except ImportError:  # pragma: no cover - non-POSIX fallback
     resource = None
 
-from execution.sandbox import SandboxUnavailable, SandboxPolicyError, cleanup_sandbox, prepare_sandbox
+from execution.sandbox import (SandboxUnavailable, SandboxPolicyError, cleanup_sandbox, prepare_hardened, prepare_sandbox)
 
 
 DEFAULT_OUTPUT_LIMIT = 100_000
@@ -100,10 +100,19 @@ def run_command(
     stdout_handle = open(stdout_path, "wb")
     stderr_handle = open(stderr_path, "wb")
     try:
-        sandbox_command, sandbox_env, sandbox_root = prepare_sandbox(
-            argv,
-            cwd=str(Path(cwd).resolve()),
-        )
+        try:
+            sandbox_command, sandbox_env, sandbox_root = prepare_sandbox(
+                argv,
+                cwd=str(Path(cwd).resolve()),
+            )
+            sandbox_mode = "namespace"
+        except SandboxUnavailable:
+            sandbox_command, sandbox_env = prepare_hardened(
+                argv,
+                cwd=str(Path(cwd).resolve()),
+            )
+            sandbox_root = None
+            sandbox_mode = "hardened"
 
         def _limits() -> None:
             if resource is None:
@@ -148,16 +157,16 @@ def run_command(
         truncated = out_truncated or err_truncated
         return {
             "success": process.returncode == 0,
-            "status": "SUCCESS" if process.returncode == 0 else "FAILED",
+            "status": ("SUCCESS" if process.returncode == 0 else "FAILED"),
             "exit_code": process.returncode,
             "stdout": stdout,
             "stderr": stderr,
-            "output_truncated": truncated,
+            "output_truncated": truncated,\n            "sandbox_mode": sandbox_mode,
         }
-    except (SandboxUnavailable, SandboxPolicyError) as error:
+    except SandboxPolicyError as error:
         return {
             "success": False,
-            "status": "SANDBOX_UNAVAILABLE",
+            "status": "SANDBOX_POLICY_ERROR",
             "exit_code": None,
             "stdout": "",
             "stderr": str(error),
