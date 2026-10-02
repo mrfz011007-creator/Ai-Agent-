@@ -16,6 +16,8 @@ from execution.sandbox import (SandboxUnavailable, SandboxPolicyError, cleanup_s
 
 
 DEFAULT_OUTPUT_LIMIT = 100_000
+DEFAULT_MEMORY_LIMIT_MB = 1024
+MIN_MEMORY_LIMIT_MB = 128
 
 
 def _read_limited(path: str, limit: int) -> tuple[str, bool]:
@@ -38,6 +40,10 @@ def _terminate_process(process: subprocess.Popen) -> None:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
             pass
         return
 
@@ -118,9 +124,17 @@ def run_command(
             if resource is None:
                 return
             cpu_seconds = max(1, int(timeout) + 1)
+            memory_mb = int(os.environ.get("AI_AGENT_PROCESS_MEMORY_MB", str(DEFAULT_MEMORY_LIMIT_MB)))
+            if memory_mb < MIN_MEMORY_LIMIT_MB:
+                raise ValueError(
+                    f"AI_AGENT_PROCESS_MEMORY_MB must be >= {MIN_MEMORY_LIMIT_MB}"
+                )
+            memory_bytes = memory_mb * 1024 * 1024
             resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
             resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
             resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
+            if hasattr(resource, "RLIMIT_AS"):
+                resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
 
         process = subprocess.Popen(
             sandbox_command,
@@ -162,6 +176,14 @@ def run_command(
             "stderr": stderr,
             "output_truncated": truncated,
             "sandbox_mode": sandbox_mode,
+        }
+    except ValueError as error:
+        return {
+            "success": False,
+            "status": "INVALID_RESOURCE_LIMIT",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": str(error),
         }
     except SandboxPolicyError as error:
         return {
