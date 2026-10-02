@@ -34,7 +34,7 @@ def test_model_plan_contract_is_preserved():
                 "max_tool_calls": 2,
                 "retry_limit": 0,
                 "evidence_required": True,
-                "completion_conditions": ["Patch produces successful evidence"],
+                "completion_conditions": [{"type": "evidence_success", "task_id": "edit"}],
             },
         }],
         "acceptance_criteria": [{"type": "all_tasks_completed"}],
