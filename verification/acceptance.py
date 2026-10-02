@@ -36,7 +36,7 @@ class AcceptanceGate:
     ) -> VerificationResult:
         evidence_ids: list[str] = [build_evidence_id, *test_evidence_ids]
 
-        build = self.verifier.verify_task_evidence(task_id, (build_evidence_id,))
+        build = self.verifier.verify_task_evidence(task_id, (build_evidence_id,), expected_attempt_id)
         if build.status != VerificationStatus.PASSED:
             return VerificationResult(
                 build.status,
@@ -65,6 +65,12 @@ class AcceptanceGate:
                     f"Artifact belongs to another task: {artifact_id}",
                     tuple(evidence_ids),
                 )
+            if artifact.evidence_id != build_evidence_id:
+                return VerificationResult(
+                    VerificationStatus.FAILED,
+                    f"Artifact is not linked to build evidence: {artifact_id}",
+                    tuple(evidence_ids),
+                )
             if expected_attempt_id is not None and artifact.attempt_id != expected_attempt_id:
                 return VerificationResult(
                     VerificationStatus.FAILED,
@@ -80,7 +86,7 @@ class AcceptanceGate:
                 )
 
         if test_evidence_ids:
-            tests = self.verifier.verify_task_evidence(task_id, test_evidence_ids)
+            tests = self.verifier.verify_task_evidence(task_id, test_evidence_ids, expected_attempt_id)
             if tests.status != VerificationStatus.PASSED:
                 return VerificationResult(
                     tests.status,
