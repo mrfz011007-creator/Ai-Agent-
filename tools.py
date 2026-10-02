@@ -7,6 +7,15 @@ from pathlib import Path
 
 from execution.command import run_command
 
+DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024
+DEFAULT_MAX_SEARCH_RESULTS = 5000
+
+def _max_file_bytes() -> int:
+    value = int(os.environ.get("AI_AGENT_MAX_FILE_BYTES", str(DEFAULT_MAX_FILE_BYTES)))
+    if value < 1:
+        raise ValueError("AI_AGENT_MAX_FILE_BYTES must be positive")
+    return value
+
 
 def workspace_root() -> Path:
     """Return the single configured workspace boundary used by legacy handlers."""
@@ -109,21 +118,31 @@ def cari_teks(query, pola="*.py"):
 
     root = workspace_root()
     hasil = []
+    max_results = int(os.environ.get("AI_AGENT_MAX_SEARCH_RESULTS", str(DEFAULT_MAX_SEARCH_RESULTS)))
+    if max_results < 1:
+        raise ValueError("AI_AGENT_MAX_SEARCH_RESULTS must be positive")
+    max_bytes = _max_file_bytes()
     for path in root.rglob(pola):
+        if len(hasil) >= max_results:
+            break
         if not path.is_file():
             continue
         try:
             resolved = path.resolve()
             if not (resolved == root or root in resolved.parents):
                 continue
-            text = resolved.read_text(encoding="utf-8")
+            if resolved.stat().st_size > max_bytes:
+                continue
+            with resolved.open("r", encoding="utf-8") as stream:
+                for nomor, line in enumerate(stream, 1):
+                    if query.lower() in line.lower():
+                        hasil.append({"path": str(resolved.relative_to(root)), "line": nomor, "text": line.rstrip("\n")})
+                        if len(hasil) >= max_results:
+                            break
         except (OSError, UnicodeDecodeError):
             continue
-        for nomor, line in enumerate(text.splitlines(), 1):
-            if query.lower() in line.lower():
-                hasil.append({"path": str(resolved.relative_to(root)), "line": nomor, "text": line})
 
-    return {"status": "success", "success": True, "query": query, "hasil": hasil}
+    return {"status": "success", "success": True, "query": query, "hasil": hasil, "truncated": len(hasil) >= max_results}
 
 
 def _sha256_text(text: str) -> str:
@@ -140,7 +159,10 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
         raise ValueError("expected_count harus >= 1.")
 
     path = path_aman(nama)
-    text = path.read_text(encoding="utf-8")
+    raw = path.read_bytes()
+    if len(raw) > _max_file_bytes():
+        raise ValueError("FILE_TOO_LARGE")
+    text = raw.decode("utf-8")
     current_sha256 = _sha256_text(text)
     if expected_sha256 is not None and current_sha256 != expected_sha256:
         return {
@@ -171,7 +193,15 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
 
 def baca_file(nama):
     try:
-        isi = path_aman(nama).read_text(encoding="utf-8")
+        path = path_aman(nama)
+        if path.stat().st_size > _max_file_bytes():
+            return {
+                "status": "error",
+                "success": False,
+                "code": "FILE_TOO_LARGE",
+                "pesan": "File melebihi batas ukuran baca.",
+            }
+        isi = path.read_text(encoding="utf-8")
         return {
             "status": "success",
             "success": True,
@@ -202,6 +232,13 @@ def baca_file(nama):
 def tulis_file(nama, isi, expected_sha256=None):
     try:
         path = path_aman(nama)
+        if len(isi.encode("utf-8")) > _max_file_bytes():
+            return {
+                "status": "error",
+                "success": False,
+                "code": "FILE_TOO_LARGE",
+                "pesan": "File melebihi batas ukuran tulis.",
+            }
         if expected_sha256 is not None:
             if not path.exists():
                 return {
