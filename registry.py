@@ -250,3 +250,16 @@ def get_tool_permission(nama_tool):
         return "blocked"
 
     return tool["permission"]
+
+
+
+def get_tool_catalog():
+    """Return non-executable tool metadata for planning and model context."""
+    return {
+        name: {
+            "description": entry["description"],
+            "parameters": entry["parameters"],
+            "permission": entry["permission"],
+        }
+        for name, entry in TOOL_REGISTRY.items()
+    }
