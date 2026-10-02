@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import socket
 from pathlib import Path
 
@@ -21,7 +22,7 @@ def test_sandbox_allows_workspace_write_and_isolates_tmp_when_namespaced(tmp_pat
     )
 
     result = run_command(
-        command=f'python3 -c "{script}"',
+        command=f"python3 -c {shlex.quote(script)}",
         cwd=str(tmp_path),
         timeout=10,
     )
