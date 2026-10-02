@@ -9,6 +9,7 @@ from core.contracts import Budget, ToolRequest
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
 from core.task_manager import TaskManager
+from core.recovery import RecoveryManager
 from security.policy import PolicyEngine
 from execution.router import ToolRouter
 from verification.evidence import EvidenceStore
@@ -21,6 +22,7 @@ class AgentRuntime:
     state_store: StateStore
     checkpoint_manager: CheckpointManager
     task_manager: TaskManager
+    recovery_manager: RecoveryManager
     evidence_store: EvidenceStore
     budget_manager: BudgetManager
     policy_engine: PolicyEngine
@@ -35,6 +37,7 @@ class AgentRuntime:
             store=state_store,
             checkpoints=checkpoint_manager,
         )
+        recovery_manager = RecoveryManager(task_manager)
         evidence_store = EvidenceStore()
         budget_manager = BudgetManager(Budget())
         policy_engine = PolicyEngine(TOOL_REGISTRY.get)
@@ -49,6 +52,7 @@ class AgentRuntime:
             state_store=state_store,
             checkpoint_manager=checkpoint_manager,
             task_manager=task_manager,
+            recovery_manager=recovery_manager,
             evidence_store=evidence_store,
             budget_manager=budget_manager,
             policy_engine=policy_engine,
@@ -56,7 +60,10 @@ class AgentRuntime:
         )
 
     def recover_task(self, task_id: str):
-        return self.task_manager.restore(task_id)
+        return self.recovery_manager.recover_task(task_id)
+
+    def recover_interrupted(self):
+        return self.recovery_manager.recover_interrupted()
 
 
 _default_runtime: AgentRuntime | None = None
