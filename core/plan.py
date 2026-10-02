@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable
+from typing import Any, Iterable, Mapping
 
 from core.contracts import Task, TaskStatus
 
@@ -121,3 +121,33 @@ class Planner:
             status=PlanStatus.VALIDATED,
             acceptance_criteria=proposal.acceptance_criteria,
         )
+
+
+class PlanDecoder:
+    """Convert untrusted model output into a validated PlanProposal."""
+
+    @staticmethod
+    def from_mapping(payload: Mapping[str, Any]) -> PlanProposal:
+        goal = payload.get("goal")
+        raw_tasks = payload.get("tasks")
+        criteria = payload.get("acceptance_criteria", ())
+        if not isinstance(goal, str) or not goal.strip():
+            raise PlanGraphError("Model plan goal must be a non-empty string")
+        if not isinstance(raw_tasks, list):
+            raise PlanGraphError("Model plan tasks must be a list")
+        if not isinstance(criteria, (list, tuple)) or not all(isinstance(item, str) and item.strip() for item in criteria):
+            raise PlanGraphError("Model acceptance criteria must be non-empty strings")
+        tasks = []
+        for item in raw_tasks:
+            if not isinstance(item, Mapping):
+                raise PlanGraphError("Each model task must be an object")
+            task_id, title = item.get("task_id"), item.get("title")
+            dependencies = item.get("dependencies", ())
+            if not isinstance(task_id, str) or not task_id.strip():
+                raise PlanGraphError("Task ID must be a non-empty string")
+            if not isinstance(title, str) or not title.strip():
+                raise PlanGraphError(f"Task title missing: {task_id}")
+            if not isinstance(dependencies, (list, tuple)) or not all(isinstance(dep, str) and dep.strip() for dep in dependencies):
+                raise PlanGraphError(f"Invalid dependencies: {task_id}")
+            tasks.append(Task(task_id=task_id, title=title, dependencies=list(dependencies)))
+        return PlanProposal(goal=goal.strip(), tasks=tuple(tasks), acceptance_criteria=tuple(item.strip() for item in criteria))
