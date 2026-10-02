@@ -51,6 +51,7 @@ class BuildManager:
                 kind=self._kind_for(path),
                 attempt_id=attempt_id,
                 source_commit=source_commit,
+                evidence_id=result.evidence_id,
             )
             artifact_ids.append(artifact.artifact_id)
 
