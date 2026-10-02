@@ -119,7 +119,7 @@ def test_model_planner_bounds_historical_memory_context():
                     "updated_at": "now",
                     "tags": [],
                 }
-            ]}
+            }]}
 
     seen = {}
 
