@@ -31,7 +31,6 @@ class StateStore:
                 )
             """)
             db.execute("""
-            db.execute("""
                 CREATE TABLE IF NOT EXISTS evidence (
                     evidence_id TEXT PRIMARY KEY,
                     task_id TEXT,
@@ -44,6 +43,7 @@ class StateStore:
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     checkpoint_id TEXT PRIMARY KEY,
                     task_id TEXT,
@@ -91,16 +91,38 @@ class StateStore:
         result["payload"] = json.loads(result["payload"])
         return result
 
-    def save_evidence(self, evidence_id: str, task_id: str | None, tool: str, action: str, success: bool, result_status: str, error: str | None, payload: dict[str, Any]) -> None:
+    def save_evidence(
+        self,
+        evidence_id: str,
+        task_id: str | None,
+        tool: str,
+        action: str,
+        success: bool,
+        result_status: str,
+        error: str | None,
+        payload: dict[str, Any],
+    ) -> None:
         with self._connect() as db:
             db.execute(
                 "INSERT INTO evidence(evidence_id,task_id,tool,action,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?)",
-                (evidence_id, task_id, tool, action, int(success), result_status, error, json.dumps(payload, sort_keys=True, default=str)),
+                (
+                    evidence_id,
+                    task_id,
+                    tool,
+                    action,
+                    int(success),
+                    result_status,
+                    error,
+                    json.dumps(payload, sort_keys=True, default=str),
+                ),
             )
 
     def load_evidence(self, evidence_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
-            row = db.execute("SELECT evidence_id,task_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE evidence_id=?", (evidence_id,)).fetchone()
+            row = db.execute(
+                "SELECT evidence_id,task_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE evidence_id=?",
+                (evidence_id,),
+            ).fetchone()
         if row is None:
             return None
         result = dict(row)
@@ -110,7 +132,10 @@ class StateStore:
 
     def load_evidence_for_task(self, task_id: str) -> list[dict[str, Any]]:
         with self._connect() as db:
-            rows = db.execute("SELECT evidence_id,task_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE task_id=? ORDER BY rowid ASC", (task_id,)).fetchall()
+            rows = db.execute(
+                "SELECT evidence_id,task_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE task_id=? ORDER BY rowid ASC",
+                (task_id,),
+            ).fetchall()
         results = []
         for row in rows:
             result = dict(row)
@@ -118,7 +143,6 @@ class StateStore:
             result["payload"] = json.loads(result["payload"])
             results.append(result)
         return results
-
 
     def save_checkpoint(self, checkpoint_id: str, task_id: str | None, payload: dict[str, Any]) -> None:
         with self._connect() as db:
