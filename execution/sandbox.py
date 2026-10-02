@@ -175,12 +175,13 @@ def prepare_sandbox(
     )
 
     token = uuid.uuid4().hex
-    root = Path(tempfile.mkdtemp(prefix=f".ai-agent-root-{token}-", dir="/tmp"))
+    temp_dir = Path(tempfile.gettempdir())
+    root = Path(tempfile.mkdtemp(prefix=f".ai-agent-root-{token}-", dir=temp_dir))
     work_mount = workspace
 
     # The launcher is a shell script executed inside the new user/mount/network
     # namespace. It is removed by the parent after the child exits.
-    launcher = Path("/tmp") / f".ai-agent-launcher-{token}.sh"
+    launcher = Path(tempfile.gettempdir()) / f".ai-agent-launcher-{token}.sh"
     lines = [
         "#!/bin/sh",
         "set -eu",
