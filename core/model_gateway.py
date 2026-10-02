@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 
+from core.budget import BudgetManager
+
 
 class CredentialState(str, Enum):
     HEALTHY = "HEALTHY"
@@ -43,12 +45,14 @@ class ModelGateway:
         clock: Callable[[], float] = time.monotonic,
         cooldown_seconds: float = 60.0,
         max_attempts: int | None = None,
+        budget: BudgetManager | None = None,
     ):
         self.credentials = credentials
         self.client_factory = client_factory
         self.clock = clock
         self.cooldown_seconds = cooldown_seconds
         self.max_attempts = max_attempts or max(1, len(credentials))
+        self.budget = budget
 
     @staticmethod
     def classify_error(error: Exception) -> ProviderErrorKind:
@@ -90,6 +94,8 @@ class ModelGateway:
             credential = available[0]
             tried.add(credential.name)
             attempts += 1
+            if self.budget is not None:
+                self.budget.reserve_model_call()
             credential.state = CredentialState.HEALTHY
             secret = os.getenv(credential.secret_env)
             if not secret:
