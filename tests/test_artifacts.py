@@ -1,7 +1,6 @@
 from core.contracts import ToolResult, VerificationStatus
 from core.state_store import StateStore
 from verification.artifacts import ArtifactManager
-from verification.build import TestManager as ArtifactTestManager
 from verification.evidence import EvidenceStore
 from verification.verifier import Verifier
 
