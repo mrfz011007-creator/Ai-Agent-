@@ -145,15 +145,7 @@ class GoalRunner:
         proposal = proposer.propose(goal, project_id=project_id, context=context)
         resolved_id = plan_id or self._new_plan_id()
         plan, graph = self.runtime.orchestrator.materialize(proposal, resolved_id)
-        # Project/context metadata is not persisted with Plan yet. Resume must
-        # therefore use runtime defaults instead of undefined local names.
-        return self._run_graph(
-            plan,
-            graph,
-            max_steps=max_steps,
-            project_id=None,
-            context=None,
-        )
+        return self._run_graph(plan, graph, max_steps=max_steps, project_id=project_id, context=context)
 
     def resume(
         self,
@@ -181,7 +173,15 @@ class GoalRunner:
             plan = self._persist(plan, PlanStatus.WAITING)
             return plan, graph
 
-        return self._run_graph(plan, graph, max_steps=max_steps, project_id=project_id, context=context)
+        # Project/context metadata is not persisted with Plan yet. Resume
+        # therefore uses explicit runtime defaults instead of undefined names.
+        return self._run_graph(
+            plan,
+            graph,
+            max_steps=max_steps,
+            project_id=None,
+            context=None,
+        )
 
     @staticmethod
     def _new_plan_id() -> str:
