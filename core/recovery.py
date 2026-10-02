@@ -34,7 +34,9 @@ class RecoveryManager:
         self.evidence_store = evidence_store
 
     def recover_task(self, task_id: str) -> RecoveryDecision | None:
-        task = self.task_manager.restore(task_id)
+        task = self.task_manager.get(task_id)
+        if task is None:
+            task = self.task_manager.restore(task_id)
         if task is None:
             return None
 
