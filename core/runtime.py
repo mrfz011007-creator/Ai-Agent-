@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, gemini_credentials
+from core.model_planner import ModelPlanService
 from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
@@ -40,6 +41,7 @@ class AgentRuntime:
     test_manager: TestManager
     acceptance_gate: AcceptanceGate
     model_gateway: ModelGateway
+    model_planner: ModelPlanService | None
 
     @classmethod
     def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":
@@ -100,7 +102,13 @@ class AgentRuntime:
             test_manager=test_manager,
             acceptance_gate=acceptance_gate,
             model_gateway=model_gateway,
+            model_planner=None,
         )
+
+    def plan_goal(self, goal: str, model_call):
+        """Create a validated plan proposal from an injected model adapter."""
+        planner = ModelPlanService(model_call)
+        return planner.propose(goal)
 
     def handle_model_failure(self, task_id: str | None, error: Exception):
         return self.recovery_controller.handle_model_failure(task_id, error)
