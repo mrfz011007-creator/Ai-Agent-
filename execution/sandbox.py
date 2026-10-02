@@ -134,6 +134,13 @@ def prepare_sandbox(
     if os.name != "posix" or not Path("/proc").exists():
         raise SandboxUnavailable("OS sandbox requires a POSIX /proc environment")
 
+    # Android/Termux does not provide the same FHS layout assumed by the
+    # namespace/chroot launcher below. Use the portable hardened fallback
+    # instead of attempting a sandbox command that may fail after launch.
+    prefix = os.environ.get("PREFIX", "")
+    if prefix.startswith("/data/") or Path("/system/bin").exists():
+        raise SandboxUnavailable("Android/Termux namespace layout is unsupported")
+
     unshare = shutil.which("unshare")
     chroot = shutil.which("chroot")
     if not unshare or not chroot:
@@ -209,6 +216,10 @@ def prepare_sandbox(
 
     # The launcher itself is the only host-side executable. User+mount+network
     # namespaces prevent privilege escalation, host writes and network access.
+    shell = shutil.which("sh")
+    if shell is None:
+        raise SandboxUnavailable("POSIX shell is required for namespace isolation")
+
     command = [
         unshare,
         "--user",
@@ -217,7 +228,7 @@ def prepare_sandbox(
         "--net",
         "--pid",
         "--fork",
-        "/bin/sh",
+        shell,
         str(launcher),
     ]
     env["AI_AGENT_SANDBOX"] = "1"
