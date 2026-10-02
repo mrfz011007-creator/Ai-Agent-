@@ -42,14 +42,7 @@ def _terminate_process(process: subprocess.Popen) -> None:
 
 
 
-def _redact_output(value: str) -> str:
-    import re
-    value = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,;]+", r"\1***REDACTED***", value)
-    value = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._\-+/=]{8,}", r"\1[REDACTED_SECRET]", value)
-    value = re.sub(r"\bAIza[0-9A-Za-z_-]{20,}\b", "[REDACTED_SECRET]", value)
-    value = re.sub(r"\bsk-[A-Za-z0-9_-]{20,}\b", "[REDACTED_SECRET]", value)
-    return value
-
+from security.redaction import redact_text
 def run_command(
     *,
     command: str,
@@ -122,8 +115,8 @@ def run_command(
 
         stdout, out_truncated = _read_limited(stdout_path, output_limit)
         stderr, err_truncated = _read_limited(stderr_path, output_limit)
-        stdout = _redact_output(stdout)
-        stderr = _redact_output(stderr)
+        stdout = redact_text(stdout)
+        stderr = redact_text(stderr)
         truncated = out_truncated or err_truncated
         return {
             "success": process.returncode == 0,
