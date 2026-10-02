@@ -50,7 +50,7 @@ class AgentRuntime:
             checkpoints=checkpoint_manager,
         )
         evidence_store = EvidenceStore(state_store)
-        recovery_manager = RecoveryManager(task_manager, evidence_store)
+        recovery_manager = RecoveryManager(task_manager, evidence_store, budget_manager)
         artifact_manager = ArtifactManager(state_store)
         budget_manager = BudgetManager(Budget())
         model_gateway = ModelGateway(
