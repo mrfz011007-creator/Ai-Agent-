@@ -108,6 +108,19 @@ class AgentRuntime:
             orchestrator=orchestrator,
         )
 
+    def tool_catalog(self) -> dict[str, str]:
+        """Return tool names/descriptions for model planning without granting authority."""
+        registry = getattr(self.tool_router, "_registry_getter", None)
+        if registry is None:
+            return {}
+        names = ("lihat", "lokasi", "baca_file", "cari_teks", "patch_file", "buat_file", "tulis_file", "jalankan_python", "run_command")
+        catalog = {}
+        for name in names:
+            tool = registry(name)
+            if tool is not None:
+                catalog[name] = str(tool.get("description", ""))
+        return catalog
+
     def run_goal(
         self,
         goal: str,
