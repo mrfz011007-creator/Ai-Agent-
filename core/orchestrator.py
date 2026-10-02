@@ -26,6 +26,10 @@ class Orchestrator:
 
     def next_ready(self, graph: TaskGraph) -> Task | None:
         graph.validate()
+        active = [task for task in graph.tasks.values()
+                  if task.status in (TaskStatus.RUNNING, TaskStatus.VERIFYING, TaskStatus.WAITING)]
+        if active:
+            raise RuntimeError(f"Active task already exists: {active[0].task_id}")
         ready = graph.ready()
         return ready[0] if ready else None
 
@@ -59,3 +63,50 @@ class Orchestrator:
 
     def pending_dependencies(self, graph: TaskGraph, task_id: str) -> tuple[str, ...]:
         return graph.blocked_by(task_id)
+
+
+    def execute_step(self, graph: TaskGraph, *, execute, verify) -> Task | None:
+        """Run exactly one ready task through execution and verification callbacks."""
+        task = self.start_next(graph)
+        if task is None:
+            return None
+        try:
+            verification = execute(task)
+        except Exception as error:
+            failed = self.task_manager.fail(task.task_id, str(error))
+            graph.tasks[task.task_id] = failed
+            return failed
+        if verification.status.value != "PASSED":
+            failed = self.task_manager.fail(task.task_id, verification.reason)
+            graph.tasks[task.task_id] = failed
+            return failed
+        self.task_manager.begin_verification(task.task_id)
+        try:
+            final = verify(task, verification)
+        except Exception as error:
+            failed = self.task_manager.fail(task.task_id, str(error))
+            graph.tasks[task.task_id] = failed
+            return failed
+        if final.status.value != "PASSED":
+            failed = self.task_manager.fail(task.task_id, final.reason)
+            graph.tasks[task.task_id] = failed
+            return failed
+        completed = self.task_manager.complete(task.task_id, final)
+        graph.tasks[task.task_id] = completed
+        return completed
+
+    def run_until_blocked(self, graph: TaskGraph, *, execute, verify, max_steps: int | None = None) -> tuple[Task, ...]:
+        """Execute a bounded number of graph steps; never runs unboundedly."""
+        completed = []
+        steps = 0
+        while not self.plan_complete(graph):
+            if max_steps is not None and steps >= max_steps:
+                break
+            task = self.execute_step(graph, execute=execute, verify=verify)
+            if task is None:
+                break
+            steps += 1
+            if task.status != TaskStatus.COMPLETED:
+                break
+            completed.append(task)
+        return tuple(completed)
