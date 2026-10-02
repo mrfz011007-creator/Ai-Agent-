@@ -161,7 +161,8 @@ def run_command(
             "exit_code": process.returncode,
             "stdout": stdout,
             "stderr": stderr,
-            "output_truncated": truncated,\n            "sandbox_mode": sandbox_mode,
+            "output_truncated": truncated,
+            "sandbox_mode": sandbox_mode,
         }
     except SandboxPolicyError as error:
         return {
