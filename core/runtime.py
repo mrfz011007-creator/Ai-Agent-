@@ -193,6 +193,7 @@ class AgentRuntime:
             task_id,
             status=result.status,
             error=result.error,
+            idempotent=True,
         )
         if decision.action != "RETRY":
             return result
