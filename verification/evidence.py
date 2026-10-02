@@ -16,7 +16,7 @@ class EvidenceStore:
         *,
         evidence_id: str,
         task_id: str | None,
-        attempt_id: str | None,
+        attempt_id: str | None = None,
         tool: str,
         action: str,
         result: ToolResult,
