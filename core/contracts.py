@@ -69,6 +69,36 @@ class Evidence:
 
 
 @dataclass(frozen=True)
+class Artifact:
+    artifact_id: str
+    task_id: str
+    attempt_id: str | None
+    path: str
+    kind: str
+    sha256: str
+    size: int
+    source_commit: str | None = None
+    created_at: str | None = None
+
+
+@dataclass(frozen=True)
+class BuildResult:
+    success: bool
+    command: str
+    exit_code: int | None
+    artifact_ids: tuple[str, ...] = ()
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class TestResult:
+    success: bool
+    command: str
+    exit_code: int | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class VerificationResult:
     status: VerificationStatus
     reason: str
