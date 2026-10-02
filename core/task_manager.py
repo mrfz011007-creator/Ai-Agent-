@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from core.contracts import Task, TaskStatus, VerificationResult, VerificationStatus
+from core.execution_contract import ExecutionContract
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
 
@@ -42,6 +43,11 @@ class TaskManager:
             title=payload["title"],
             status=TaskStatus(saved["status"]),
             dependencies=list(payload.get("dependencies", [])),
+            execution_contract=(
+                ExecutionContract.from_dict(payload["execution_contract"])
+                if payload.get("execution_contract") is not None
+                else None
+            ),
             attempts=int(saved["attempts"]),
             result=result,
         )
@@ -175,6 +181,11 @@ class TaskManager:
             payload={
                 "title": task.title,
                 "dependencies": task.dependencies,
+                "execution_contract": (
+                    task.execution_contract.to_dict()
+                    if task.execution_contract is not None
+                    else None
+                ),
                 "result": result,
             },
         )
