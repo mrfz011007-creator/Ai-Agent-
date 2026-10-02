@@ -291,3 +291,12 @@ def test_recovery_does_not_change_completed_task(tmp_path):
 
     assert decision.action == "NO_ACTION"
     assert decision.status == TaskStatus.COMPLETED
+
+
+def test_runtime_exposes_build_and_test_managers(tmp_path):
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    assert runtime.artifact_manager is not None
+    assert runtime.build_manager is not None
+    assert runtime.test_manager is not None
