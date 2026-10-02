@@ -31,10 +31,12 @@ def test_sandbox_allows_workspace_write_and_isolates_tmp_when_namespaced(tmp_pat
         assert (tmp_path / 'inside.txt').read_text() == 'ok'
         assert not host_escape.exists()
     else:
-        # Termux hardened fallback does not provide a separate
-        # filesystem namespace and does not guarantee host /tmp isolation.
-        assert not result['success']
-        assert not (tmp_path / 'inside.txt').exists()
+        # Hardened fallback still permits the selected workspace to be used,
+        # but it does not provide a separate filesystem namespace. Therefore
+        # /tmp isolation is not asserted in this mode.
+        assert result['success'], result
+        assert (tmp_path / 'inside.txt').read_text() == 'ok'
+        host_escape.unlink(missing_ok=True)
 
 
 def test_sandbox_has_no_network():
