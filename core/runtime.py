@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, gemini_credentials
-from core.model_execution import ExecutionProposal, ModelExecutionService
+from core.model_execution import ExecutionProposal
 from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
 from core.checkpoint import CheckpointManager
@@ -110,10 +110,11 @@ class AgentRuntime:
         task_id: str,
         attempt_id: str | None = None,
     ):
-        """Send model intent through the single ToolRouter authorization boundary."""
-        return ModelExecutionService(lambda _: "").execute(
-            proposal,
-            self.tool_router,
+        """Send model intent through the bounded recovery-aware execution path."""
+        return self.execute_with_recovery(
+            proposal.tool,
+            dict(proposal.arguments),
+            source="model",
             task_id=task_id,
             attempt_id=attempt_id,
         )
