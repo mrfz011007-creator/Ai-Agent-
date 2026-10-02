@@ -174,7 +174,5 @@ class Task:
             raise ValueError("COMPLETED requires evidence-backed verification")
         if verification.authority != "acceptance_gate":
             raise ValueError("COMPLETED requires acceptance-gate authority")
-        if not verification.evidence_ids:
-            raise ValueError("COMPLETED requires evidence-backed verification")
         self.status = TaskStatus.COMPLETED
         self.result = verification
