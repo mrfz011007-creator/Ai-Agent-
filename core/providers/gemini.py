@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from core.model_config import ModelConfig
-
 
 class GeminiProvider:
     """Gemini adapter. Credentials and rotation remain owned by ModelGateway."""
