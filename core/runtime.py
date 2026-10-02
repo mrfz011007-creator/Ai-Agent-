@@ -6,6 +6,8 @@ from pathlib import Path
 
 from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, create_gemini_gateway
+from core.model_planner import ModelPlanService
+from core.plan import Plan, TaskGraph
 from core.model_execution import ExecutionProposal
 from core.contracts import Budget, ToolRequest, TaskStatus
 from core.state_store import StateStore
@@ -105,6 +107,29 @@ class AgentRuntime:
             model_gateway=model_gateway,
             orchestrator=orchestrator,
         )
+
+    def plan_goal(self, goal: str, *, plan_id: str | None = None):
+        """Create a validated model-proposed plan and persist it without executing it."""
+        import uuid
+        if not goal.strip():
+            raise ValueError("Goal cannot be empty")
+        proposer = ModelPlanService(self.model_gateway.generate_text)
+        proposal = proposer.propose(goal)
+        resolved_plan_id = plan_id or f"plan-{uuid.uuid4().hex[:12]}"
+        return self.orchestrator.materialize(proposal, resolved_plan_id)
+
+    def resume_plan(self, plan_id: str):
+        """Restore a persisted plan and reconcile interrupted tasks before execution."""
+        restored = self.orchestrator.restore_graph(plan_id)
+        if restored is None:
+            raise KeyError(f"Unknown persisted plan: {plan_id}")
+        plan, graph = restored
+        self.recover_interrupted()
+        restored = self.orchestrator.restore_graph(plan_id)
+        if restored is None:
+            raise KeyError(f"Unknown persisted plan: {plan_id}")
+        plan, graph = restored
+        return plan, graph
 
     def execute_model_proposal(
         self,
