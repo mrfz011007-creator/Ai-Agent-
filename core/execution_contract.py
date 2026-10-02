@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from security.capabilities import Capability
 
 
 class ExecutionContractError(ValueError):
@@ -13,6 +14,7 @@ class ExecutionContract:
 
     objective: str
     allowed_tools: tuple[str, ...]
+    allowed_capabilities: tuple[str, ...] = ()
     max_tool_calls: int = 10
     retry_limit: int = 0
     evidence_required: bool = True
@@ -25,6 +27,10 @@ class ExecutionContract:
             raise ExecutionContractError("Execution contract must allow at least one tool")
         if any(not tool.strip() for tool in self.allowed_tools):
             raise ExecutionContractError("Execution contract contains an empty tool name")
+        try:
+            tuple(Capability(value) for value in self.allowed_capabilities)
+        except ValueError as error:
+            raise ExecutionContractError(f"Unknown execution capability: {error}") from error
         if self.max_tool_calls < 1:
             raise ExecutionContractError("max_tool_calls must be at least 1")
         if self.retry_limit < 0:
@@ -37,11 +43,17 @@ class ExecutionContract:
     def allows_tool(self, tool: str) -> bool:
         return tool in self.allowed_tools
 
+    def allows_capabilities(self, capabilities: tuple[Capability, ...]) -> bool:
+        if not self.allowed_capabilities:
+            return False
+        return all(capability.value in self.allowed_capabilities for capability in capabilities)
+
     def to_dict(self) -> dict:
         return {
             "type": "ExecutionContract",
             "objective": self.objective,
             "allowed_tools": list(self.allowed_tools),
+            "allowed_capabilities": list(self.allowed_capabilities),
             "max_tool_calls": self.max_tool_calls,
             "retry_limit": self.retry_limit,
             "evidence_required": self.evidence_required,
@@ -55,6 +67,7 @@ class ExecutionContract:
         return cls(
             objective=payload["objective"],
             allowed_tools=tuple(payload["allowed_tools"]),
+            allowed_capabilities=tuple(payload.get("allowed_capabilities", ())),
             max_tool_calls=int(payload.get("max_tool_calls", 10)),
             retry_limit=int(payload.get("retry_limit", 0)),
             evidence_required=bool(payload.get("evidence_required", True)),
