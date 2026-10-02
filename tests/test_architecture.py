@@ -332,3 +332,29 @@ def test_workspace_guard_denies_command_outside_workspace(tmp_path):
     assert not result.success
     assert result.status == "guard_denied"
     assert result.error == "WORKSPACE_BOUNDARY_VIOLATION"
+
+
+def test_command_runner_redacts_secrets_and_caps_output(tmp_path):
+    from execution.command import run_command
+
+    result = run_command(
+        command="python -c \"print('api_key=TOPSECRET ' + 'x'*200)\"",
+        cwd=str(tmp_path),
+        max_output_chars=50,
+    )
+    assert result["success"]
+    assert "TOPSECRET" not in result["stdout"]
+    assert "***REDACTED***" in result["stdout"]
+    assert result["output_truncated"]
+
+
+def test_command_runner_reports_timeout(tmp_path):
+    from execution.command import run_command
+
+    result = run_command(
+        command="python -c \"import time; time.sleep(2)\"",
+        cwd=str(tmp_path),
+        timeout=0.1,
+    )
+    assert not result["success"]
+    assert result["status"] == "TIMEOUT"
