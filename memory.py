@@ -119,7 +119,25 @@ def _validate_record(record: Mapping[str, Any]) -> dict[str, Any]:
         raise MemoryStoreError("Memory record version must be a positive integer")
 
     normalized = dict(record)
-    normalized["key"] = str(normalized["key"])
+    normalized["memory_id"] = str(normalized["memory_id"]).strip()
+    if not normalized["memory_id"]:
+        raise MemoryStoreError("Memory record memory_id cannot be empty")
+    normalized["key"] = str(normalized["key"]).strip()
+    if not normalized["key"]:
+        raise MemoryStoreError("Memory record key cannot be empty")
+    if len(normalized["key"]) > MEMORY_MAX_KEY_CHARS:
+        raise MemoryStoreError("Memory record key exceeds maximum length")
+    value_json = json.dumps(normalized["value"], ensure_ascii=False, default=str)
+    if len(value_json) > MEMORY_MAX_VALUE_JSON_CHARS:
+        raise MemoryStoreError("Memory record value exceeds maximum size")
+    source_json = json.dumps(normalized["source"], ensure_ascii=False, default=str)
+    if len(source_json) > MEMORY_MAX_SOURCE_JSON_CHARS:
+        raise MemoryStoreError("Memory record source exceeds maximum size")
+    source_type = str(normalized["source"].get("type", "")).strip()
+    if not source_type:
+        raise MemoryStoreError("Memory record source.type cannot be empty")
+    normalized["source"] = dict(normalized["source"])
+    normalized["source"]["type"] = source_type
     normalized["kind"] = kind
     normalized["project_id"] = (
         str(normalized["project_id"]).strip()
