@@ -148,3 +148,29 @@ def test_goal_runner_passes_prior_tool_result_to_dependent_task(tmp_path, monkey
     assert len(prompts) == 2
     assert "snapshot-123" in prompts[1]
     assert "source inspected" in prompts[1]
+
+def test_runtime_resume_goal_does_not_implicitly_retry_waiting_task(tmp_path, monkeypatch):
+    from core.contracts import Task
+    from core.plan import Planner
+
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    proposal = Planner().propose(
+        "recover safely", [Task("interrupted", "Interrupted work")]
+    )
+    plan, _ = runtime.orchestrator.materialize(proposal, "plan-recovery")
+    runtime.task_manager.start("interrupted")
+
+    calls = []
+    monkeypatch.setattr(
+        runtime.model_gateway,
+        "text",
+        lambda prompt, **kwargs: calls.append(prompt) or '{"tool":"lokasi","action":"execute","arguments":{}}',
+    )
+
+    fresh = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    resumed_plan, graph = fresh.resume_goal(plan.plan_id)
+
+    assert resumed_plan.status.value == "WAITING"
+    assert graph.tasks["interrupted"].status == TaskStatus.WAITING
+    assert graph.tasks["interrupted"].attempts == 1
+    assert calls == []
