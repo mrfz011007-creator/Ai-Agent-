@@ -156,7 +156,17 @@ class AgentRuntime:
         )
         proposal = proposer.propose(goal, project_id=project_id, context=context)
         resolved_plan_id = plan_id or f"plan-{uuid.uuid4().hex[:12]}"
-        return self.orchestrator.materialize(proposal, resolved_plan_id)
+        plan, graph = self.orchestrator.materialize(proposal, resolved_plan_id)
+        # Planning-only goals must persist the same project/context metadata
+        # as executable goals so a later resume has the original scope.
+        from dataclasses import replace
+        plan = replace(
+            plan,
+            project_id=project_id,
+            context=dict(context or {}),
+        )
+        self.orchestrator.persist_plan(plan)
+        return plan, graph
 
     def resume_plan(self, plan_id: str):
         """Restore a persisted plan and reconcile interrupted tasks before execution."""
