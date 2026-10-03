@@ -323,3 +323,17 @@ def test_python_guard_enforces_workspace_and_extension(tmp_path):
     )
     assert not denied_missing.allowed
     assert denied_missing.reason == "PYTHON_PATH_REQUIRED"
+
+
+def test_confirmation_display_redacts_secret_like_arguments(monkeypatch, capsys):
+    import permissions
+
+    monkeypatch.setattr(permissions, "input", lambda _: "n")
+    args = {"token": "AIzaSyA12345678901234567890", "nested": {"api_key": "secret-value"}}
+
+    assert permissions.minta_konfirmasi("demo", args) is False
+    output = capsys.readouterr().out
+    assert "AIzaSyA12345678901234567890" not in output
+    assert "secret-value" not in output
+    assert "[REDACTED_SECRET]" in output
+    assert "***REDACTED***" in output
