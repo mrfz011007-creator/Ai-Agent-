@@ -107,9 +107,14 @@ class RecoveryManager:
             self.task_manager.fail(task_id, str(exc))
             return RecoveryDecision(task_id, TaskStatus.RUNNING, TaskStatus.FAILED, "BLOCK", str(exc))
         task.status = TaskStatus.WAITING
-        self.task_manager.persist(task_id)
-        self.task_manager.checkpoint(task_id, event="recovery_retry", reason=error or status)
-        task = self.task_manager.retry(task_id)
+        try:
+            self.task_manager.persist(task_id)
+            self.task_manager.checkpoint(task_id, event="recovery_retry", reason=error or status)
+            task = self.task_manager.retry(task_id)
+        except Exception:
+            if hasattr(self.budget, "release_recovery_cycle"):
+                self.budget.release_recovery_cycle()
+            raise
         return RecoveryDecision(task_id, TaskStatus.WAITING, task.status, "RETRY", error or status)
 
     def reconcile(
@@ -157,7 +162,12 @@ class RecoveryManager:
                     raise ValueError("Execution contract retry limit reached")
                 if self.budget is not None:
                     self.budget.reserve_recovery_cycle()
-                task = self.task_manager.retry(task_id)
+                try:
+                    task = self.task_manager.retry(task_id)
+                except Exception:
+                    if self.budget is not None and hasattr(self.budget, "release_recovery_cycle"):
+                        self.budget.release_recovery_cycle()
+                    raise
                 action = "RETRY"
             else:
                 task = self.task_manager.resume(task_id)
