@@ -161,7 +161,10 @@ def test_router_rejects_task_scoped_execution_outside_running_state(monkeypatch,
     registry = {
         "write": {"func": lambda: {"success": True}, "permission": "safe"},
     }
-    task = Task("task-1", "completed task", status=TaskStatus.COMPLETED)
+    # RUNNING means an execution attempt already owns the task; mirror the
+    # TaskManager invariant used in production, where start() increments
+    # attempts before entering RUNNING.
+    task = Task("task-1", "completed task", status=TaskStatus.COMPLETED, attempts=1)
     router = ToolRouter(
         registry_getter=registry.get,
         policy=PolicyEngine(registry.get),
