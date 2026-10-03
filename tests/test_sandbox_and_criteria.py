@@ -153,3 +153,32 @@ def test_termux_uses_hardened_fallback_before_namespace_layout(monkeypatch, tmp_
 
     with pytest.raises(SandboxUnavailable):
         prepare_sandbox(["python3", "-V"], cwd=str(tmp_path))
+
+
+def test_sandbox_cleanup_removes_launcher_for_mkdtemp_style_root(tmp_path):
+    from execution.sandbox import cleanup_sandbox
+
+    token = "a" * 32
+    root = tmp_path / f".ai-agent-root-{token}-random"
+    root.mkdir()
+    launcher = tmp_path / f".ai-agent-launcher-{token}.sh"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    cleanup_sandbox(str(root))
+
+    assert not root.exists()
+    assert not launcher.exists()
+
+
+def test_sandbox_cleanup_ignores_malformed_root_name(tmp_path):
+    from execution.sandbox import cleanup_sandbox
+
+    root = tmp_path / ".ai-agent-root-not-a-token-random"
+    root.mkdir()
+    launcher = tmp_path / ".ai-agent-launcher-not-a-token.sh"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    cleanup_sandbox(str(root))
+
+    assert not root.exists()
+    assert launcher.exists()
