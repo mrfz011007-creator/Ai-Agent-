@@ -329,8 +329,44 @@ def compact_memory_if_needed() -> dict[str, Any]:
     threshold = _compact_threshold_bytes()
     if size <= threshold:
         return {"status": "not_needed", "success": True, "bytes": size}
+
+    # Prefer the normal history/experience bounds first.
     result = compact_memory()
     result["bytes_before"] = size
+    result["bytes_after"] = path.stat().st_size
+
+    # A store can still exceed the byte threshold even when it has fewer than
+    # the configured record-count limits. In that case progressively remove
+    # the oldest non-durable active experience records until the size target
+    # is met. Durable knowledge is never removed by this byte-bound pass.
+    if path.stat().st_size > threshold:
+        store = _load_store()
+        candidates = sorted(
+            [
+                record for record in store["records"]
+                if record["type"] == "experience"
+                and record["status"] == "active"
+                and record["retention"] != "durable"
+            ],
+            key=lambda record: (
+                record["last_accessed_at"] or record["updated_at"],
+                record["updated_at"],
+                record["version"],
+            ),
+        )
+        removed = 0
+        for record in candidates:
+            if path.stat().st_size <= threshold:
+                break
+            store["records"] = [
+                item for item in store["records"] if item["id"] != record["id"]
+            ]
+            save_memory(store)
+            removed += 1
+
+        result["removed_records"] = result.get("removed_records", 0) + removed
+        result["status"] = "compacted"
+
     result["bytes_after"] = path.stat().st_size
     return result
 
