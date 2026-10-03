@@ -12,6 +12,9 @@ from typing import Any, Mapping, Sequence
 
 MEMORY_SCHEMA_VERSION = 2
 MEMORY_KINDS = frozenset({"fact", "decision", "experience", "preference"})
+MEMORY_MAX_KEY_CHARS = 256
+MEMORY_MAX_VALUE_JSON_CHARS = 12000
+MEMORY_MAX_SOURCE_JSON_CHARS = 2048
 
 
 class MemoryStoreError(RuntimeError):
@@ -408,6 +411,15 @@ def remember(
     task_id = str(task_id).strip() if task_id is not None else None
     normalized_context = _normalize_context(context)
     normalized_source = _normalize_source(source)
+
+    if len(key) > MEMORY_MAX_KEY_CHARS:
+        raise ValueError("Memory key exceeds maximum length")
+    value_json = json.dumps(value, ensure_ascii=False, default=str)
+    if len(value_json) > MEMORY_MAX_VALUE_JSON_CHARS:
+        raise ValueError("Memory value exceeds maximum size")
+    source_json = json.dumps(normalized_source, ensure_ascii=False, default=str)
+    if len(source_json) > MEMORY_MAX_SOURCE_JSON_CHARS:
+        raise ValueError("Memory source exceeds maximum size")
 
     document = _load_document()
     now = _now()
