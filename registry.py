@@ -212,11 +212,56 @@ TOOL_REGISTRY = {
                     "description": "Nama atau kunci informasi yang ingin disimpan.",
                 },
                 "value": {
-                    "type": "string",
                     "description": "Nilai informasi yang ingin disimpan.",
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["fact", "decision", "experience", "preference"],
+                },
+                "source": {
+                    "description": "Provenance sumber memory, misalnya user, agent, tool, atau dokumen.",
+                },
+                "project_id": {
+                    "type": "string",
+                },
+                "task_id": {
+                    "type": "string",
+                },
+                "context": {
+                    "type": "array",
+                    "items": {"type": "string"},
                 },
             },
             "required": ["key", "value"],
+        },
+    },
+
+    "invalidate_memory": {
+        "capabilities": ["workspace.write"],
+        "func": invalidate_memory,
+        "permission": "confirm",
+        "description": "Menonaktifkan versi memory aktif tanpa menghapus histori atau provenance.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                },
+                "project_id": {
+                    "type": "string",
+                },
+                "task_id": {
+                    "type": "string",
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["fact", "decision", "experience", "preference"],
+                },
+                "reason": {
+                    "type": "string",
+                },
+            },
+            "required": ["key", "reason"],
         },
     },
 
@@ -231,6 +276,13 @@ TOOL_REGISTRY = {
                 "key": {
                     "type": "string",
                     "description": "Kunci informasi yang ingin dicari.",
+                },
+                "project_id": {"type": "string"},
+                "task_id": {"type": "string"},
+                "context": {"type": "array", "items": {"type": "string"}},
+                "kind": {
+                    "type": "string",
+                    "enum": ["fact", "decision", "experience", "preference"],
                 },
             },
             "required": ["key"],
@@ -248,6 +300,16 @@ TOOL_REGISTRY = {
                 "query": {
                     "type": "string",
                     "description": "Teks yang ingin dicari di dalam memory.",
+                },
+                "project_id": {"type": "string"},
+                "task_id": {"type": "string"},
+                "context": {"type": "array", "items": {"type": "string"}},
+                "kinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["fact", "decision", "experience", "preference"],
+                    },
                 },
             },
             "required": ["query"],
