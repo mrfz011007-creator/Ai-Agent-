@@ -151,6 +151,13 @@ class AcceptanceGate:
                 )
 
         for criterion in criteria:
+            if criterion.required and not criterion.evidence_ids and not criterion.artifact_ids:
+                return VerificationResult(
+                    VerificationStatus.FAILED,
+                    f"Acceptance criterion {criterion.criterion_id} has no evidence or artifact requirement",
+                    tuple(evidence_ids),
+                )
+
             criterion_evidence = self.verifier.verify_task_evidence(
                 task_id, criterion.evidence_ids, expected_attempt_id
             ) if criterion.evidence_ids else VerificationResult(
