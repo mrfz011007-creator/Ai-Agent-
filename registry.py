@@ -26,7 +26,7 @@ from memory_context import (
 TOOL_REGISTRY = {
 
     "lihat": {
-        "capabilities": ["workspace.read"],
+        "idempotent": True,        "capabilities": ["workspace.read"],
         "func": lihat,
         "permission": "safe",
         "description": "Menampilkan isi direktori kerja saat ini.",
@@ -37,7 +37,7 @@ TOOL_REGISTRY = {
     },
 
     "lokasi": {
-        "capabilities": ["workspace.read"],
+        "idempotent": True,        "capabilities": ["workspace.read"],
         "func": lokasi,
         "permission": "safe",
         "description": "Menampilkan lokasi direktori kerja saat ini.",
@@ -48,7 +48,7 @@ TOOL_REGISTRY = {
     },
 
     "siapa": {
-        "capabilities": ["workspace.read"],
+        "idempotent": True,        "capabilities": ["workspace.read"],
         "func": siapa,
         "permission": "safe",
         "description": "Menampilkan username pengguna Termux saat ini.",
@@ -59,7 +59,7 @@ TOOL_REGISTRY = {
     },
 
     "cari_teks": {
-        "capabilities": ["workspace.read"],
+        "idempotent": True,        "capabilities": ["workspace.read"],
         "func": cari_teks,
         "permission": "safe",
         "description": "Mencari teks di dalam file workspace.",
@@ -92,7 +92,7 @@ TOOL_REGISTRY = {
     },
 
     "baca_file": {
-        "capabilities": ["workspace.read"],
+        "idempotent": True,        "capabilities": ["workspace.read"],
         "func": baca_file,
         "permission": "safe",
         "description": "Membaca isi sebuah file.",
@@ -221,7 +221,7 @@ TOOL_REGISTRY = {
     },
 
     "recall": {
-        "capabilities": ["workspace.read"],
+        "idempotent": True,        "capabilities": ["workspace.read"],
         "func": recall_memory,
         "permission": "safe",
         "description": "Mengambil informasi dari memory agent berdasarkan key.",
@@ -238,7 +238,7 @@ TOOL_REGISTRY = {
     },
 
     "search_memory": {
-        "capabilities": ["workspace.read"],
+        "idempotent": True,        "capabilities": ["workspace.read"],
         "func": search_memory_tool,
         "permission": "safe",
         "description": "Mencari informasi di memory berdasarkan key atau value.",
