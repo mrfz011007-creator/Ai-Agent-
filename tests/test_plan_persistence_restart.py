@@ -34,6 +34,7 @@ def test_materialized_plan_and_graph_round_trip_after_runtime_restart():
         plan1, graph1 = orchestrator1.materialize(
             proposal,
             "roundtrip-plan-001",
+            project_id="launcher",
         )
 
         assert plan1.status.value == "VALIDATED"
@@ -59,6 +60,8 @@ def test_materialized_plan_and_graph_round_trip_after_runtime_restart():
         assert plan2.status == plan1.status
         assert plan2.task_ids == plan1.task_ids
         assert plan2.acceptance_criteria == plan1.acceptance_criteria
+        assert plan2.project_id == "launcher"
+
 
         assert graph2.tasks["roundtrip-001"].title == "Inspect project"
         assert graph2.tasks["roundtrip-002"].title == "Implement change"
