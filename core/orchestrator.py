@@ -23,9 +23,30 @@ class Orchestrator:
         for task in graph.tasks.values():
             if self.task_manager.get(task.task_id) is not None:
                 raise ValueError(f"Task already exists: {task.task_id}")
-        for task in graph.tasks.values():
-            self.task_manager.create(task)
-        self._persist_plan(plan)
+            if self.store is not None and self.store.load_task(task.task_id) is not None:
+                raise ValueError(f"Persisted task already exists: {task.task_id}")
+
+        if self.store is not None:
+            self.store.save_plan_with_tasks(
+                plan_id=plan.plan_id,
+                goal=plan.goal,
+                status=plan.status.value,
+                task_ids=plan.task_ids,
+                acceptance_criteria=plan.acceptance_criteria,
+                tasks=[
+                    (
+                        task.task_id,
+                        task.status.value,
+                        task.attempts,
+                        self.task_manager._task_persistence_payload(task),
+                    )
+                    for task in graph.tasks.values()
+                ],
+            )
+            self.task_manager.tasks.update(graph.tasks)
+        else:
+            for task in graph.tasks.values():
+                self.task_manager.create(task)
         return plan, graph
 
     def _persist_plan(self, plan: Plan) -> None:
