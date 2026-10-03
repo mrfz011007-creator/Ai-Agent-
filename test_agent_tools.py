@@ -16,7 +16,7 @@ def test_safe_tool_registry():
 
     result = tool["func"]()
     assert result["success"] is True
-    assert result["status"] == "success"
+    assert result["status"] == "SUCCESS"
 
 
 def test_unknown_tool_is_not_registered():
