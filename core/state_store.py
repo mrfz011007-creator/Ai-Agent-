@@ -44,6 +44,7 @@ class StateStore:
                     attempt_id TEXT,
                     tool TEXT NOT NULL,
                     action TEXT NOT NULL,
+                    kind TEXT NOT NULL DEFAULT 'execution',
                     success INTEGER NOT NULL,
                     result_status TEXT NOT NULL,
                     error TEXT,
@@ -54,6 +55,8 @@ class StateStore:
             columns = {row[1] for row in db.execute("PRAGMA table_info(evidence)").fetchall()}
             if "attempt_id" not in columns:
                 db.execute("ALTER TABLE evidence ADD COLUMN attempt_id TEXT")
+            if "kind" not in columns:
+                db.execute("ALTER TABLE evidence ADD COLUMN kind TEXT NOT NULL DEFAULT 'execution'" )
             db.execute("""
                 CREATE TABLE IF NOT EXISTS artifacts (
                     artifact_id TEXT PRIMARY KEY,
@@ -147,19 +150,21 @@ class StateStore:
         tool: str,
         action: str,
         success: bool,
+        kind: str = "execution",
         result_status: str,
         error: str | None,
         payload: dict[str, Any],
     ) -> None:
         with self._connect() as db:
             db.execute(
-                "INSERT INTO evidence(evidence_id,task_id,attempt_id,tool,action,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO evidence(evidence_id,task_id,attempt_id,tool,action,kind,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     evidence_id,
                     task_id,
                     attempt_id,
                     tool,
                     action,
+                    kind,
                     int(success),
                     result_status,
                     error,
@@ -170,7 +175,7 @@ class StateStore:
     def load_evidence(self, evidence_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute(
-                "SELECT evidence_id,task_id,attempt_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE evidence_id=?",
+                "SELECT evidence_id,task_id,attempt_id,tool,action,kind,success,result_status,error,payload,created_at FROM evidence WHERE evidence_id=?",
                 (evidence_id,),
             ).fetchone()
         if row is None:
@@ -183,7 +188,7 @@ class StateStore:
     def load_evidence_for_task(self, task_id: str) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT evidence_id,task_id,attempt_id,tool,action,success,result_status,error,payload,created_at FROM evidence WHERE task_id=? ORDER BY rowid ASC",
+                "SELECT evidence_id,task_id,attempt_id,tool,action,kind,success,result_status,error,payload,created_at FROM evidence WHERE task_id=? ORDER BY rowid ASC",
                 (task_id,),
             ).fetchall()
         results = []
