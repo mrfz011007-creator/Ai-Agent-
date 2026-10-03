@@ -190,11 +190,18 @@ class GoalRunner:
 
         waiting = [task for task in graph.tasks.values() if task.status == TaskStatus.WAITING]
         if waiting:
-            # An interrupted task may have committed a side effect before the
-            # process died. Automatically retrying here would bypass explicit
-            # reconciliation and can duplicate non-idempotent work.
-            plan = self._persist(plan, PlanStatus.WAITING)
-            return plan, graph
+            # Model availability waits are safe to resume because no tool
+            # proposal was executed for that attempt.
+            if len(waiting) == 1 and self.runtime.recovery_manager.can_resume_model_wait(
+                waiting[0].task_id
+            ):
+                resumed = self.runtime.task_manager.resume(waiting[0].task_id)
+                graph.tasks[resumed.task_id] = resumed
+            else:
+                # Interrupted tool execution still requires explicit
+                # reconciliation to avoid duplicating external side effects.
+                plan = self._persist(plan, PlanStatus.WAITING)
+                return plan, graph
 
         # Project/context metadata is not persisted with Plan yet. Resume
         # therefore uses explicit runtime defaults instead of undefined names.
