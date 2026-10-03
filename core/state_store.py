@@ -80,6 +80,17 @@ class StateStore:
             if "project_id" not in plan_columns:
                 db.execute("ALTER TABLE plans ADD COLUMN project_id TEXT")
             db.execute("""
+                CREATE TABLE IF NOT EXISTS memory_candidates (
+                    candidate_id TEXT PRIMARY KEY,
+                    task_id TEXT,
+                    project_id TEXT,
+                    status TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     checkpoint_id TEXT PRIMARY KEY,
                     task_id TEXT,
@@ -241,6 +252,82 @@ class StateStore:
                 "FROM artifacts WHERE task_id=? ORDER BY rowid ASC",
                 (task_id,),
             ).fetchall()
+        results = []
+        for row in rows:
+            result = dict(row)
+            result["payload"] = json.loads(result["payload"])
+            results.append(result)
+        return results
+
+    def save_memory_candidate(
+        self,
+        *,
+        candidate_id: str,
+        task_id: str | None,
+        project_id: str | None,
+        status: str,
+        payload: dict[str, Any],
+    ) -> None:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO memory_candidates(
+                    candidate_id,task_id,project_id,status,payload
+                ) VALUES (?,?,?,?,?)
+                ON CONFLICT(candidate_id) DO UPDATE SET
+                    status=excluded.status,
+                    payload=excluded.payload,
+                    updated_at=CURRENT_TIMESTAMP""",
+                (
+                    candidate_id,
+                    task_id,
+                    project_id,
+                    status,
+                    json.dumps(payload, sort_keys=True, default=str),
+                ),
+            )
+
+    def load_memory_candidate(self, candidate_id: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT candidate_id,task_id,project_id,status,payload,created_at,updated_at "
+                "FROM memory_candidates WHERE candidate_id=?",
+                (candidate_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["payload"] = json.loads(result["payload"])
+        return result
+
+    def load_memory_candidates(
+        self,
+        *,
+        status: str | None = None,
+        task_id: str | None = None,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query = (
+            "SELECT candidate_id,task_id,project_id,status,payload,created_at,updated_at "
+            "FROM memory_candidates"
+        )
+        clauses = []
+        params = []
+        if status is not None:
+            clauses.append("status=?")
+            params.append(status)
+        if task_id is not None:
+            clauses.append("task_id=?")
+            params.append(task_id)
+        if project_id is not None:
+            clauses.append("project_id=?")
+            params.append(project_id)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY rowid ASC"
+
+        with self._connect() as db:
+            rows = db.execute(query, tuple(params)).fetchall()
+
         results = []
         for row in rows:
             result = dict(row)
