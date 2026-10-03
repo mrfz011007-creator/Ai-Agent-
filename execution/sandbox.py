@@ -243,6 +243,7 @@ def prepare_sandbox(
     # namespaces prevent privilege escalation, host writes and network access.
     shell = shutil.which("sh")
     if shell is None:
+        cleanup_sandbox(str(root))
         raise SandboxUnavailable("POSIX shell is required for namespace isolation")
 
     command = [
