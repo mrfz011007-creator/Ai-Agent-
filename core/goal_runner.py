@@ -6,6 +6,7 @@ from core.contracts import TaskStatus
 from core.model_execution import ExecutionProposal
 from core.model_planner import ModelPlanService
 from core.plan import Plan, PlanStatus, TaskGraph
+from core.memory_learning import build_task_experience_candidate
 
 
 class GoalRunner:
@@ -44,6 +45,14 @@ class GoalRunner:
         max_steps: int | None = None,
         project_id: str | None = None,
     ) -> tuple[Plan, TaskGraph]:
+        if (
+            project_id is not None
+            and plan.project_id is not None
+            and project_id != plan.project_id
+        ):
+            raise ValueError("project_id does not match the persisted plan scope")
+        project_id = plan.project_id if project_id is None else project_id
+
         plan = self._persist(plan, PlanStatus.EXECUTING)
         steps = 0
         execution_context = {}
@@ -130,6 +139,36 @@ class GoalRunner:
             plan = self._persist(plan, status)
             if task is None or task.status != TaskStatus.COMPLETED:
                 return plan, graph
+
+            try:
+                verification = task.result
+                evidence_ids = tuple(
+                    getattr(verification, "evidence_ids", ())
+                    if verification is not None
+                    else ()
+                )
+                result_payload = {
+                    "status": getattr(verification, "status", "completed"),
+                    "reason": getattr(verification, "reason", ""),
+                    "evidence_ids": list(evidence_ids),
+                }
+                build_task_experience_candidate(
+                    self.runtime.state_store,
+                    task_id=task.task_id,
+                    title=task.title,
+                    project_id=project_id,
+                    result=result_payload,
+                    attempts=task.attempts,
+                    tool_calls=task.tool_calls,
+                    evidence_ids=evidence_ids,
+                )
+            except Exception as error:
+                self.runtime.task_manager.checkpoint(
+                    task.task_id,
+                    event="memory_candidate_failed",
+                    reason=str(error),
+                )
+
             steps += 1
 
         return self._persist(plan, PlanStatus.COMPLETED), graph
