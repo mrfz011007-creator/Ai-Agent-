@@ -155,8 +155,13 @@ def build_memory_context(
         default=str,
     )
     if len(encoded) > payload_limit:
-        encoded = encoded[:payload_limit] + (
-            "...[MEMORY_TRUNCATED]"[: max(0, payload_limit)
-        )
+        marker = "...[MEMORY_TRUNCATED]"
+        if payload_limit <= len(marker):
+            encoded = marker[:payload_limit]
+        else:
+            encoded = (
+                encoded[: payload_limit - len(marker)]
+                + marker
+            )
 
     return prefix + encoded + suffix
