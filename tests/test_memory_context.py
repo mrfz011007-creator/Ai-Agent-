@@ -43,3 +43,24 @@ def test_build_memory_context_is_bounded(tmp_path, monkeypatch):
 
     assert len(context) <= 100
     assert "[MEMORY_" in context
+
+
+def test_build_memory_context_redacts_persisted_secrets(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+
+    remember(
+        "api_key",
+        "AIzaSyA123456789012345678901",
+        kind="fact",
+        source="user",
+        project_id="launcher",
+        context=["credentials"],
+    )
+
+    context = build_memory_context(
+        "api_key",
+        project_id="launcher",
+    )
+
+    assert "AIzaSyA123456789012345678901" not in context
+    assert "[REDACTED_SECRET]" in context
