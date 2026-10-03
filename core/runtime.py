@@ -253,11 +253,12 @@ class AgentRuntime:
             raise KeyError(task_id)
         if task.execution_contract is None:
             raise ValueError("Task has no execution contract")
+        resolved_attempt_id = expected_attempt_id or f"{task_id}:attempt:{task.attempts}"
         verification = self.acceptance_gate.verify_execution(
             task_id=task_id,
             evidence_ids=tuple(evidence_ids),
             completion_conditions=task.execution_contract.completion_conditions,
-            expected_attempt_id=expected_attempt_id,
+            expected_attempt_id=resolved_attempt_id,
         )
         if verification.status.value == "PASSED":
             if task.status == TaskStatus.RUNNING:
@@ -273,11 +274,12 @@ class AgentRuntime:
             raise KeyError(task_id)
         if task.execution_contract is None:
             raise ValueError("Task has no execution contract")
+        resolved_attempt_id = expected_attempt_id or f"{task_id}:attempt:{task.attempts}"
         verification = self.acceptance_gate.verify_execution(
             task_id=task_id,
             evidence_ids=tuple(evidence_ids),
             completion_conditions=task.execution_contract.completion_conditions,
-            expected_attempt_id=expected_attempt_id,
+            expected_attempt_id=resolved_attempt_id,
         )
         if verification.status.value != "PASSED":
             return verification
@@ -291,6 +293,10 @@ class AgentRuntime:
         return self.task_manager.complete_with_gate(task_id, verification)
 
     def verify_and_complete(self, task_id: str, **kwargs):
+        task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        kwargs.setdefault("expected_attempt_id", f"{task_id}:attempt:{task.attempts}")
         verification = self.acceptance_gate.verify(task_id=task_id, **kwargs)
         if verification.status.value != "PASSED":
             return verification
