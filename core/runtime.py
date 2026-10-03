@@ -277,6 +277,22 @@ class AgentRuntime:
         self.task_manager.begin_verification(task_id)
         return self.task_manager.complete_with_gate(task_id, verification)
 
+    def reconcile_tool_execution(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        reason: str,
+        evidence_id: str | None = None,
+    ) -> None:
+        """Explicitly resolve an uncertain tool execution before replay."""
+        self.state_store.reconcile_tool_execution(
+            request_id,
+            status=status,
+            reason=reason,
+            evidence_id=evidence_id,
+        )
+
     def recover_task(self, task_id: str):
         return self.recovery_manager.recover_task(task_id)
 
