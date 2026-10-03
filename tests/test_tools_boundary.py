@@ -335,6 +335,7 @@ def test_confirmation_display_redacts_secret_like_arguments(monkeypatch, capsys)
     output = capsys.readouterr().out
     assert "AIzaSyA12345678901234567890" not in output
     assert "secret-value" not in output
+    assert "[REDACTED_SECRET]" in output
     assert "***REDACTED***" in output
 
 
@@ -348,7 +349,6 @@ def test_confirmation_display_redacts_secret_like_arguments(monkeypatch, capsys)
     output = capsys.readouterr().out
     assert "AIzaSyA12345678901234567890" not in output
     assert "secret-value" not in output
-    assert "[REDACTED_SECRET]" in output
     assert "***REDACTED***" in output
 
 
