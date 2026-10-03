@@ -72,6 +72,7 @@ class Orchestrator:
             plan.status.value,
             plan.task_ids,
             plan.acceptance_criteria,
+            project_id=plan.project_id,
         )
 
     def persist_plan(self, plan: Plan) -> None:
@@ -302,6 +303,7 @@ class Orchestrator:
                 task_ids=plan.task_ids,
                 status=PlanStatus.COMPLETED,
                 acceptance_criteria=plan.acceptance_criteria,
+                project_id=plan.project_id,
             )
         elif any(task.status == TaskStatus.BLOCKED for task in graph.tasks.values()):
             plan = Plan(
@@ -310,6 +312,7 @@ class Orchestrator:
                 task_ids=plan.task_ids,
                 status=PlanStatus.BLOCKED,
                 acceptance_criteria=plan.acceptance_criteria,
+                project_id=plan.project_id,
             )
         elif graph.failed():
             plan = Plan(
@@ -318,6 +321,7 @@ class Orchestrator:
                 task_ids=plan.task_ids,
                 status=PlanStatus.FAILED,
                 acceptance_criteria=plan.acceptance_criteria,
+                project_id=plan.project_id,
             )
         elif graph.active():
             plan = Plan(
@@ -326,6 +330,7 @@ class Orchestrator:
                 task_ids=plan.task_ids,
                 status=PlanStatus.EXECUTING,
                 acceptance_criteria=plan.acceptance_criteria,
+                project_id=plan.project_id,
             )
         self._persist_plan(plan)
         return plan, graph, completed
