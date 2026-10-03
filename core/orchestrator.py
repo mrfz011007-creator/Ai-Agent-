@@ -123,7 +123,15 @@ class Orchestrator:
         model_context=None,
     ) -> Task | None:
         """Execute one task through separate model and tool failure boundaries."""
-        task = self.start_next(graph)
+        model_wait = [
+            item for item in graph.tasks.values()
+            if item.status == TaskStatus.RUNNING
+            and isinstance(item.result, dict)
+            and item.result.get("recovery_action") == "WAIT_FOR_MODEL"
+        ]
+        if len(model_wait) > 1:
+            raise RuntimeError("Multiple model-wait tasks are active")
+        task = model_wait[0] if model_wait else self.start_next(graph)
         if task is None:
             return None
         attempt_id = f"{task.task_id}:attempt:{task.attempts}"
