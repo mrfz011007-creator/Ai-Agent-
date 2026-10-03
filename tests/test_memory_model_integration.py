@@ -6,8 +6,30 @@ from memory import remember
 def test_goal_runner_memory_reaches_planner_and_execution(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path / "workspace"))
     (tmp_path / "workspace").mkdir()
-    remember("launcher_project", "LauncherOS")
-    remember("architecture_decision", "Use Compose with native Android components")
+    remember(
+        "launcher_project",
+        "LauncherOS",
+        kind="fact",
+        source="user",
+        project_id="launcher",
+        context=["LauncherOS"],
+    )
+    remember(
+        "architecture_decision",
+        "Use Compose with native Android components",
+        kind="decision",
+        source={"type": "user", "ref": "architecture"},
+        project_id="launcher",
+        context=["LauncherOS"],
+    )
+    remember(
+        "inspection_constraint",
+        "Use the existing icon grid as the inspection baseline",
+        kind="preference",
+        source={"type": "user", "ref": "task"},
+        project_id="launcher",
+        task_id="inspect",
+    )
 
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
     planner_prompts = []
@@ -49,7 +71,11 @@ def test_goal_runner_memory_reaches_planner_and_execution(tmp_path, monkeypatch)
 
     monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
 
-    plan, graph = runtime.run_goal("work on LauncherOS", plan_id="plan-memory")
+    plan, graph = runtime.run_goal(
+        "work on LauncherOS",
+        plan_id="plan-memory",
+        project_id="launcher",
+    )
 
     assert plan.status.value == "COMPLETED"
     assert graph.tasks["inspect"].status == TaskStatus.COMPLETED
@@ -60,4 +86,5 @@ def test_goal_runner_memory_reaches_planner_and_execution(tmp_path, monkeypatch)
     assert "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)" in planner_prompts[0]
     assert "LauncherOS" in execution_prompts[0]
     assert "Compose" in execution_prompts[0]
+    assert "inspection baseline" in execution_prompts[0]
     assert "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)" in execution_prompts[0]
