@@ -25,6 +25,7 @@ class Plan:
     task_ids: tuple[str, ...]
     status: PlanStatus = PlanStatus.PROPOSED
     acceptance_criteria: tuple[str, ...] = ()
+    project_id: str | None = None
 
 
 class PlanGraphError(ValueError):
@@ -129,7 +130,13 @@ class Planner:
         proposal.graph()
         return proposal
 
-    def materialize(self, proposal: PlanProposal, plan_id: str) -> Plan:
+    def materialize(
+        self,
+        proposal: PlanProposal,
+        plan_id: str,
+        *,
+        project_id: str | None = None,
+    ) -> Plan:
         graph = proposal.graph()
         if not plan_id.strip():
             raise PlanGraphError("Plan ID cannot be empty")
@@ -139,6 +146,7 @@ class Planner:
             task_ids=tuple(graph.tasks),
             status=PlanStatus.VALIDATED,
             acceptance_criteria=proposal.acceptance_criteria,
+            project_id=project_id,
         )
 
 
