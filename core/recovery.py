@@ -242,8 +242,7 @@ class RecoveryController:
                 raise KeyError(f"Unknown task: {task_id}")
             previous = task.status
             if task.status == TaskStatus.RUNNING:
-                task.status = TaskStatus.WAITING
-                self.task_manager.persist(task_id)
+                task = self.task_manager.wait(task_id)
                 self.task_manager.checkpoint(
                     task_id, event="model_waiting", reason=message
                 )
