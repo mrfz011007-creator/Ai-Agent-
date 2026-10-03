@@ -313,3 +313,99 @@ def test_memory_prompt_context_bounds_large_values():
     rows = memory_prompt_context(result)
     assert rows[0]["value"]["_truncated"] is True
     assert len(rows[0]["value"]["preview"]) < 4000
+
+
+def test_successful_execution_does_not_trigger_reflection_by_default(tmp_path, monkeypatch):
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    reflection_calls = []
+
+    def fake_generate_text(prompt, **kwargs):
+        if "USER GOAL:" in prompt:
+            return (
+                '{"goal":"reflection budget","tasks":'
+                '[{"task_id":"inspect","title":"Inspect","dependencies":[]}],'
+                '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+            )
+        return '{"tool":"lokasi","action":"execute","arguments":{}}'
+
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
+    monkeypatch.setattr(
+        runtime.memory,
+        "reflect_and_commit",
+        lambda **kwargs: reflection_calls.append(kwargs),
+    )
+
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        evidence_id = "ev-reflection-budget"
+        result = ToolResult(True, "success", proposal.tool, data={"ok": True}, evidence_id=evidence_id)
+        runtime.evidence_store.record(
+            evidence_id=evidence_id,
+            task_id=task_id,
+            attempt_id=attempt_id,
+            tool=proposal.tool,
+            action=proposal.action,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+
+    plan, _ = runtime.run_goal("reflection budget", plan_id="plan-reflection-budget")
+
+    assert plan.status.value == "COMPLETED"
+    assert reflection_calls == []
+
+
+def test_failed_execution_triggers_reflection(tmp_path, monkeypatch):
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    reflection_calls = []
+
+    def fake_generate_text(prompt, **kwargs):
+        if "USER GOAL:" in prompt:
+            return (
+                '{"goal":"reflection failure","tasks":'
+                '[{"task_id":"inspect","title":"Inspect","dependencies":[]}],'
+                '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+            )
+        return '{"tool":"lokasi","action":"execute","arguments":{}}'
+
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
+    monkeypatch.setattr(
+        runtime.memory,
+        "reflect_and_commit",
+        lambda **kwargs: reflection_calls.append(kwargs) or {
+            "status": "success",
+            "success": True,
+            "committed": [],
+            "rejected": [],
+        },
+    )
+
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        evidence_id = "ev-reflection-failure"
+        result = ToolResult(
+            False,
+            "error",
+            proposal.tool,
+            data={"reason": "simulated"},
+            error="simulated failure",
+            evidence_id=evidence_id,
+        )
+        runtime.evidence_store.record(
+            evidence_id=evidence_id,
+            task_id=task_id,
+            attempt_id=attempt_id,
+            tool=proposal.tool,
+            action=proposal.action,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+
+    plan, graph = runtime.run_goal("reflection failure", plan_id="plan-reflection-failure")
+
+    assert plan.status.value == "FAILED"
+    assert graph.tasks["inspect"].status == TaskStatus.FAILED
+    assert len(reflection_calls) == 1
+    assert reflection_calls[0]["evidence_refs"] == ["ev-reflection-failure"]
