@@ -90,6 +90,7 @@ class CriteriaEvaluator:
                 all_task_ids=(task_id,),
                 completed_task_ids=(),
                 failed_task_ids=(),
+                expected_attempt_id=expected_attempt_id,
             )
             if not ok:
                 return False, reason, tuple(item.evidence_id for item in task_evidence)
@@ -139,6 +140,7 @@ class CriteriaEvaluator:
         all_task_ids: Sequence[str],
         completed_task_ids: Sequence[str],
         failed_task_ids: Sequence[str],
+        expected_attempt_id: str | None = None,
     ) -> tuple[bool, str]:
         kind = condition["type"]
 
@@ -176,8 +178,10 @@ class CriteriaEvaluator:
             return ok, f"No successful {wanted or 'tool'} evidence for task {task_id}" if not ok else "Tool success verified"
 
         artifacts = [
-            artifact for artifact_id in self._artifact_ids_for_task(task_id)
+            artifact
+            for artifact_id in self._artifact_ids_for_task(task_id)
             if (artifact := self.artifact_manager.get(artifact_id)) is not None
+            and (expected_attempt_id is None or artifact.attempt_id == expected_attempt_id)
         ]
         if kind == "artifact_exists":
             ok = any(self.artifact_manager.verify(a.artifact_id, task_id=task_id)[0] for a in artifacts)
