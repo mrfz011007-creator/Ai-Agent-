@@ -224,21 +224,6 @@ def _compact_threshold_bytes() -> int:
     return _positive_int_env("AI_AGENT_MEMORY_AUTO_COMPACT_BYTES", DEFAULT_AUTO_COMPACT_BYTES)
 
 
-def _bounded_memory_value(value: Any, *, max_chars: int) -> Any:
-    if max_chars < 256:
-        raise ValueError("max_chars must be >= 256")
-    serialized = json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
-    if len(serialized) <= max_chars:
-        return value
-    import hashlib
-    return {
-        "_truncated": True,
-        "sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
-        "original_chars": len(serialized),
-        "preview": serialized[:max_chars] + "...[TRUNCATED]",
-    }
-
-
 def _record_identity(record: Mapping[str, Any]) -> tuple[Any, ...]:
     return (
         record["type"],
