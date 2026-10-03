@@ -93,3 +93,44 @@ def test_legacy_artifacts_schema_migrates_attempt_id(tmp_path):
     assert restored is not None
     assert restored["attempt_id"] == "task-migrated:attempt:1"
     assert restored["evidence_id"] == "ev-migrated"
+
+
+def test_generic_evidence_persistence_cannot_forge_reconciliation_authority(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    import pytest
+
+    with pytest.raises(ValueError, match="save_reconciliation_evidence"):
+        store.save_evidence(
+            evidence_id="forged",
+            task_id="task",
+            attempt_id="task:attempt:1",
+            tool="reconcile",
+            action="inspect",
+            success=True,
+            result_status="SUCCESS",
+            error=None,
+            kind="reconciliation",
+            authority="reconciliation_boundary",
+            payload={"forged": True},
+        )
+
+    assert store.load_evidence("forged") is None
+
+
+def test_reconciliation_evidence_uses_dedicated_persistence_boundary(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    store.save_reconciliation_evidence(
+        evidence_id="reconciled",
+        task_id="task",
+        attempt_id="task:attempt:1",
+        tool="reconcile",
+        action="inspect",
+        result_status="SUCCESS",
+        error=None,
+        payload={"verified": True},
+    )
+
+    restored = store.load_evidence("reconciled")
+    assert restored is not None
+    assert restored["kind"] == "reconciliation"
+    assert restored["authority"] == "reconciliation_boundary"
