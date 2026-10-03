@@ -108,9 +108,16 @@ class TaskManager:
         task = self._require(task_id)
         if task.status != TaskStatus.WAITING:
             raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
+        previous_attempts = task.attempts
+        previous_status = task.status
         task.attempts += 1
         task.status = TaskStatus.RUNNING
-        self._persist(task)
+        try:
+            self._persist(task)
+        except Exception:
+            task.attempts = previous_attempts
+            task.status = previous_status
+            raise
         self._checkpoint(task, event="retry_started", attempt=task.attempts)
         return task
 
