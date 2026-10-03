@@ -59,7 +59,7 @@ class AgentRuntime:
         )
         evidence_store = EvidenceStore(state_store)
         artifact_manager = ArtifactManager(state_store)
-        budget_manager = BudgetManager(Budget())
+        budget_manager = BudgetManager(Budget(), state_store=state_store)
         recovery_manager = RecoveryManager(task_manager, evidence_store, budget_manager)
         recovery_controller = RecoveryController(recovery_manager, task_manager)
         model_gateway = create_gemini_gateway(
