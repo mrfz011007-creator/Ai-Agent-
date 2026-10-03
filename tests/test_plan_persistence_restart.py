@@ -3,7 +3,7 @@ from pathlib import Path
 
 from core.contracts import Task
 from core.orchestrator import Orchestrator
-from core.plan import Planner
+from core.plan import Planner, PlanStatus
 from core.runtime import AgentRuntime
 
 
@@ -164,7 +164,7 @@ def test_plan_project_scope_survives_status_updates_and_restart():
                 plan_id=plan.plan_id,
                 goal=plan.goal,
                 task_ids=plan.task_ids,
-                status=plan.status.EXECUTING,
+                status=PlanStatus.EXECUTING,
                 acceptance_criteria=plan.acceptance_criteria,
                 project_id=plan.project_id,
             )
