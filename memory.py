@@ -96,22 +96,6 @@ _MEMORY_REQUIRED_FIELDS = frozenset({
 
 def _validate_record(record: Mapping[str, Any]) -> dict[str, Any]:
     required = _MEMORY_REQUIRED_FIELDS
-        "memory_id",
-        "key",
-        "value",
-        "kind",
-        "source",
-        "project_id",
-        "task_id",
-        "context",
-        "created_at",
-        "updated_at",
-        "version",
-        "valid",
-        "supersedes",
-        "invalidated_at",
-        "invalidation_reason",
-    }
     missing = required.difference(record)
     if missing:
         raise MemoryStoreError(
