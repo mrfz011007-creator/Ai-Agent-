@@ -109,9 +109,18 @@ class GoalRunner:
                 plan = self._persist(plan, PlanStatus.WAITING)
                 return plan, graph
 
-            task = self.runtime.orchestrator.next_ready(graph)
-            if task is None:
-                break
+            model_wait_active = [
+                item for item in graph.tasks.values()
+                if item.status == TaskStatus.RUNNING
+                and isinstance(item.result, dict)
+                and item.result.get("recovery_action") == "WAIT_FOR_MODEL"
+            ]
+            if model_wait_active:
+                task = model_wait_active[0]
+            else:
+                task = self.runtime.orchestrator.next_ready(graph)
+                if task is None:
+                    break
             memory_result = self.runtime.memory.retrieve(
                 f"{plan.goal} {task.title}", project_id=project_id,
                 task_id=task.task_id, context=context, limit=8,
