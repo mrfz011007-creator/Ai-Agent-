@@ -391,6 +391,41 @@ class StateStore:
                     f"Tool execution is not unresolved or does not exist: {request_id}"
                 )
 
+    def save_plan_with_tasks(
+        self,
+        *,
+        plan_id: str,
+        goal: str,
+        status: str,
+        task_ids: list[str] | tuple[str, ...],
+        acceptance_criteria: list[str] | tuple[str, ...],
+        tasks: list[tuple[str, str, int, dict[str, Any]]],
+    ) -> None:
+        """Persist one plan and all of its initial tasks in one SQLite transaction."""
+        with self._connect() as db:
+            for task_id, task_status, attempts, payload in tasks:
+                db.execute(
+                    """INSERT INTO tasks(task_id,status,attempts,payload)
+                       VALUES (?,?,?,?)""",
+                    (
+                        task_id,
+                        task_status,
+                        attempts,
+                        json.dumps(payload, sort_keys=True, default=str),
+                    ),
+                )
+            db.execute(
+                """INSERT INTO plans(plan_id,goal,status,task_ids,acceptance_criteria)
+                   VALUES (?,?,?,?,?)""",
+                (
+                    plan_id,
+                    goal,
+                    status,
+                    json.dumps(list(task_ids)),
+                    json.dumps(list(acceptance_criteria)),
+                ),
+            )
+
     def save_plan(
         self,
         plan_id: str,
