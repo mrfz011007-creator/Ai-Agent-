@@ -27,6 +27,8 @@ class Plan:
     task_ids: tuple[str, ...]
     status: PlanStatus = PlanStatus.PROPOSED
     acceptance_criteria: tuple[Mapping[str, object], ...] = ()
+    project_id: str | None = None
+    context: Mapping[str, Any] = field(default_factory=dict)
 
 
 class PlanGraphError(ValueError):
