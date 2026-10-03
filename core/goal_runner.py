@@ -49,6 +49,37 @@ class GoalRunner:
         execution_context = {}
 
         def execute_with_context(proposal, *, task_id, attempt_id=None):
+            if proposal.tool in {"remember", "invalidate_memory"}:
+                arguments = dict(proposal.arguments)
+                requested_project = arguments.get("project_id")
+                if (
+                    project_id is not None
+                    and requested_project is not None
+                    and requested_project != project_id
+                ):
+                    raise ValueError(
+                        "Memory tool project scope does not match active project"
+                    )
+                if project_id is not None:
+                    arguments["project_id"] = project_id
+
+                requested_task = arguments.get("task_id")
+                if (
+                    requested_task is not None
+                    and requested_task != task_id
+                ):
+                    raise ValueError(
+                        "Memory tool task scope does not match active task"
+                    )
+                if proposal.tool == "remember":
+                    arguments["task_id"] = task_id
+
+                proposal = ExecutionProposal(
+                    tool=proposal.tool,
+                    action=proposal.action,
+                    arguments=arguments,
+                )
+
             result = self.runtime.execute_model_proposal(
                 proposal,
                 task_id=task_id,
