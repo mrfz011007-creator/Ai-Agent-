@@ -23,6 +23,11 @@ class BudgetManager:
         self.check_runtime()
         self.budget.consume_tool()
 
+    def refund_tool_call(self) -> None:
+        """Compensate a tool reservation when execution setup cannot commit."""
+        if self.budget.tool_calls > 0:
+            self.budget.tool_calls -= 1
+
     def reserve_model_call(self) -> None:
         self.check_runtime()
         self.budget.consume_model()
