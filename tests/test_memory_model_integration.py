@@ -88,3 +88,113 @@ def test_goal_runner_memory_reaches_planner_and_execution(tmp_path, monkeypatch)
     assert "Compose" in execution_prompts[0]
     assert "inspection baseline" in execution_prompts[0]
     assert "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)" in execution_prompts[0]
+
+
+def test_model_memory_write_is_bound_to_active_task_and_project(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    captured = []
+
+    def fake_generate_text(prompt, **kwargs):
+        return (
+            '{"goal":"remember launcher constraint","tasks":'
+            '[{"task_id":"remember-task","title":"Record launcher constraint","dependencies":[]}],'
+            '"acceptance_criteria":["memory request is routed"]}'
+        )
+
+    def fake_text(prompt, **kwargs):
+        return (
+            '{"tool":"remember","action":"execute","arguments":'
+            '{"key":"constraint","value":"No ads"}}'
+        )
+
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
+    monkeypatch.setattr(runtime.model_gateway, "text", fake_text)
+
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        captured.append((proposal.tool, dict(proposal.arguments), task_id))
+        result = ToolResult(
+            True,
+            "success",
+            proposal.tool,
+            data={"ok": True},
+            evidence_id="ev-memory-write-scope",
+        )
+        runtime.evidence_store.record(
+            evidence_id="ev-memory-write-scope",
+            task_id=task_id,
+            attempt_id=attempt_id,
+            tool=proposal.tool,
+            action=proposal.action,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+
+    plan, graph = runtime.run_goal(
+        "remember launcher constraint",
+        plan_id="plan-memory-write-scope",
+        project_id="launcher",
+    )
+
+    assert plan.status.value == "COMPLETED"
+    assert graph.tasks["remember-task"].status == TaskStatus.COMPLETED
+    assert captured == [
+        (
+            "remember",
+            {
+                "key": "constraint",
+                "value": "No ads",
+                "project_id": "launcher",
+                "task_id": "remember-task",
+            },
+            "remember-task",
+        )
+    ]
+
+
+def test_model_memory_write_rejects_cross_project_scope(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+
+    def fake_generate_text(prompt, **kwargs):
+        return (
+            '{"goal":"remember launcher constraint","tasks":'
+            '[{"task_id":"remember-task","title":"Record launcher constraint","dependencies":[]}],'
+            '"acceptance_criteria":["memory request is rejected"]}'
+        )
+
+    def fake_text(prompt, **kwargs):
+        return (
+            '{"tool":"remember","action":"execute","arguments":'
+            '{"key":"constraint","value":"No ads","project_id":"other"}}'
+        )
+
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
+    monkeypatch.setattr(runtime.model_gateway, "text", fake_text)
+
+    called = False
+
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        nonlocal called
+        called = True
+        raise AssertionError("cross-project memory write reached execution")
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+
+    plan, graph = runtime.run_goal(
+        "remember launcher constraint",
+        plan_id="plan-memory-cross-scope",
+        project_id="launcher",
+    )
+
+    assert not called
+    assert plan.status.value == "FAILED"
+    assert graph.tasks["remember-task"].status == TaskStatus.FAILED
