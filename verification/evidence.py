@@ -20,6 +20,7 @@ class EvidenceStore:
         action: str,
         result: ToolResult,
         attempt_id: str | None = None,
+        kind: str = "execution",
     ) -> Evidence:
         if evidence_id in self.records or (self.store and self.store.load_evidence(evidence_id)):
             raise ValueError(f"Evidence already exists: {evidence_id}")
@@ -33,6 +34,7 @@ class EvidenceStore:
             success=result.success,
             result_status=result.status,
             error=result.error,
+            kind=kind,
         )
         if self.store is not None:
             self.store.save_evidence(
@@ -44,6 +46,7 @@ class EvidenceStore:
                 success=evidence.success,
                 result_status=evidence.result_status,
                 error=evidence.error,
+                kind=evidence.kind,
                 payload={
                     "evidence_id": evidence.evidence_id,
                     "task_id": evidence.task_id,
@@ -52,6 +55,7 @@ class EvidenceStore:
                     "success": evidence.success,
                     "result_status": evidence.result_status,
                     "error": evidence.error,
+                    "kind": evidence.kind,
                 },
             )
         self.records[evidence_id] = evidence
@@ -75,6 +79,7 @@ class EvidenceStore:
             success=row["success"],
             result_status=row["result_status"],
             error=row["error"],
+            kind=row["kind"],
         )
         self.records[evidence_id] = evidence
         return evidence
