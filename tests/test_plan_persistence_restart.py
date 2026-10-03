@@ -68,3 +68,32 @@ def test_materialized_plan_and_graph_round_trip_after_runtime_restart():
         assert graph2.tasks["roundtrip-002"].dependencies == ["roundtrip-001"]
 
         graph2.validate()
+
+
+def test_resume_goal_restores_persisted_project_scope_without_repassing_it(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    state_path = tmp_path / "state.sqlite3"
+    runtime1 = AgentRuntime.create(state_path=state_path)
+    proposal = runtime1.orchestrator.planner.propose(
+        "Scoped resume",
+        [Task("scoped-001", "Inspect launcher")],
+        acceptance_criteria=("Scope survives restart",),
+    )
+    runtime1.orchestrator.materialize(
+        proposal,
+        "scoped-plan-001",
+        project_id="launcher",
+    )
+
+    runtime2 = AgentRuntime.create(state_path=state_path)
+    resumed_plan, graph = runtime2.resume_goal(
+        "scoped-plan-001",
+        max_steps=0,
+    )
+
+    assert resumed_plan.project_id == "launcher"
+    assert graph.tasks["scoped-001"].status.value == "PENDING"
+    assert resumed_plan.status.value == "WAITING"
