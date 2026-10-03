@@ -163,6 +163,11 @@ class TaskManager:
                     raise ValueError(f"Verification evidence not found: {evidence_id}")
                 if evidence["task_id"] != task_id:
                     raise ValueError(f"Verification evidence belongs to another task: {evidence_id}")
+                expected_attempt_id = f"{task_id}:attempt:{task.attempts}"
+                if evidence.get("attempt_id") != expected_attempt_id:
+                    raise ValueError(
+                        f"Verification evidence belongs to another attempt: {evidence_id}"
+                    )
                 if not evidence["success"]:
                     raise ValueError(f"Verification evidence is unsuccessful: {evidence_id}")
         task = self._mutate_and_persist(
