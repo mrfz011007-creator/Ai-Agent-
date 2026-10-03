@@ -219,7 +219,6 @@ def test_model_budget_failure_does_not_rotate_or_retry(monkeypatch):
     ]
 
 
-
 @pytest.mark.parametrize("value", [0, -1, True, 1.5])
 def test_model_gateway_rejects_invalid_max_attempts(value):
     with pytest.raises(ValueError, match="max_attempts must be a positive integer"):
@@ -274,3 +273,18 @@ def test_runtime_budget_survives_restart(tmp_path):
     assert second.budget_manager.budget.tool_calls == 1
     assert second.budget_manager.remaining_model_calls == 19
     assert second.budget_manager.remaining_tool_calls == 49
+
+
+def test_runtime_budget_window_resets_after_restart(tmp_path):
+    from core.budget import BudgetManager
+    from core.runtime import AgentRuntime
+
+    state_path = tmp_path / "state.sqlite3"
+    first = AgentRuntime.create(state_path=state_path)
+    first.budget_manager.budget.max_runtime_seconds = 1.0
+    first.budget_manager.started_at_wall = 0.0
+    first.budget_manager._persist()
+
+    second = AgentRuntime.create(state_path=state_path)
+    assert second.budget_manager.elapsed_seconds < 1.0
+    assert second.budget_manager.remaining_runtime_seconds > 0.0
