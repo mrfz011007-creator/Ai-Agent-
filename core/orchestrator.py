@@ -37,6 +37,8 @@ class Orchestrator:
             plan.status.value,
             plan.task_ids,
             plan.acceptance_criteria,
+            project_id=plan.project_id,
+            context=plan.context,
         )
 
     def persist_plan(self, plan: Plan) -> None:
@@ -54,6 +56,8 @@ class Orchestrator:
             task_ids=tuple(saved["task_ids"]),
             status=PlanStatus(saved["status"]),
             acceptance_criteria=tuple(saved["acceptance_criteria"]),
+            project_id=saved.get("project_id"),
+            context=saved.get("context") or {},
         )
 
     def restore_graph(self, plan_id: str) -> tuple[Plan, TaskGraph] | None:
