@@ -159,6 +159,8 @@ class StateStore:
         kind: str = "execution",
         authority: str = "execution_router",
     ) -> None:
+        if kind != "execution" or authority != "execution_router":
+            raise ValueError("Use save_reconciliation_evidence() for reconciliation evidence")
         with self._connect() as db:
             db.execute(
                 "INSERT INTO evidence(evidence_id,task_id,attempt_id,tool,action,kind,authority,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -171,6 +173,37 @@ class StateStore:
                     kind,
                     authority,
                     int(success),
+                    result_status,
+                    error,
+                    json.dumps(payload, sort_keys=True, default=str),
+                ),
+            )
+
+    def save_reconciliation_evidence(
+        self,
+        evidence_id: str,
+        task_id: str,
+        attempt_id: str,
+        tool: str,
+        action: str,
+        result_status: str,
+        error: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        if not task_id or not attempt_id:
+            raise ValueError("Reconciliation evidence requires task and attempt IDs")
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO evidence(evidence_id,task_id,attempt_id,tool,action,kind,authority,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    evidence_id,
+                    task_id,
+                    attempt_id,
+                    tool,
+                    action,
+                    "reconciliation",
+                    "reconciliation_boundary",
+                    1,
                     result_status,
                     error,
                     json.dumps(payload, sort_keys=True, default=str),
