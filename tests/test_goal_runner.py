@@ -409,3 +409,29 @@ def test_failed_execution_triggers_reflection(tmp_path, monkeypatch):
     assert graph.tasks["inspect"].status == TaskStatus.FAILED
     assert len(reflection_calls) == 1
     assert reflection_calls[0]["evidence_refs"] == ["ev-reflection-failure"]
+
+
+def test_runtime_resume_preserves_project_and_context(tmp_path):
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    from core.plan import Planner
+    from core.contracts import Task
+
+    proposal = Planner().propose(
+        "persist context",
+        [Task("ctx-task", "Use project context")],
+    )
+    plan, _ = runtime.orchestrator.materialize(proposal, "plan-context-persist")
+    from dataclasses import replace
+    plan = replace(
+        plan,
+        project_id="project-42",
+        context={"workspace": "demo", "device": "TECNO-BG6"},
+    )
+    runtime.orchestrator.persist_plan(plan)
+
+    fresh = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    restored = fresh.orchestrator.restore_plan("plan-context-persist")
+
+    assert restored is not None
+    assert restored.project_id == "project-42"
+    assert restored.context == {"workspace": "demo", "device": "TECNO-BG6"}
