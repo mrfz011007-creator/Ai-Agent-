@@ -153,7 +153,7 @@ def test_bounded_goal_runner_lifecycle_persists_and_resumes(tmp_path):
 
     class PlanGateway:
         def generate_text(self, prompt, **kwargs):
-            return '{"tasks":[{"task_id":"GOAL-E2E-1","title":"read bounded data","dependencies":[],"execution_contract":{"objective":"read bounded data","allowed_tools":["search_memory"],"allowed_capabilities":["workspace.read"],"max_tool_calls":1,"retry_limit":0,"completion_conditions":["successful evidence exists"]}}],"acceptance_criteria":[]}'
+            return '{"goal":"read bounded data","tasks":[{"task_id":"GOAL-E2E-1","title":"read bounded data","dependencies":[],"execution_contract":{"objective":"read bounded data","allowed_tools":["search_memory"],"allowed_capabilities":["workspace.read"],"max_tool_calls":1,"retry_limit":0,"completion_conditions":["successful evidence exists"]}}],"acceptance_criteria":[]}'
 
         def text(self, prompt, **kwargs):
             return '{"tool":"search_memory","action":"execute","arguments":{"query":"bounded"}}'
