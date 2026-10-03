@@ -161,7 +161,11 @@ class AgentRuntime:
             memory_context=build_memory_context(goal, project_id=project_id),
         )
         resolved_plan_id = plan_id or f"plan-{uuid.uuid4().hex[:12]}"
-        return self.orchestrator.materialize(proposal, resolved_plan_id)
+        return self.orchestrator.materialize(
+            proposal,
+            resolved_plan_id,
+            project_id=project_id,
+        )
 
     def resume_plan(self, plan_id: str):
         """Restore a persisted plan and reconcile interrupted tasks before execution."""
