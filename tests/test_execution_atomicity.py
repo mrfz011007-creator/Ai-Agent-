@@ -277,3 +277,77 @@ def test_tool_reconciliation_rejects_cross_task_evidence(tmp_path):
         )
 
     assert store.load_tool_execution("REQ-RESOLVE")["status"] == "STARTED"
+
+
+def test_tool_execution_claim_is_owned_by_first_caller(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+
+    first = store.begin_tool_execution(
+        request_id="REQ-CLAIM",
+        task_id="TASK-A",
+        attempt_id="TASK-A:attempt:1",
+        tool="tool",
+        action="execute",
+        arguments_hash="hash",
+    )
+    second = store.begin_tool_execution(
+        request_id="REQ-CLAIM",
+        task_id="TASK-A",
+        attempt_id="TASK-A:attempt:1",
+        tool="tool",
+        action="execute",
+        arguments_hash="hash",
+    )
+
+    assert first["status"] == "STARTED"
+    assert first["claimed"] is True
+    assert second["status"] == "STARTED"
+    assert second["claimed"] is False
+
+
+def test_raced_tool_reservation_does_not_execute_side_effect_twice(tmp_path):
+    calls = []
+    registry = {
+        "side_effect": {
+            "func": lambda: calls.append("called") or {"success": True},
+            "permission": "safe",
+        }
+    }
+    router, _, store, budget = _router(tmp_path, registry)
+
+    store.begin_tool_execution(
+        request_id="REQ-RACE",
+        task_id=None,
+        attempt_id=None,
+        tool="side_effect",
+        action="execute",
+        arguments_hash=__import__("hashlib").sha256(
+            b"{}"
+        ).hexdigest(),
+    )
+
+    original_load = store.load_tool_execution
+    first_lookup = True
+
+    def hide_existing_once(request_id):
+        nonlocal first_lookup
+        if first_lookup:
+            first_lookup = False
+            return None
+        return original_load(request_id)
+
+    store.load_tool_execution = hide_existing_once
+
+    result = router.execute(
+        ToolRequest(
+            "side_effect",
+            "execute",
+            arguments={},
+            request_id="REQ-RACE",
+        )
+    )
+
+    assert not result.success
+    assert result.status == "execution_unknown"
+    assert calls == []
+    assert budget.budget.tool_calls == 0
