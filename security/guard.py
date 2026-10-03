@@ -12,6 +12,8 @@ class GuardResult:
     reason: str
 
 
+_PROCESS_TOOLS = {"run_command", "jalankan_python"}
+
 _DESTRUCTIVE_EXECUTABLES = {
     "rm",
     "rmdir",
@@ -46,12 +48,14 @@ class GuardEngine:
 
     def check(self, *, tool: str, arguments: dict) -> GuardResult:
         cwd = arguments.get("cwd")
-        if tool == "run_command":
+        if tool in _PROCESS_TOOLS:
             if not self.allow_host_execution:
                 return GuardResult(
                     False,
                     "HOST_EXECUTION_NOT_SANDBOXED",
                 )
+            if tool == "jalankan_python":
+                return GuardResult(True, "HOST_EXECUTION_ALLOWED")
             if not cwd:
                 return GuardResult(False, "WORKSPACE_CWD_REQUIRED")
             try:
