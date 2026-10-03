@@ -169,6 +169,10 @@ class ToolRouter:
             except RuntimeError as error:
                 return ToolResult(False, "task_limit_exceeded", request.tool, error=str(error))
 
+        function = metadata.get("func")
+        if function is None:
+            return ToolResult(False, "error", request.tool, error="Tool has no handler")
+
         try:
             self._budget.reserve_tool_call()
         except RuntimeError as error:
@@ -178,10 +182,6 @@ class ToolRouter:
                 request.tool,
                 error=str(error),
             )
-
-        function = metadata.get("func")
-        if function is None:
-            return ToolResult(False, "error", request.tool, error="Tool has no handler")
 
         evidence_id = f"ev-{uuid.uuid4().hex[:12]}"
 
