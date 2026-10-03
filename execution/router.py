@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from typing import Callable
 
@@ -28,6 +30,7 @@ class ToolRouter:
         task_getter: Callable[[str], object | None] | None = None,
         capability_policy: CapabilityPolicy | None = None,
         task_tool_call_consumer: Callable[[str], object] | None = None,
+        task_tool_call_refunder: Callable[[str], object] | None = None,
     ):
         self._registry_getter = registry_getter
         self._policy = policy
@@ -38,6 +41,7 @@ class ToolRouter:
         self._task_getter = task_getter
         self._capability_policy = capability_policy
         self._task_tool_call_consumer = task_tool_call_consumer
+        self._task_tool_call_refunder = task_tool_call_refunder
 
     def execute(self, request: ToolRequest) -> ToolResult:
         metadata = self._registry_getter(request.tool)
