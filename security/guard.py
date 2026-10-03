@@ -11,6 +11,9 @@ class GuardResult:
     reason: str
 
 
+_SHELL_EXECUTABLES = {"sh", "bash", "dash", "zsh", "fish", "ksh", "csh", "tcsh"}
+
+
 _DESTRUCTIVE_EXECUTABLES = {
     "rm",
     "rmdir",
@@ -56,6 +59,8 @@ class GuardEngine:
                 return GuardResult(False, "COMMAND_EMPTY")
 
             executable = Path(argv[0]).name.lower()
+            if executable in _SHELL_EXECUTABLES:
+                return GuardResult(False, "SHELL_EXECUTION_DENIED")
             if executable in _DESTRUCTIVE_EXECUTABLES:
                 return GuardResult(False, "DESTRUCTIVE_COMMAND_DENIED")
 
