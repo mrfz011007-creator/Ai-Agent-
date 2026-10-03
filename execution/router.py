@@ -226,7 +226,7 @@ class ToolRouter:
                         pass
                 self._budget.refund_tool_call()
                 raise
-            if record["status"] != "STARTED":
+            if record["status"] != "STARTED" or not record.get("claimed", True):
                 if task_reserved and self._task_tool_call_refunder is not None and request.task_id is not None:
                     try:
                         self._task_tool_call_refunder(request.task_id)
@@ -237,7 +237,7 @@ class ToolRouter:
                     False,
                     "execution_unknown",
                     request.tool,
-                    error="Execution reservation already exists and requires reconciliation.",
+                    error="Execution reservation is already owned or requires reconciliation.",
                 )
 
         evidence_id = f"ev-{uuid.uuid4().hex[:12]}"
