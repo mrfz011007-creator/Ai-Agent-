@@ -243,3 +243,36 @@ def test_explicit_reconciliation_can_authorize_a_new_execution(tmp_path):
 
     assert second.success
     assert len(calls) == 2
+
+
+def test_tool_reconciliation_rejects_cross_task_evidence(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    store.begin_tool_execution(
+        request_id="REQ-RESOLVE",
+        task_id="TASK-A",
+        attempt_id="TASK-A:attempt:1",
+        tool="side_effect",
+        action="execute",
+        arguments_hash="hash-a",
+    )
+    store.save_evidence(
+        evidence_id="EV-OTHER",
+        task_id="TASK-B",
+        attempt_id="TASK-B:attempt:1",
+        tool="inspect",
+        action="execute",
+        success=True,
+        result_status="success",
+        error=None,
+        payload={"ok": True},
+    )
+
+    with pytest.raises(ValueError, match="another task"):
+        store.reconcile_tool_execution(
+            "REQ-RESOLVE",
+            status="RESOLVED_COMPLETED",
+            reason="External state was inspected.",
+            evidence_id="EV-OTHER",
+        )
+
+    assert store.load_tool_execution("REQ-RESOLVE")["status"] == "STARTED"
