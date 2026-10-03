@@ -69,6 +69,8 @@ def _normalize_source(source: str | Mapping[str, Any] | None) -> dict[str, Any]:
         data = dict(source)
         source_type = str(data.get("type", "")).strip()
         if not source_type:
+            source_type = str(data.get("kind", "")).strip()
+        if not source_type:
             raise ValueError("source.type cannot be empty")
         data["type"] = source_type
         return data
