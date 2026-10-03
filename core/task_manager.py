@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 from core.contracts import Task, TaskStatus, VerificationResult, VerificationStatus
 from core.execution_contract import ExecutionContract
 from core.state_store import StateStore
@@ -17,7 +18,11 @@ class TaskManager:
         if task.task_id in self.tasks:
             raise ValueError(f"Task already exists: {task.task_id}")
         self.tasks[task.task_id] = task
-        self._persist(task)
+        try:
+            self._persist(task)
+        except Exception:
+            self.tasks.pop(task.task_id, None)
+            raise
         return task
 
     def get(self, task_id: str) -> Task | None:
@@ -61,9 +66,7 @@ class TaskManager:
         contract = task.execution_contract
         if contract is not None and task.tool_calls >= contract.max_tool_calls:
             raise RuntimeError("TASK_TOOL_CALL_LIMIT_EXCEEDED")
-        task.tool_calls += 1
-        self._persist(task)
-        return task
+        return self._mutate_and_persist(task, lambda: setattr(task, "tool_calls", task.tool_calls + 1))
 
     def mark_ready(self, task_id: str) -> Task:
         task = self._require(task_id)
@@ -74,15 +77,14 @@ class TaskManager:
             for dep in task.dependencies
         ):
             raise ValueError("Task dependencies are not completed")
-        task.status = TaskStatus.READY
-        self._persist(task)
-        return task
+        return self._mutate_and_persist(task, lambda: setattr(task, "status", TaskStatus.READY))
 
     def start(self, task_id: str) -> Task:
         task = self._require(task_id)
-        task.attempts += 1
-        task.mark_running()
-        self._persist(task)
+        def mutate() -> None:
+            task.attempts += 1
+            task.mark_running()
+        task = self._mutate_and_persist(task, mutate)
         self._checkpoint(task, event="started")
         return task
 
@@ -91,9 +93,10 @@ class TaskManager:
         task = self._require(task_id)
         if task.status != TaskStatus.WAITING:
             raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
-        task.attempts += 1
-        task.status = TaskStatus.RUNNING
-        self._persist(task)
+        def mutate() -> None:
+            task.attempts += 1
+            task.status = TaskStatus.RUNNING
+        task = self._mutate_and_persist(task, mutate)
         self._checkpoint(task, event="retry_started", attempt=task.attempts)
         return task
 
@@ -101,8 +104,9 @@ class TaskManager:
         task = self._require(task_id)
         if task.status != TaskStatus.WAITING:
             raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
-        task.status = TaskStatus.RUNNING
-        self._persist(task)
+        task = self._mutate_and_persist(
+            task, lambda: setattr(task, "status", TaskStatus.RUNNING)
+        )
         self._checkpoint(task, event="resumed")
         return task
 
@@ -110,16 +114,16 @@ class TaskManager:
         task = self._require(task_id)
         if task.status != TaskStatus.WAITING:
             raise ValueError(f"Invalid transition: {task.status} -> BLOCKED")
-        task.status = TaskStatus.BLOCKED
-        task.result = {"reason": reason}
-        self._persist(task)
+        def mutate() -> None:
+            task.status = TaskStatus.BLOCKED
+            task.result = {"reason": reason}
+        task = self._mutate_and_persist(task, mutate)
         self._checkpoint(task, event="blocked", reason=reason)
         return task
 
     def begin_verification(self, task_id: str) -> Task:
         task = self._require(task_id)
-        task.mark_verifying()
-        self._persist(task)
+        task = self._mutate_and_persist(task, task.mark_verifying)
         self._checkpoint(task, event="verification_started")
         return task
 
@@ -136,8 +140,9 @@ class TaskManager:
                     raise ValueError(f"Verification evidence belongs to another task: {evidence_id}")
                 if not evidence["success"]:
                     raise ValueError(f"Verification evidence is unsuccessful: {evidence_id}")
-        task.complete(verification)
-        self._persist(task)
+        task = self._mutate_and_persist(
+            task, lambda: task.complete(verification)
+        )
         self._checkpoint(task, event="completed")
         return task
 
@@ -153,9 +158,10 @@ class TaskManager:
         task = self._require(task_id)
         if task.status not in (TaskStatus.RUNNING, TaskStatus.VERIFYING):
             raise ValueError(f"Invalid transition: {task.status} -> FAILED")
-        task.status = TaskStatus.FAILED
-        task.result = {"reason": reason}
-        self._persist(task)
+        def mutate() -> None:
+            task.status = TaskStatus.FAILED
+            task.result = {"reason": reason}
+        task = self._mutate_and_persist(task, mutate)
         self._checkpoint(task, event="failed", reason=reason)
         return task
 
@@ -171,7 +177,18 @@ class TaskManager:
             raise KeyError(f"Unknown task: {task_id}")
         return task
 
-    
+    def _mutate_and_persist(self, task: Task, mutator) -> Task:
+        """Apply an in-memory mutation only if its durable task write succeeds."""
+        snapshot = deepcopy(task)
+        try:
+            mutator()
+            self._persist(task)
+        except Exception:
+            task.__dict__.clear()
+            task.__dict__.update(snapshot.__dict__)
+            raise
+        return task
+
     def _persist(self, task: Task) -> None:
         if self.store is None:
             return
