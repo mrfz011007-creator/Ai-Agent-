@@ -96,5 +96,5 @@ def test_search_memory_prioritizes_project_scope_over_global_match(tmp_path, mon
     result = search_memory("target", project_id="launcher")
 
     assert result["status"] == "success"
-    assert result["hasil"]["same_key"] == "project-specific value"
+    assert result["hasil"]["same_key"] == "project-specific value for target"
     assert result["records"][0]["project_id"] == "launcher"
