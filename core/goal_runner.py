@@ -131,6 +131,7 @@ class GoalRunner:
         plan_id: str,
         *,
         max_steps: int | None = None,
+        project_id: str | None = None,
     ) -> tuple[Plan, TaskGraph]:
         """Explicitly resume one persisted plan and only its task graph."""
         restored = self.runtime.orchestrator.restore_graph(plan_id)
@@ -152,7 +153,12 @@ class GoalRunner:
             plan = self._persist(plan, PlanStatus.WAITING)
             return plan, graph
 
-        return self._run_graph(plan, graph, max_steps=max_steps)
+        return self._run_graph(
+            plan,
+            graph,
+            max_steps=max_steps,
+            project_id=project_id,
+        )
 
     @staticmethod
     def _new_plan_id() -> str:
