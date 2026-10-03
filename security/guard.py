@@ -55,6 +55,20 @@ class GuardEngine:
                     "HOST_EXECUTION_NOT_SANDBOXED",
                 )
             if tool == "jalankan_python":
+                nama = arguments.get("nama")
+                if not isinstance(nama, str) or not nama.strip():
+                    return GuardResult(False, "PYTHON_PATH_REQUIRED")
+                try:
+                    python_path = Path(nama)
+                    if not python_path.is_absolute():
+                        python_path = self.workspace_root / python_path
+                    resolved = python_path.resolve()
+                except OSError as error:
+                    return GuardResult(False, f"PYTHON_PATH_INVALID: {error}")
+                if not self._inside_workspace(resolved):
+                    return GuardResult(False, "WORKSPACE_BOUNDARY_VIOLATION")
+                if resolved.suffix.lower() != ".py":
+                    return GuardResult(False, "PYTHON_FILE_REQUIRED")
                 return GuardResult(True, "HOST_EXECUTION_ALLOWED")
             if not cwd:
                 return GuardResult(False, "WORKSPACE_CWD_REQUIRED")
