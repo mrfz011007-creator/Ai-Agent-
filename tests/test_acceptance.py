@@ -410,3 +410,38 @@ def test_required_acceptance_criterion_cannot_be_vacuous(tmp_path):
 
     assert result.status == VerificationStatus.FAILED
     assert "no evidence or artifact requirement" in result.reason
+
+
+
+def test_plan_evidence_criterion_rejects_stale_attempt_evidence(tmp_path):
+    from core.contracts import Task, TaskStatus, ToolResult
+    from core.task_manager import TaskManager
+    from core.checkpoint import CheckpointManager
+    from core.state_store import StateStore
+    from verification.evidence import EvidenceStore
+    from verification.artifacts import ArtifactManager
+    from verification.verifier import Verifier
+    from verification.acceptance import AcceptanceGate
+
+    store = StateStore(tmp_path / "state.sqlite3")
+    evidence_store = EvidenceStore(store)
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    task = manager.create(Task("PLAN-STALE", "plan evidence", status=TaskStatus.READY))
+    manager.start(task.task_id)
+    evidence_store.record(
+        evidence_id="STALE",
+        task_id=task.task_id,
+        attempt_id=f"{task.task_id}:attempt:1",
+        tool="tool",
+        action="run",
+        result=ToolResult(True, "SUCCESS", "tool"),
+    )
+    gate = AcceptanceGate(Verifier(evidence_store), ArtifactManager(store))
+    result = gate.verify_plan_criteria(
+        criteria=({"type": "evidence_success", "task_id": task.task_id, "evidence_id": "STALE"},),
+        task_ids=(task.task_id,),
+        completed_task_ids=(task.task_id,),
+        failed_task_ids=(),
+        current_attempt_ids={task.task_id: f"{task.task_id}:attempt:2"},
+    )
+    assert result.status.value == "FAILED"
