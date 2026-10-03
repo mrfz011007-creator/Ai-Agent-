@@ -238,6 +238,14 @@ def run_command(
             "stderr": str(error),
         }
     finally:
+        try:
+            stdout_handle.close()
+        except Exception:
+            pass
+        try:
+            stderr_handle.close()
+        except Exception:
+            pass
         if sandbox_root:
             cleanup_sandbox(sandbox_root)
         for path in (stdout_path, stderr_path):
