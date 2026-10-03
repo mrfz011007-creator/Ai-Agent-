@@ -292,3 +292,33 @@ def test_router_inspect_edit_rejects_stale_snapshot_and_records_evidence(monkeyp
     assert applied.success is True
     assert target.read_text(encoding="utf-8") == "version = 3\\n"
     assert evidence.get(applied.evidence_id).success is True
+
+
+
+def test_guard_rejects_shell_execution_bypass(tmp_path):
+    from security.guard import GuardEngine
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    guard = GuardEngine(workspace)
+
+    result = guard.check(
+        tool="run_command",
+        arguments={"cwd": str(workspace), "command": "bash -c 'rm -rf target'"},
+    )
+    assert result.allowed is False
+    assert result.reason == "SHELL_EXECUTION_DENIED"
+
+
+def test_guard_still_allows_non_shell_executables(tmp_path):
+    from security.guard import GuardEngine
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    guard = GuardEngine(workspace)
+
+    result = guard.check(
+        tool="run_command",
+        arguments={"cwd": str(workspace), "command": "python -c 'print(1)'"},
+    )
+    assert result.allowed is True
