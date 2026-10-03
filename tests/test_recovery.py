@@ -355,3 +355,26 @@ def test_runtime_does_not_replay_non_idempotent_tool_after_ambiguous_failure(tmp
     assert not result.success
     assert len(calls) == 1
     assert runtime.task_manager.get(task.task_id).attempts == 1
+
+
+def test_model_failure_transition_rolls_back_on_persistence_error(tmp_path):
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(
+        Task("MODEL-PERSIST", "model persistence failure")
+    )
+    runtime.task_manager.start(task.task_id)
+
+    def fail_save(*args, **kwargs):
+        raise OSError("simulated sqlite failure")
+
+    runtime.state_store.save_task = fail_save
+
+    with pytest.raises(OSError):
+        runtime.handle_model_failure(
+            task.task_id,
+            RuntimeError("MODEL_CREDENTIALS_EXHAUSTED"),
+        )
+
+    assert runtime.task_manager.get(task.task_id).status == TaskStatus.RUNNING
+    saved = StateStore(tmp_path / "state.sqlite3").load_task(task.task_id)
+    assert saved["status"] == TaskStatus.RUNNING
