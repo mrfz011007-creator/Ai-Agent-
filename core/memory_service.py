@@ -5,7 +5,6 @@ import json
 from typing import Any, Mapping
 
 from memory import (
-    DEFAULT_AUTO_COMPACT_BYTES,
     compact_memory_if_needed,
     invalidate_memory,
     remember,
