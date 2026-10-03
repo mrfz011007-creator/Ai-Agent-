@@ -11,10 +11,17 @@ class StateStore:
 
     def __init__(self, path: str | Path = "agent_state.sqlite3"):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._memory_connection: sqlite3.Connection | None = None
+        if str(self.path) == ":memory:":
+            self._memory_connection = sqlite3.connect(":memory:")
+            self._memory_connection.row_factory = sqlite3.Row
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
+        if self._memory_connection is not None:
+            return self._memory_connection
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         return connection
