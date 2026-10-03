@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import shlex
 import signal
@@ -9,6 +10,8 @@ from pathlib import Path
 
 
 DEFAULT_OUTPUT_LIMIT = 100_000
+MAX_COMMAND_TIMEOUT = 900.0
+MAX_OUTPUT_LIMIT = DEFAULT_OUTPUT_LIMIT
 
 
 def _read_limited(path: str, limit: int) -> tuple[str, bool]:
@@ -54,13 +57,39 @@ def run_command(
     """Execute one bounded process; authorization is owned by ToolRouter."""
     if max_output_chars is not None:
         output_limit = max_output_chars
-    if output_limit <= 0:
+    if not isinstance(output_limit, int) or isinstance(output_limit, bool):
         return {
             "success": False,
             "status": "INVALID_OUTPUT_LIMIT",
             "exit_code": None,
             "stdout": "",
-            "stderr": "output_limit must be positive",
+            "stderr": "output_limit must be an integer",
+        }
+    if output_limit <= 0 or output_limit > MAX_OUTPUT_LIMIT:
+        return {
+            "success": False,
+            "status": "INVALID_OUTPUT_LIMIT",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": f"output_limit must be between 1 and {MAX_OUTPUT_LIMIT}",
+        }
+    try:
+        timeout = float(timeout)
+    except (TypeError, ValueError):
+        return {
+            "success": False,
+            "status": "INVALID_TIMEOUT",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "timeout must be a finite positive number",
+        }
+    if not math.isfinite(timeout) or timeout <= 0 or timeout > MAX_COMMAND_TIMEOUT:
+        return {
+            "success": False,
+            "status": "INVALID_TIMEOUT",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": f"timeout must be between 0 and {MAX_COMMAND_TIMEOUT} seconds",
         }
 
     try:
@@ -103,6 +132,8 @@ def run_command(
             _terminate_process(process)
             stdout, out_truncated = _read_limited(stdout_path, output_limit)
             stderr, err_truncated = _read_limited(stderr_path, output_limit)
+            stdout = redact_text(stdout)
+            stderr = redact_text(stderr)
             if out_truncated or err_truncated:
                 stderr = f"{stderr}\nOUTPUT_TRUNCATED".strip()
             return {
@@ -123,20 +154,3 @@ def run_command(
             "status": "SUCCESS" if process.returncode == 0 else "FAILED",
             "exit_code": process.returncode,
             "stdout": stdout,
-            "stderr": stderr,
-            "output_truncated": truncated,
-        }
-    except OSError as error:
-        return {
-            "success": False,
-            "status": "EXECUTION_ERROR",
-            "exit_code": None,
-            "stdout": "",
-            "stderr": str(error),
-        }
-    finally:
-        for path in (stdout_path, stderr_path):
-            try:
-                Path(path).unlink()
-            except FileNotFoundError:
-                pass
