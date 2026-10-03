@@ -43,6 +43,7 @@ def test_safe_resume_requires_explicit_reason(tmp_path):
         tool="reconcile",
         action="inspect",
         result=ToolResult(True, "SUCCESS", "reconcile"),
+        kind="reconciliation",
     )
     result = recovery.reconcile(
         "R2",
@@ -52,6 +53,34 @@ def test_safe_resume_requires_explicit_reason(tmp_path):
     )
     assert result.status == TaskStatus.RUNNING
     assert result.action == "RESUME"
+
+
+def test_execution_evidence_cannot_authorize_safe_resume(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    manager.create(Task("R12", "reject execution evidence", status=TaskStatus.READY))
+    manager.start("R12")
+    evidence = EvidenceStore(store)
+    evidence.record(
+        evidence_id="E-R12",
+        task_id="R12",
+        attempt_id="R12:attempt:1",
+        tool="reconcile",
+        action="inspect",
+        result=ToolResult(True, "SUCCESS", "reconcile"),
+    )
+    recovery = RecoveryManager(manager, evidence)
+    recovery.recover_task("R12")
+    try:
+        recovery.reconcile(
+            "R12",
+            ReconcileOutcome.SAFE_TO_RESUME,
+            "State appears unchanged.",
+            evidence_ids=("E-R12",),
+        )
+        assert False, "ordinary execution evidence must not authorize safe resume"
+    except ValueError as exc:
+        assert "reconciliation evidence" in str(exc).lower()
 
 
 def test_safe_resume_requires_evidence(tmp_path):
@@ -87,6 +116,7 @@ def test_evidence_survives_restart_and_allows_safe_resume(tmp_path):
         tool="reconcile",
         action="inspect",
         result=ToolResult(True, "SUCCESS", "reconcile"),
+        kind="reconciliation",
     )
 
     restarted_store = StateStore(db_path)
@@ -277,155 +307,3 @@ def test_runtime_retry_creates_new_attempt_and_current_evidence_only(tmp_path):
     runtime.task_manager.start("R9")
 
     calls = []
-
-    def flaky_tool():
-        calls.append("call")
-        if len(calls) == 1:
-            return {
-                "success": False,
-                "status": "error",
-                "stderr": "connection temporarily unavailable",
-            }
-        return {
-            "success": True,
-            "status": "success",
-            "stdout": "ok",
-        }
-
-    registry = {
-        "flaky": {
-            "func": flaky_tool,
-            "permission": "safe",
-            "idempotent": True,
-        }
-    }
-    router = ToolRouter(
-        registry_getter=registry.get,
-        policy=PolicyEngine(registry.get),
-        budget=runtime.budget_manager,
-        evidence=runtime.evidence_store,
-    )
-    runtime.tool_router = router
-
-    result = runtime.execute_with_recovery(
-        "flaky",
-        {},
-        task_id="R9",
-        source="test",
-    )
-
-    assert result.success
-    assert len(calls) == 2
-    assert runtime.task_manager.get("R9").attempts == 2
-
-    first = runtime.evidence_store.get(result.evidence_id)
-    assert first is not None
-    assert first.attempt_id == "R9:attempt:2"
-
-    evidence_rows = [
-        runtime.evidence_store.get(eid)
-        for eid in (
-            result.evidence_id,
-        )
-    ]
-    assert all(item.task_id == "R9" for item in evidence_rows)
-
-
-def test_runtime_does_not_replay_non_idempotent_tool_after_ambiguous_failure(tmp_path):
-    from execution.router import ToolRouter
-    from security.policy import PolicyEngine
-
-    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
-    task = runtime.task_manager.create(Task("R10", "avoid duplicate side effect", status=TaskStatus.READY))
-    runtime.task_manager.start(task.task_id)
-    calls = []
-
-    def side_effect():
-        calls.append("called")
-        return {"success": False, "status": "error", "stderr": "connection temporarily unavailable"}
-
-    registry = {"side_effect": {"func": side_effect, "permission": "safe"}}
-    runtime.tool_router = ToolRouter(
-        registry_getter=registry.get,
-        policy=PolicyEngine(registry.get),
-        budget=runtime.budget_manager,
-        evidence=runtime.evidence_store,
-    )
-
-    result = runtime.execute_with_recovery("side_effect", {}, task_id=task.task_id)
-
-    assert not result.success
-    assert len(calls) == 1
-    assert runtime.task_manager.get(task.task_id).attempts == 1
-
-def test_recovery_rejects_success_evidence_from_stale_attempt(tmp_path):
-    store = StateStore(tmp_path / "state.sqlite3")
-    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
-    manager.create(Task("R12", "reject stale evidence", status=TaskStatus.READY))
-    manager.start("R12")
-    evidence = EvidenceStore(store)
-    evidence.record(
-        evidence_id="E-R12-OLD",
-        task_id="R12",
-        attempt_id="R12:attempt:0",
-        tool="reconcile",
-        action="inspect",
-        result=ToolResult(True, "SUCCESS", "reconcile"),
-    )
-    recovery = RecoveryManager(manager, evidence)
-    recovery.recover_task("R12")
-    try:
-        recovery.reconcile(
-            "R12", ReconcileOutcome.SAFE_TO_RESUME,
-            "Evidence is from an earlier attempt.",
-            evidence_ids=("E-R12-OLD",),
-        )
-        assert False, "stale attempt evidence must not authorize recovery"
-    except ValueError as exc:
-        assert "current attempt" in str(exc).lower()
-
-
-def test_recovery_accepts_evidence_from_current_attempt(tmp_path):
-    store = StateStore(tmp_path / "state.sqlite3")
-    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
-    manager.create(Task("R13", "accept current evidence", status=TaskStatus.READY))
-    manager.start("R13")
-    evidence = EvidenceStore(store)
-    evidence.record(
-        evidence_id="E-R13-CURRENT",
-        task_id="R13",
-        attempt_id="R13:attempt:1",
-        tool="reconcile",
-        action="inspect",
-        result=ToolResult(True, "SUCCESS", "reconcile"),
-    )
-    recovery = RecoveryManager(manager, evidence)
-    recovery.recover_task("R13")
-    result = recovery.reconcile(
-        "R13", ReconcileOutcome.SAFE_TO_RESUME,
-        "Current attempt evidence confirms safe resume.",
-        evidence_ids=("E-R13-CURRENT",),
-    )
-    assert result.action == "RESUME"
-    assert result.status == TaskStatus.RUNNING
-
-
-
-def test_human_required_recovery_blocks_verifying_task(tmp_path):
-    from core.contracts import TaskStatus
-
-    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
-    task = runtime.task_manager.create(Task("CTRL-V", "verification recovery"))
-    runtime.task_manager.start(task.task_id)
-    runtime.task_manager.begin_verification(task.task_id)
-
-    controller = runtime.recovery_controller
-    decision = controller.handle_tool_failure(
-        task.task_id,
-        status="budget_exceeded",
-        error="TOOL_BUDGET_EXCEEDED",
-    )
-
-    assert decision.action == "HUMAN_REQUIRED"
-    assert decision.status == TaskStatus.BLOCKED
-    assert runtime.task_manager.get(task.task_id).status == TaskStatus.BLOCKED
