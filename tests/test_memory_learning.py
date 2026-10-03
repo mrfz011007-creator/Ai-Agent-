@@ -173,3 +173,38 @@ def test_completed_task_can_produce_structured_experience_candidate(
     assert candidate.project_id == "launcher"
     assert candidate.value["attempts"] == 2
     assert "completed" in candidate.reflection.lower()
+
+
+def test_candidate_commit_rejects_successful_evidence_from_another_task(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+
+    from core.contracts import ToolResult
+    runtime.evidence_store.record(
+        evidence_id="E-CAND-OTHER",
+        task_id="other-task",
+        tool="inspect",
+        action="execute",
+        result=ToolResult(True, "SUCCESS", "inspect"),
+    )
+    candidate = runtime.propose_memory_candidate(
+        key="cross_task_lesson",
+        value="must reject unrelated evidence",
+        kind="experience",
+        reflection="Evidence must belong to the candidate task.",
+        task_id="candidate-task",
+        evidence_ids=("E-CAND-OTHER",),
+    )
+
+    with pytest.raises(ValueError, match="another task"):
+        runtime.commit_memory_candidate(
+            candidate.candidate_id,
+            reason="Reject cross-task evidence.",
+        )
+
+    assert runtime.list_memory_candidates(
+        task_id="candidate-task",
+        status=MemoryCandidateStatus.PENDING,
+    )[0].status == MemoryCandidateStatus.PENDING
