@@ -286,3 +286,40 @@ def test_python_execution_also_requires_host_opt_in(tmp_path):
         arguments={"nama": "script.py"},
     )
     assert allowed.allowed
+
+
+def test_python_guard_enforces_workspace_and_extension(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("print('outside')", encoding="utf-8")
+
+    guard = __import__("security.guard", fromlist=["GuardEngine"]).GuardEngine(
+        workspace, allow_host_execution=True
+    )
+
+    assert guard.check(
+        tool="jalankan_python",
+        arguments={"nama": "script.py"},
+    ).allowed
+
+    denied_outside = guard.check(
+        tool="jalankan_python",
+        arguments={"nama": str(outside)},
+    )
+    assert not denied_outside.allowed
+    assert denied_outside.reason == "WORKSPACE_BOUNDARY_VIOLATION"
+
+    denied_extension = guard.check(
+        tool="jalankan_python",
+        arguments={"nama": "script.txt"},
+    )
+    assert not denied_extension.allowed
+    assert denied_extension.reason == "PYTHON_FILE_REQUIRED"
+
+    denied_missing = guard.check(
+        tool="jalankan_python",
+        arguments={},
+    )
+    assert not denied_missing.allowed
+    assert denied_missing.reason == "PYTHON_PATH_REQUIRED"
