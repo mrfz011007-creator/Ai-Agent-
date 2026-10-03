@@ -118,7 +118,11 @@ class GoalRunner:
         proposer = ModelPlanService(self.runtime.model_gateway.generate_text)
         proposal = proposer.propose(goal, memory_context=memory_context)
         resolved_id = plan_id or self._new_plan_id()
-        plan, graph = self.runtime.orchestrator.materialize(proposal, resolved_id)
+        plan, graph = self.runtime.orchestrator.materialize(
+            proposal,
+            resolved_id,
+            project_id=project_id,
+        )
         return self._run_graph(
             plan,
             graph,
@@ -138,6 +142,15 @@ class GoalRunner:
         if restored is None:
             raise KeyError(f"Unknown persisted plan: {plan_id}")
         plan, graph = restored
+        if (
+            project_id is not None
+            and plan.project_id is not None
+            and project_id != plan.project_id
+        ):
+            raise ValueError(
+                "project_id does not match the persisted plan scope"
+            )
+        project_id = plan.project_id if project_id is None else project_id
 
         self.runtime.recovery_manager.recover_tasks(tuple(graph.tasks))
         restored = self.runtime.orchestrator.restore_graph(plan_id)
