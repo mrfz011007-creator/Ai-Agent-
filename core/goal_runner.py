@@ -42,10 +42,13 @@ class GoalRunner:
         graph: TaskGraph,
         *,
         max_steps: int | None = None,
+        memory_context: str = "",
     ) -> tuple[Plan, TaskGraph]:
         plan = self._persist(plan, PlanStatus.EXECUTING)
         steps = 0
         execution_context = {}
+        if memory_context:
+            execution_context["_memory"] = memory_context
 
         def execute_with_context(proposal, *, task_id, attempt_id=None):
             result = self.runtime.execute_model_proposal(
@@ -94,11 +97,19 @@ class GoalRunner:
         max_steps: int | None = None,
     ) -> tuple[Plan, TaskGraph]:
         """Create and execute one bounded goal through the runtime boundary."""
+        from memory_context import build_memory_context
+
+        memory_context = build_memory_context(goal)
         proposer = ModelPlanService(self.runtime.model_gateway.generate_text)
-        proposal = proposer.propose(goal)
+        proposal = proposer.propose(goal, memory_context=memory_context)
         resolved_id = plan_id or self._new_plan_id()
         plan, graph = self.runtime.orchestrator.materialize(proposal, resolved_id)
-        return self._run_graph(plan, graph, max_steps=max_steps)
+        return self._run_graph(
+            plan,
+            graph,
+            max_steps=max_steps,
+            memory_context=memory_context,
+        )
 
     def resume(
         self,
