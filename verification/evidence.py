@@ -80,11 +80,14 @@ class EvidenceStore:
             error=result.error, kind="reconciliation", authority="reconciliation_boundary",
         )
         if self.store is not None:
-            self.store.save_evidence(
-                evidence_id=evidence.evidence_id, task_id=evidence.task_id,
-                attempt_id=evidence.attempt_id, tool=evidence.tool, action=evidence.action,
-                success=True, result_status=evidence.result_status, error=evidence.error,
-                kind=evidence.kind, authority=evidence.authority,
+            self.store.save_reconciliation_evidence(
+                evidence_id=evidence.evidence_id,
+                task_id=evidence.task_id,
+                attempt_id=evidence.attempt_id,
+                tool=evidence.tool,
+                action=evidence.action,
+                result_status=evidence.result_status,
+                error=evidence.error,
                 payload={"evidence_id": evidence.evidence_id, "task_id": evidence.task_id,
                          "tool": evidence.tool, "action": evidence.action, "success": True,
                          "result_status": evidence.result_status, "error": evidence.error,
