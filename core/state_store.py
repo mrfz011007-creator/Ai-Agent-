@@ -323,7 +323,8 @@ class StateStore:
                 "SELECT request_id,task_id,attempt_id,tool,action,arguments_hash,status,"
                 "success,result_status,error,result_payload,evidence_id,created_at,updated_at "
                 "FROM tool_executions "
-                "WHERE task_id=? AND tool=? AND action=? AND status='UNKNOWN' "
+                "WHERE task_id=? AND tool=? AND action=? "
+                "AND status IN ('STARTED','UNKNOWN') "
                 "ORDER BY rowid DESC LIMIT 1",
                 (task_id, tool, action),
             ).fetchone()
