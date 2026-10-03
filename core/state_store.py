@@ -45,6 +45,7 @@ class StateStore:
                     tool TEXT NOT NULL,
                     action TEXT NOT NULL,
                     kind TEXT NOT NULL DEFAULT 'execution',
+                    authority TEXT NOT NULL DEFAULT 'execution_router',
                     success INTEGER NOT NULL,
                     result_status TEXT NOT NULL,
                     error TEXT,
@@ -57,6 +58,8 @@ class StateStore:
                 db.execute("ALTER TABLE evidence ADD COLUMN attempt_id TEXT")
             if "kind" not in columns:
                 db.execute("ALTER TABLE evidence ADD COLUMN kind TEXT NOT NULL DEFAULT 'execution'")
+            if "authority" not in columns:
+                db.execute("ALTER TABLE evidence ADD COLUMN authority TEXT NOT NULL DEFAULT 'execution_router'")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS artifacts (
                     artifact_id TEXT PRIMARY KEY,
@@ -154,10 +157,11 @@ class StateStore:
         error: str | None,
         payload: dict[str, Any],
         kind: str = "execution",
+        authority: str = "execution_router",
     ) -> None:
         with self._connect() as db:
             db.execute(
-                "INSERT INTO evidence(evidence_id,task_id,attempt_id,tool,action,kind,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO evidence(evidence_id,task_id,attempt_id,tool,action,kind,authority,success,result_status,error,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     evidence_id,
                     task_id,
@@ -165,6 +169,7 @@ class StateStore:
                     tool,
                     action,
                     kind,
+                    authority,
                     int(success),
                     result_status,
                     error,
@@ -175,7 +180,7 @@ class StateStore:
     def load_evidence(self, evidence_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute(
-                "SELECT evidence_id,task_id,attempt_id,tool,action,kind,success,result_status,error,payload,created_at FROM evidence WHERE evidence_id=?",
+                "SELECT evidence_id,task_id,attempt_id,tool,action,kind,authority,success,result_status,error,payload,created_at FROM evidence WHERE evidence_id=?",
                 (evidence_id,),
             ).fetchone()
         if row is None:
