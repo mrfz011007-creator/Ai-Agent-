@@ -87,9 +87,16 @@ class StateStore:
                     status TEXT NOT NULL,
                     task_ids TEXT NOT NULL,
                     acceptance_criteria TEXT NOT NULL,
+                    project_id TEXT,
+                    context TEXT NOT NULL DEFAULT '{}',
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            plan_columns = {row[1] for row in db.execute("PRAGMA table_info(plans)").fetchall()}
+            if "project_id" not in plan_columns:
+                db.execute("ALTER TABLE plans ADD COLUMN project_id TEXT")
+            if "context" not in plan_columns:
+                db.execute("ALTER TABLE plans ADD COLUMN context TEXT NOT NULL DEFAULT '{}'")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     checkpoint_id TEXT PRIMARY KEY,
@@ -335,15 +342,19 @@ class StateStore:
         status: str,
         task_ids: list[str] | tuple[str, ...],
         acceptance_criteria: list[str] | tuple[str, ...],
+        project_id: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         with self._connect() as db:
             db.execute(
-                """INSERT INTO plans(plan_id,goal,status,task_ids,acceptance_criteria)
-                   VALUES (?,?,?,?,?)
+                """INSERT INTO plans(plan_id,goal,status,task_ids,acceptance_criteria,project_id,context)
+                   VALUES (?,?,?,?,?,?,?)
                    ON CONFLICT(plan_id) DO UPDATE SET
                    goal=excluded.goal,status=excluded.status,
                    task_ids=excluded.task_ids,
                    acceptance_criteria=excluded.acceptance_criteria,
+                   project_id=excluded.project_id,
+                   context=excluded.context,
                    updated_at=CURRENT_TIMESTAMP""",
                 (
                     plan_id,
@@ -351,13 +362,15 @@ class StateStore:
                     status,
                     json.dumps(list(task_ids)),
                     json.dumps(list(acceptance_criteria)),
+                    project_id,
+                    json.dumps(context or {}, sort_keys=True, default=str),
                 ),
             )
 
     def load_plan(self, plan_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute(
-                "SELECT plan_id,goal,status,task_ids,acceptance_criteria,updated_at "
+                "SELECT plan_id,goal,status,task_ids,acceptance_criteria,project_id,context,updated_at "
                 "FROM plans WHERE plan_id=?",
                 (plan_id,),
             ).fetchone()
@@ -366,4 +379,5 @@ class StateStore:
         result = dict(row)
         result["task_ids"] = json.loads(result["task_ids"])
         result["acceptance_criteria"] = json.loads(result["acceptance_criteria"])
+        result["context"] = json.loads(result.get("context") or "{}")
         return result
