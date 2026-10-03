@@ -400,3 +400,30 @@ def test_model_failure_transition_rolls_back_on_persistence_error(tmp_path):
     assert runtime.task_manager.get(task.task_id).status == TaskStatus.RUNNING
     saved = StateStore(tmp_path / "state.sqlite3").load_task(task.task_id)
     assert saved["status"] == TaskStatus.RUNNING
+
+
+def test_safe_reconciliation_rejects_successful_evidence_from_another_task(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    manager.create(Task("R12", "target"))
+    manager.start("R12")
+
+    evidence = EvidenceStore(store)
+    evidence.record(
+        evidence_id="E-R12-OTHER",
+        task_id="OTHER-TASK",
+        tool="reconcile",
+        action="inspect",
+        result=ToolResult(True, "SUCCESS", "reconcile"),
+    )
+
+    recovery = RecoveryManager(manager, evidence)
+    recovery.recover_task("R12")
+
+    with pytest.raises(ValueError, match="another task"):
+        recovery.reconcile(
+            "R12",
+            ReconcileOutcome.SAFE_TO_RESUME,
+            "State appears reconciled.",
+            evidence_ids=("E-R12-OTHER",),
+        )
