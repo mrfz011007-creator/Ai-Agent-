@@ -240,3 +240,32 @@ def test_router_inspect_edit_rejects_stale_snapshot_and_records_evidence(monkeyp
     assert applied.success is True
     assert target.read_text(encoding="utf-8") == "version = 3\\n"
     assert evidence.get(applied.evidence_id).success is True
+
+
+def test_host_execution_is_denied_without_explicit_opt_in(tmp_path):
+    from security.guard import GuardEngine
+
+    result = GuardEngine(tmp_path).check(
+        tool="run_command",
+        arguments={"command": "python -c \"print('x')\"", "cwd": str(tmp_path)},
+    )
+
+    assert not result.allowed
+    assert result.reason == "HOST_EXECUTION_NOT_SANDBOXED"
+
+
+def test_atomic_write_failure_does_not_partially_replace_file(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    target = workspace / "atomic.txt"
+    target.write_text("original", encoding="utf-8")
+
+    def fail_replace(*args, **kwargs):
+        raise OSError("simulated interruption")
+
+    monkeypatch.setattr(tools.os, "replace", fail_replace)
+    result = tools.tulis_file("atomic.txt", "replacement")
+
+    assert result["success"] is False
+    assert target.read_text(encoding="utf-8") == "original"
