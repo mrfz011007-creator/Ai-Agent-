@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import json
+
 from memory import (
     recall,
     search_memory,
@@ -35,11 +39,9 @@ def ambil_memory(key=None, query=None):
     """
 
     if key is not None:
-
         return recall_memory(key)
 
     if query is not None:
-
         return search_memory_tool(query)
 
     return {
@@ -49,3 +51,27 @@ def ambil_memory(key=None, query=None):
             "atau query."
         )
     }
+
+
+def build_memory_context(query: str, *, max_chars: int = 6000) -> str:
+    """Build a bounded, model-facing memory context from persisted memory."""
+    if not isinstance(query, str) or not query.strip():
+        return ""
+
+    result = search_memory_tool(query.strip())
+    if result.get("status") != "success":
+        return ""
+
+    payload = result.get("hasil", {})
+    if not isinstance(payload, dict) or not payload:
+        return ""
+
+    encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+    if len(encoded) > max_chars:
+        encoded = encoded[:max_chars] + "...[MEMORY_TRUNCATED]"
+
+    return (
+        "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)\n"
+        f"{encoded}\n"
+        "END PERSISTED MEMORY"
+    )
