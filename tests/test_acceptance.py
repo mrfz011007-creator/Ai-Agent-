@@ -279,3 +279,32 @@ def test_acceptance_proves_build_test_artifact_chain_through_router(tmp_path):
     )
     assert tampered.status == VerificationStatus.FAILED
     assert "integrity" in tampered.reason.lower()
+
+
+def test_required_acceptance_criterion_cannot_pass_without_evidence_or_artifact(tmp_path):
+    _, evidence, artifacts, gate, _ = _setup(tmp_path)
+    _evidence(evidence, "A1", "build-required")
+    path = tmp_path / "app.apk"
+    path.write_bytes(b"apk")
+    artifact = artifacts.register(
+        task_id="A1",
+        path=path,
+        kind="APK",
+        attempt_id="attempt-1",
+        evidence_id="build-required",
+    )
+
+    result = gate.verify(
+        task_id="A1",
+        build_evidence_id="build-required",
+        artifact_ids=(artifact.artifact_id,),
+        criteria=(
+            AcceptanceCriterion(
+                "unproven",
+                "This criterion has no evidence or artifact.",
+            ),
+        ),
+    )
+
+    assert result.status == VerificationStatus.FAILED
+    assert "no evidence or artifact" in result.reason.lower()
