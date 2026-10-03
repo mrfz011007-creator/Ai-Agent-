@@ -741,13 +741,13 @@ def search_memory(
 
     records.sort(
         key=lambda record: (
-            _record_match_score(record, query),
             _scope_score(
                 record,
                 project_id=project_id,
                 task_id=task_id,
                 context=normalized_context,
             ),
+            _record_match_score(record, query),
             *_record_order(record),
         ),
         reverse=True,
