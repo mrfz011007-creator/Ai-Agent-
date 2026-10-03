@@ -97,6 +97,13 @@ class TaskManager:
 
     def start(self, task_id: str) -> Task:
         task = self._require(task_id)
+        if task.status not in (TaskStatus.PENDING, TaskStatus.READY):
+            raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
+        if task.status == TaskStatus.PENDING:
+            for dependency_id in task.dependencies:
+                dependency = self._require(dependency_id)
+                if dependency.status != TaskStatus.COMPLETED:
+                    raise ValueError("Task dependencies are not completed")
         def mutate() -> None:
             task.attempts += 1
             task.mark_running()
