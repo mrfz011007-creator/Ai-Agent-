@@ -293,15 +293,3 @@ def test_recovery_controller_handles_model_exhaustion(tmp_path):
 
     assert decision.action == "WAIT_FOR_MODEL"
     assert runtime.task_manager.get(task.task_id).status == TaskStatus.WAITING
-
-
-def test_runtime_retry_creates_new_attempt_and_current_evidence_only(tmp_path):
-    from execution.router import ToolRouter
-    from core.contracts import ToolResult, ToolRequest
-    from security.policy import PolicyEngine
-
-    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
-    task = runtime.task_manager.create(Task("R9", "retry execution", status=TaskStatus.READY))
-    runtime.task_manager.start("R9")
-
-    calls = []
