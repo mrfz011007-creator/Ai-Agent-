@@ -39,7 +39,7 @@ def test_build_memory_context_is_bounded(tmp_path, monkeypatch):
     import json
 
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
-    remember("goal", "x" * 12000)
+    remember("goal", "x" * 8000)
 
     context = build_memory_context("goal", max_chars=300)
 
