@@ -181,6 +181,7 @@ class GoalRunner:
         proposer = ModelPlanService(
             self.runtime.model_gateway.generate_text,
             memory=self.runtime.memory,
+            tool_catalog=self.runtime.tool_catalog(),
         )
         proposal = proposer.propose(goal, project_id=project_id, context=context)
         resolved_id = plan_id or self._new_plan_id()
