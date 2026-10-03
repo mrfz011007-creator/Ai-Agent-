@@ -110,7 +110,7 @@ class GoalRunner:
                     plan.goal,
                     project_id=project_id,
                     task_id=ready_task.task_id,
-                    context=[ready_task.title],
+                    context=[plan.goal, ready_task.title],
                 )
             if task_memory_context:
                 execution_context["_memory"] = task_memory_context
