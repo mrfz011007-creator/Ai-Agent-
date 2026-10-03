@@ -478,3 +478,31 @@ def test_runtime_run_goal_preserves_context_after_completion(tmp_path, monkeypat
     assert restored is not None
     assert restored.project_id == "project-99"
     assert restored.context == {"workspace": "repo", "device": "TECNO-BG6"}
+
+
+def test_plan_goal_persists_project_and_context(tmp_path, monkeypatch):
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+
+    def fake_generate_text(prompt, **kwargs):
+        return (
+            '{"goal":"planned only","tasks":'
+            '[{"task_id":"planned","title":"Planned task","dependencies":[]}],'
+            '"acceptance_criteria":[{"type":"task_completed","task_id":"planned"}]}'
+        )
+
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
+
+    plan, graph = runtime.plan_goal(
+        "planned only",
+        plan_id="plan-planning-context",
+        project_id="project-planned",
+        context={"workspace": "repo", "device": "TECNO-BG6"},
+    )
+
+    assert graph.tasks["planned"].status == TaskStatus.PENDING
+    assert plan.project_id == "project-planned"
+    assert plan.context == {"workspace": "repo", "device": "TECNO-BG6"}
+    restored = runtime.orchestrator.restore_plan("plan-planning-context")
+    assert restored is not None
+    assert restored.project_id == "project-planned"
+    assert restored.context == {"workspace": "repo", "device": "TECNO-BG6"}
