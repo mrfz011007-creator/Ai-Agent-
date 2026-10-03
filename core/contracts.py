@@ -69,6 +69,7 @@ class Evidence:
     result_status: str
     error: str | None = None
     attempt_id: str | None = None
+    kind: str = "execution"
 
 
 @dataclass(frozen=True)
