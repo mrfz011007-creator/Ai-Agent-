@@ -60,6 +60,14 @@ class ToolRouter:
             # side effects after completion, during verification, or while
             # waiting for reconciliation.
             task_status = getattr(task, "status", None)
+            expected_attempt_id = f"{request.task_id}:attempt:{getattr(task, 'attempts', 0)}"
+            if request.attempt_id != expected_attempt_id:
+                return ToolResult(
+                    False,
+                    "attempt_mismatch",
+                    request.tool,
+                    error=f"Tool request is not bound to current task attempt: {expected_attempt_id}",
+                )
             if getattr(task_status, "value", task_status) != "RUNNING":
                 return ToolResult(
                     False,
