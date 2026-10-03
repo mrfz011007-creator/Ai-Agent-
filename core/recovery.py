@@ -137,6 +137,8 @@ class RecoveryManager:
             evidence = [self.evidence_store.get(eid) for eid in evidence_ids]
             if any(item is None or not item.success for item in evidence):
                 raise ValueError("Safe reconciliation requires successful evidence")
+            if any(item.task_id != task_id for item in evidence):
+                raise ValueError("Safe reconciliation evidence belongs to another task")
             if outcome == ReconcileOutcome.SAFE_TO_RETRY:
                 task = self.task_manager.retry(task_id)
                 action = "RETRY"
