@@ -365,3 +365,28 @@ def test_command_timeout_output_is_redacted():
     assert result["status"] == "TIMEOUT"
     assert "AIzaSyA12345678901234567890" not in result["stdout"]
     assert "[REDACTED_SECRET]" in result["stdout"]
+
+
+def test_run_command_schema_rejects_unbounded_and_unknown_arguments():
+    from registry import get_tool
+    from security.schema import SchemaValidationError, validate_tool_arguments
+
+    schema = get_tool("run_command")["parameters"]
+
+    with pytest.raises(SchemaValidationError, match="ARGUMENT_ABOVE_MAXIMUM: timeout"):
+        validate_tool_arguments(
+            schema,
+            {"command": "print", "timeout": 901},
+        )
+
+    with pytest.raises(SchemaValidationError, match="ARGUMENT_ABOVE_MAXIMUM: output_limit"):
+        validate_tool_arguments(
+            schema,
+            {"command": "print", "output_limit": 100001},
+        )
+
+    with pytest.raises(SchemaValidationError, match="UNKNOWN_ARGUMENTS"):
+        validate_tool_arguments(
+            schema,
+            {"command": "print", "unexpected": True},
+        )
