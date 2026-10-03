@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 
-MEMORY_SCHEMA_VERSION = 2
+MEMORY_SCHEMA_VERSION = 3
+LEGACY_VERSIONED_SCHEMA_VERSION = 2
 MEMORY_KINDS = frozenset({"fact", "decision", "experience", "preference"})
 MEMORY_MAX_KEY_CHARS = 256
 MEMORY_MAX_VALUE_JSON_CHARS = 12000
@@ -74,8 +75,27 @@ def _normalize_source(source: str | Mapping[str, Any] | None) -> dict[str, Any]:
     raise TypeError("source must be a string, mapping, or None")
 
 
+_MEMORY_REQUIRED_FIELDS = frozenset({
+    "memory_id",
+    "key",
+    "value",
+    "kind",
+    "source",
+    "project_id",
+    "task_id",
+    "context",
+    "created_at",
+    "updated_at",
+    "version",
+    "valid",
+    "supersedes",
+    "invalidated_at",
+    "invalidation_reason",
+})
+
+
 def _validate_record(record: Mapping[str, Any]) -> dict[str, Any]:
-    required = {
+    required = _MEMORY_REQUIRED_FIELDS
         "memory_id",
         "key",
         "value",
@@ -130,6 +150,123 @@ def _validate_record(record: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+
+def _normalize_legacy_context(context: Any) -> list[str]:
+    if isinstance(context, Mapping):
+        flattened = []
+        for key, value in context.items():
+            try:
+                rendered = json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    default=str,
+                    sort_keys=True,
+                )
+            except (TypeError, ValueError):
+                rendered = str(value)
+            flattened.append(f"{key}={rendered}")
+        return _normalize_context(flattened)
+    return _normalize_context(context)
+
+
+def _is_legacy_versioned_record(record: Mapping[str, Any]) -> bool:
+    # Version 2 records from the pre-identity/invalidation schema carried
+    # confidence/evidence_refs but did not yet have the fields introduced here.
+    return (
+        not _MEMORY_REQUIRED_FIELDS.issubset(record)
+        and any(field in record for field in ("confidence", "evidence_refs"))
+    )
+
+
+def _migrate_versioned_record(
+    record: Mapping[str, Any],
+    *,
+    migration_time: str,
+) -> dict[str, Any]:
+    if not isinstance(record, Mapping):
+        raise MemoryStoreError("Persisted memory record must be an object")
+
+    if _MEMORY_REQUIRED_FIELDS.issubset(record):
+        return _validate_record(record)
+
+    if not _is_legacy_versioned_record(record):
+        missing = _MEMORY_REQUIRED_FIELDS.difference(record)
+        raise MemoryStoreError(
+            "Memory record missing fields: "
+            + ", ".join(sorted(missing))
+        )
+
+    migrated = dict(record)
+    migrated["memory_id"] = str(
+        migrated.get("memory_id") or f"mem-{uuid.uuid4().hex}"
+    )
+    migrated["key"] = str(migrated.get("key", "")).strip()
+    if not migrated["key"]:
+        raise MemoryStoreError("Legacy memory record has an empty key")
+
+    kind = str(migrated.get("kind", "fact")).strip().lower()
+    if kind not in MEMORY_KINDS:
+        raise MemoryStoreError(f"Unknown memory kind: {kind}")
+    migrated["kind"] = kind
+
+    migrated["source"] = _normalize_source(migrated.get("source", "legacy"))
+    if isinstance(migrated["source"], dict):
+        migrated["source"].setdefault(
+            "migrated_from_schema",
+            LEGACY_VERSIONED_SCHEMA_VERSION,
+        )
+        migrated["source"].setdefault("migrated_at", migration_time)
+
+    migrated["project_id"] = (
+        str(migrated["project_id"]).strip()
+        if migrated.get("project_id") is not None
+        else None
+    )
+    migrated["task_id"] = (
+        str(migrated["task_id"]).strip()
+        if migrated.get("task_id") is not None
+        else None
+    )
+    migrated["context"] = _normalize_legacy_context(migrated.get("context"))
+
+    migrated["created_at"] = str(
+        migrated.get("created_at") or migration_time
+    )
+    migrated["updated_at"] = str(
+        migrated.get("updated_at") or migrated["created_at"]
+    )
+
+    try:
+        migrated["version"] = max(1, int(migrated.get("version", 1)))
+    except (TypeError, ValueError) as exc:
+        raise MemoryStoreError("Legacy memory record version is invalid") from exc
+
+    migrated["valid"] = bool(migrated.get("valid", True))
+    migrated["supersedes"] = migrated.get("supersedes")
+    migrated["invalidated_at"] = migrated.get("invalidated_at")
+    migrated["invalidation_reason"] = migrated.get("invalidation_reason")
+
+    return _validate_record(migrated)
+
+
+def _migrate_versioned_document(
+    memory: Mapping[str, Any],
+) -> dict[str, Any]:
+    records = memory.get("records")
+    if not isinstance(records, list):
+        raise MemoryStoreError("Persisted memory records must be a list")
+
+    migration_time = _now()
+    migrated_records = [
+        _migrate_versioned_record(record, migration_time=migration_time)
+        for record in records
+    ]
+    return {
+        "schema_version": MEMORY_SCHEMA_VERSION,
+        "records": migrated_records,
+    }
+
+
 def _migrate_legacy(memory: Mapping[str, Any]) -> dict[str, Any]:
     records = []
     now = _now()
@@ -179,9 +316,21 @@ def _load_document() -> dict[str, Any]:
     if "schema_version" not in raw and "records" not in raw:
         return _migrate_legacy(raw)
 
-    if raw.get("schema_version") != MEMORY_SCHEMA_VERSION:
+    schema_version = raw.get("schema_version")
+
+    if schema_version == LEGACY_VERSIONED_SCHEMA_VERSION:
+        migrated = _migrate_versioned_document(raw)
+        # Persist the upgrade so subsequent restarts do not repeatedly migrate
+        # the same memory file. A read must remain usable even on a read-only FS.
+        try:
+            _save_document(migrated)
+        except OSError:
+            pass
+        return migrated
+
+    if schema_version != MEMORY_SCHEMA_VERSION:
         raise MemoryStoreError(
-            f"Unsupported memory schema version: {raw.get('schema_version')!r}"
+            f"Unsupported memory schema version: {schema_version!r}"
         )
 
     records = raw.get("records")
@@ -253,14 +402,18 @@ def save_memory(memory: Mapping[str, Any]) -> None:
     if not isinstance(memory, Mapping):
         raise TypeError("memory must be a mapping")
 
-    if memory.get("schema_version") == MEMORY_SCHEMA_VERSION and "records" in memory:
-        records = memory.get("records")
-        if not isinstance(records, list):
-            raise MemoryStoreError("Memory records must be a list")
-        document = {
-            "schema_version": MEMORY_SCHEMA_VERSION,
-            "records": [_validate_record(record) for record in records],
-        }
+    schema_version = memory.get("schema_version")
+    if schema_version in (LEGACY_VERSIONED_SCHEMA_VERSION, MEMORY_SCHEMA_VERSION) and "records" in memory:
+        if schema_version == LEGACY_VERSIONED_SCHEMA_VERSION:
+            document = _migrate_versioned_document(memory)
+        else:
+            records = memory.get("records")
+            if not isinstance(records, list):
+                raise MemoryStoreError("Memory records must be a list")
+            document = {
+                "schema_version": MEMORY_SCHEMA_VERSION,
+                "records": [_validate_record(record) for record in records],
+            }
         _save_document(document)
         return
 
