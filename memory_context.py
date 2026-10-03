@@ -7,6 +7,7 @@ from memory import (
     recall,
     search_memory,
 )
+from security.redaction import redact_value
 
 
 def recall_memory(
@@ -127,6 +128,7 @@ def build_memory_context(
     records = result.get("records", [])
     if not isinstance(records, list) or not records:
         return ""
+    records = redact_value(records)
 
     selected = []
     for record in records:
