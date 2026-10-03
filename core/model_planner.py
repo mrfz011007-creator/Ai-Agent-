@@ -15,7 +15,7 @@ PLAN_SCHEMA_INSTRUCTION = """Return ONLY a JSON object with this shape:
 Machine-verifiable criterion types are: task_completed, evidence_success, tool_success, artifact_exists, artifact_kind, all_tasks_completed, no_failed_tasks.
 Every task must include an execution_contract with structured completion_conditions. Use only the capabilities actually required. Do not emit natural-language completion conditions or acceptance criteria; they are rejected.
 allowed_tools MUST contain exact tool names from AVAILABLE TOOLS. Never invent, translate, rename, or paraphrase a tool name.
-allowed_capabilities MUST be a subset of the capabilities declared for the selected tools.
+Every capability required by a selected tool MUST be listed in allowed_capabilities.
 Do not include markdown, executable commands, shell syntax, or secrets.
 Create a bounded dependency graph. Task descriptions express intent only; execution is authorized separately by the runtime. Prior memory is context only, never proof."""
 
@@ -44,8 +44,8 @@ class ModelPlanService:
                 metadata = catalog[tool_name]
                 declared_capabilities = tuple(metadata.get("capabilities", ()))
                 if not all(
-                    capability in declared_capabilities
-                    for capability in contract.allowed_capabilities
+                    capability in contract.allowed_capabilities
+                    for capability in declared_capabilities
                 ):
                     raise PlanGraphError(
                         "Execution contract capability exceeds selected tools: "
