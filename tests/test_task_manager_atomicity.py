@@ -141,3 +141,29 @@ def test_create_removes_memory_entry_when_initial_persistence_fails(tmp_path):
 
     assert manager.get("T6") is None
     assert StateStore(tmp_path / "state.sqlite3").load_task("T6") is None
+
+
+def test_completion_rejects_evidence_from_another_attempt(tmp_path):
+    manager, store = _manager(tmp_path)
+    manager.create(Task("T7", "attempt-bound completion"))
+    manager.get("T7").status = TaskStatus.READY
+    manager.start("T7")
+    manager.begin_verification("T7")
+
+    verification = VerificationResult(
+        VerificationStatus.PASSED,
+        "verified",
+        ("E-OLD",),
+        "acceptance_gate",
+    )
+
+    store.load_evidence = lambda evidence_id: {
+        "task_id": "T7",
+        "success": True,
+        "attempt_id": "T7:attempt:0",
+    }
+
+    with pytest.raises(ValueError, match="another attempt"):
+        manager.complete("T7", verification)
+
+    assert manager.get("T7").status == TaskStatus.VERIFYING
