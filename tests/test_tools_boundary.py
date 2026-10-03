@@ -269,3 +269,20 @@ def test_atomic_write_failure_does_not_partially_replace_file(monkeypatch, tmp_p
 
     assert result["success"] is False
     assert target.read_text(encoding="utf-8") == "original"
+
+
+def test_python_execution_also_requires_host_opt_in(tmp_path):
+    from security.guard import GuardEngine
+
+    denied = GuardEngine(tmp_path).check(
+        tool="jalankan_python",
+        arguments={"nama": "script.py"},
+    )
+    assert not denied.allowed
+    assert denied.reason == "HOST_EXECUTION_NOT_SANDBOXED"
+
+    allowed = GuardEngine(tmp_path, allow_host_execution=True).check(
+        tool="jalankan_python",
+        arguments={"nama": "script.py"},
+    )
+    assert allowed.allowed
