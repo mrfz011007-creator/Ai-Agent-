@@ -149,7 +149,11 @@ class AgentRuntime:
         import uuid
         if not goal.strip():
             raise ValueError("Goal cannot be empty")
-        proposer = ModelPlanService(self.model_gateway.generate_text, memory=self.memory)
+        proposer = ModelPlanService(
+            self.model_gateway.generate_text,
+            memory=self.memory,
+            tool_catalog=self.tool_catalog(),
+        )
         proposal = proposer.propose(goal, project_id=project_id, context=context)
         resolved_plan_id = plan_id or f"plan-{uuid.uuid4().hex[:12]}"
         return self.orchestrator.materialize(proposal, resolved_plan_id)
