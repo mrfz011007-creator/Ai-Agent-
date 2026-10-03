@@ -141,6 +141,10 @@ class RecoveryManager:
                 raise ValueError("Safe reconciliation requires successful evidence")
             if any(item.task_id != task_id for item in evidence):
                 raise ValueError("Safe reconciliation evidence belongs to another task")
+            if any(item.kind != "reconciliation" for item in evidence):
+                raise ValueError(
+                    "Safe reconciliation requires explicit reconciliation evidence"
+                )
             expected_attempt_id = f"{task_id}:attempt:{task.attempts}"
             if any(item.attempt_id != expected_attempt_id for item in evidence):
                 raise ValueError(
