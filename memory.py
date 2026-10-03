@@ -13,6 +13,9 @@ MEMORY_SCHEMA_VERSION = 2
 MEMORY_TYPES = frozenset({"fact", "decision", "experience", "preference"})
 MEMORY_STATUSES = frozenset({"active", "invalidated", "superseded", "archived"})
 MEMORY_RETENTION_POLICIES = frozenset({"normal", "durable", "ephemeral"})
+DEFAULT_AUTO_COMPACT_BYTES = 8 * 1024 * 1024
+DEFAULT_MAX_ACTIVE_EXPERIENCES = 500
+DEFAULT_MAX_HISTORY_PER_KEY = 5
 
 
 class MemoryValidationError(ValueError):
@@ -210,6 +213,138 @@ def save_memory(memory: Mapping[str, Any]) -> None:
         raise
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    value = int(os.environ.get(name, str(default)))
+    if value < 1:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+
+def _compact_threshold_bytes() -> int:
+    return _positive_int_env("AI_AGENT_MEMORY_AUTO_COMPACT_BYTES", DEFAULT_AUTO_COMPACT_BYTES)
+
+
+def _bounded_memory_value(value: Any, *, max_chars: int) -> Any:
+    if max_chars < 256:
+        raise ValueError("max_chars must be >= 256")
+    serialized = json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
+    if len(serialized) <= max_chars:
+        return value
+    import hashlib
+    return {
+        "_truncated": True,
+        "sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+        "original_chars": len(serialized),
+        "preview": serialized[:max_chars] + "...[TRUNCATED]",
+    }
+
+
+def _record_identity(record: Mapping[str, Any]) -> tuple[Any, ...]:
+    return (
+        record["type"],
+        record["key"],
+        record["project_id"],
+        record["task_id"],
+    )
+
+
+def compact_memory(
+    *,
+    max_active_experiences: int | None = None,
+    max_history_per_key: int | None = None,
+) -> dict[str, Any]:
+    """Prune low-retention memory while preserving active durable knowledge."""
+    max_active = (
+        _positive_int_env("AI_AGENT_MEMORY_MAX_ACTIVE_EXPERIENCES", DEFAULT_MAX_ACTIVE_EXPERIENCES)
+        if max_active_experiences is None
+        else max_active_experiences
+    )
+    max_history = (
+        _positive_int_env("AI_AGENT_MEMORY_MAX_HISTORY_PER_KEY", DEFAULT_MAX_HISTORY_PER_KEY)
+        if max_history_per_key is None
+        else max_history_per_key
+    )
+    if max_active < 1 or max_history < 1:
+        raise ValueError("compaction limits must be positive")
+
+    store = _load_store()
+    original = list(store["records"])
+    kept: list[dict[str, Any]] = []
+
+    experiences = [
+        record for record in original
+        if record["type"] == "experience" and record["status"] == "active"
+    ]
+    durable_experiences = [
+        record for record in experiences if record["retention"] == "durable"
+    ]
+    bounded_experiences = sorted(
+        [record for record in experiences if record["retention"] != "durable"],
+        key=lambda record: (record["updated_at"], record["version"]),
+        reverse=True,
+    )[:max_active]
+    keep_experience_ids = {
+        record["id"] for record in durable_experiences + bounded_experiences
+    }
+
+    history_counts: dict[tuple[Any, ...], int] = {}
+    for record in sorted(
+        original,
+        key=lambda item: (item["updated_at"], item["version"]),
+        reverse=True,
+    ):
+        identity = _record_identity(record)
+        if record["type"] == "experience":
+            if record["status"] == "active":
+                if record["id"] in keep_experience_ids:
+                    kept.append(record)
+                continue
+            if record["retention"] != "durable":
+                continue
+
+        if record["status"] == "active":
+            kept.append(record)
+            continue
+
+        count = history_counts.get(identity, 0)
+        if count < max_history:
+            kept.append(record)
+            history_counts[identity] = count + 1
+
+    kept_ids = {record["id"] for record in kept}
+    if len(kept_ids) == len(original):
+        return {
+            "status": "unchanged",
+            "success": True,
+            "before_records": len(original),
+            "after_records": len(original),
+            "removed_records": 0,
+        }
+
+    store["records"] = kept
+    save_memory(store)
+    return {
+        "status": "compacted",
+        "success": True,
+        "before_records": len(original),
+        "after_records": len(kept),
+        "removed_records": len(original) - len(kept),
+    }
+
+
+def compact_memory_if_needed() -> dict[str, Any]:
+    path = memory_file()
+    if not path.exists():
+        return {"status": "not_needed", "success": True, "bytes": 0}
+    size = path.stat().st_size
+    threshold = _compact_threshold_bytes()
+    if size <= threshold:
+        return {"status": "not_needed", "success": True, "bytes": size}
+    result = compact_memory()
+    result["bytes_before"] = size
+    result["bytes_after"] = path.stat().st_size
+    return result
+
 def _new_record(
     *,
     memory_type: str,
@@ -357,6 +492,8 @@ def remember(
     )
     store["records"].append(record)
     save_memory(store)
+    if memory_file().stat().st_size > _compact_threshold_bytes():
+        compact_memory()
     return {"status": "success", "success": True, "record": record}
 
 
