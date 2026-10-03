@@ -232,3 +232,84 @@ def test_successful_execution_is_not_failed_when_memory_observability_breaks(tmp
     assert plan.status.value == "COMPLETED"
     assert graph.tasks["inspect"].status == TaskStatus.COMPLETED
     assert graph.tasks["inspect"].attempts == 1
+
+
+def test_automatic_execution_memory_is_bounded_and_ephemeral(tmp_path, monkeypatch):
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+
+    def fake_generate_text(prompt, **kwargs):
+        if "USER GOAL:" in prompt:
+            return (
+                '{"goal":"bounded memory","tasks":'
+                '[{"task_id":"inspect","title":"Inspect workspace","dependencies":[]}],'
+                '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+            )
+        return '{"tool":"lokasi","action":"execute","arguments":{}}'
+
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
+
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        evidence_id = "ev-memory-bounded"
+        result = ToolResult(
+            True,
+            "success",
+            proposal.tool,
+            data={"large_output": "x" * 20000},
+            evidence_id=evidence_id,
+        )
+        runtime.evidence_store.record(
+            evidence_id=evidence_id,
+            task_id=task_id,
+            attempt_id=attempt_id,
+            tool=proposal.tool,
+            action=proposal.action,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+
+    plan, graph = runtime.run_goal("bounded memory", plan_id="plan-bounded-memory")
+
+    assert plan.status.value == "COMPLETED"
+    assert graph.tasks["inspect"].status == TaskStatus.COMPLETED
+
+    store = runtime.memory.retrieve(
+        "execution", task_id="inspect", limit=1
+    )
+    record = store["results"][0]["record"]
+    assert record["retention"] == "ephemeral"
+    assert record["value"]["_truncated"] is True
+    assert record["value"]["original_chars"] > 20000
+    assert len(record["value"]["preview"]) < 7000
+
+
+def test_memory_prompt_context_bounds_large_values():
+    from core.memory_service import memory_prompt_context
+
+    result = {
+        "results": [{
+            "score": 10,
+            "record": {
+                "type": "experience",
+                "key": "large",
+                "value": {"data": "x" * 20000},
+                "summary": "large",
+                "project_id": None,
+                "task_id": None,
+                "context": {},
+                "source": {"kind": "test", "ref": "ev-1"},
+                "provenance": {"reason": "test"},
+                "importance": 0.5,
+                "confidence": 0.5,
+                "retention": "ephemeral",
+                "version": 1,
+                "updated_at": "2026-01-01T00:00:00Z",
+                "tags": [],
+            },
+        }],
+    }
+
+    rows = memory_prompt_context(result)
+    assert rows[0]["value"]["_truncated"] is True
+    assert len(rows[0]["value"]["preview"]) < 4000
