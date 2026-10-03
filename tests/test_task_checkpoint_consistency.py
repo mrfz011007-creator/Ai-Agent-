@@ -45,3 +45,27 @@ def test_normal_checkpoint_remains_available(tmp_path):
     assert checkpoint is not None
     assert checkpoint["payload"]["status"] == "RUNNING"
     assert checkpoint["payload"]["attempt"] == 1
+
+
+def test_rejected_start_does_not_mutate_attempt_counter(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    manager.create(Task("start-guard", "Start guard", status=TaskStatus.READY))
+    manager.start("start-guard")
+
+    task = manager.get("start-guard")
+    assert task is not None
+    assert task.status == TaskStatus.RUNNING
+    assert task.attempts == 1
+
+    try:
+        manager.start("start-guard")
+        assert False, "starting a non-ready task should fail"
+    except ValueError as exc:
+        assert "invalid transition" in str(exc).lower()
+
+    assert task.status == TaskStatus.RUNNING
+    assert task.attempts == 1
+    restored = StateStore(tmp_path / "state.sqlite3").load_task("start-guard")
+    assert restored["attempts"] == 1
+    assert restored["status"] == "RUNNING"
