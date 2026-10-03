@@ -94,6 +94,58 @@ def ambil_memory(
     }
 
 
+def _encode_records(records) -> str:
+    return json.dumps(
+        {"records": records},
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
+
+
+def _fit_single_record(record, limit: int):
+    value = str(record.get("value", ""))
+    candidate = {
+        "memory_id": record.get("memory_id"),
+        "key": record.get("key"),
+        "value": "",
+        "kind": record.get("kind"),
+        "source": record.get("source"),
+        "project_id": record.get("project_id"),
+        "task_id": record.get("task_id"),
+        "version": record.get("version"),
+        "valid": record.get("valid"),
+    }
+
+    if len(_encode_records([candidate])) > limit:
+        candidate = {
+            "memory_id": record.get("memory_id"),
+            "key": record.get("key"),
+            "value": "",
+            "kind": record.get("kind"),
+            "project_id": record.get("project_id"),
+            "task_id": record.get("task_id"),
+            "version": record.get("version"),
+        }
+
+    if len(_encode_records([candidate])) > limit:
+        return None
+
+    low, high = 0, len(value)
+    best = _encode_records([candidate])
+    while low <= high:
+        mid = (low + high) // 2
+        candidate["value"] = value[:mid]
+        encoded = _encode_records([candidate])
+        if len(encoded) <= limit:
+            best = encoded
+            low = mid + 1
+        else:
+            high = mid - 1
+
+    return best
+
+
 def build_memory_context(
     query: str,
     *,
@@ -133,37 +185,16 @@ def build_memory_context(
     selected = []
     for record in records:
         candidate = selected + [record]
-        encoded = json.dumps(
-            {"records": candidate},
-            ensure_ascii=False,
-            indent=2,
-            default=str,
-        )
+        encoded = _encode_records(candidate)
         if len(encoded) > payload_limit:
             break
         selected = candidate
 
-    if not selected:
-        first = dict(records[0])
-        value = str(first.get("value", ""))
-        remaining = max(1, payload_limit // 4)
-        first["value"] = value[:remaining]
-        selected = [first]
-
-    encoded = json.dumps(
-        {"records": selected},
-        ensure_ascii=False,
-        indent=2,
-        default=str,
-    )
-    if len(encoded) > payload_limit:
-        marker = "...[MEMORY_TRUNCATED]"
-        if payload_limit <= len(marker):
-            encoded = marker[:payload_limit]
-        else:
-            encoded = (
-                encoded[: payload_limit - len(marker)]
-                + marker
-            )
+    if selected:
+        encoded = _encode_records(selected)
+    else:
+        encoded = _fit_single_record(records[0], payload_limit)
+        if encoded is None:
+            return prefix + "...[MEMORY_TOO_LARGE]" + suffix
 
     return prefix + encoded + suffix
