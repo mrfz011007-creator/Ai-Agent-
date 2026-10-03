@@ -17,8 +17,18 @@ class Orchestrator:
     planner: Planner
     store: StateStore | None = None
 
-    def materialize(self, proposal: PlanProposal, plan_id: str) -> tuple[Plan, TaskGraph]:
-        plan = self.planner.materialize(proposal, plan_id)
+    def materialize(
+        self,
+        proposal: PlanProposal,
+        plan_id: str,
+        *,
+        project_id: str | None = None,
+    ) -> tuple[Plan, TaskGraph]:
+        plan = self.planner.materialize(
+            proposal,
+            plan_id,
+            project_id=project_id,
+        )
         graph = proposal.graph()
         for task in graph.tasks.values():
             # Check durable state first: TaskManager.get() now lazily restores
@@ -36,6 +46,7 @@ class Orchestrator:
                 status=plan.status.value,
                 task_ids=plan.task_ids,
                 acceptance_criteria=plan.acceptance_criteria,
+                project_id=plan.project_id,
                 tasks=[
                     (
                         task.task_id,
@@ -78,6 +89,7 @@ class Orchestrator:
             task_ids=tuple(saved["task_ids"]),
             status=PlanStatus(saved["status"]),
             acceptance_criteria=tuple(saved["acceptance_criteria"]),
+            project_id=saved.get("project_id"),
         )
 
     def restore_graph(self, plan_id: str) -> tuple[Plan, TaskGraph] | None:
