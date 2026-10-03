@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Sequence
 
 from memory import (
     recall,
@@ -8,65 +9,150 @@ from memory import (
 )
 
 
-def recall_memory(key):
+def recall_memory(
+    key,
+    *,
+    project_id: str | None = None,
+    task_id: str | None = None,
+    context: Sequence[str] | str | None = None,
+    kind: str | None = None,
+):
     """
-    Mengambil informasi dari long-term memory
-    berdasarkan key.
-    """
-
-    return recall(key)
-
-
-def search_memory_tool(query):
-    """
-    Mencari informasi di long-term memory
-    berdasarkan key atau isi value.
+    Mengambil informasi dari long-term memory berdasarkan key dan scope.
     """
 
-    return search_memory(query)
+    return recall(
+        key,
+        project_id=project_id,
+        task_id=task_id,
+        context=context,
+        kind=kind,
+    )
 
 
-def ambil_memory(key=None, query=None):
+def search_memory_tool(
+    query,
+    *,
+    project_id: str | None = None,
+    task_id: str | None = None,
+    context: Sequence[str] | str | None = None,
+    kinds: Sequence[str] | str | None = None,
+    include_invalid: bool = False,
+):
     """
-    Interface umum untuk mengambil informasi
-    dari long-term memory.
+    Mencari informasi di long-term memory berdasarkan isi dan scope.
+    """
+
+    return search_memory(
+        query,
+        project_id=project_id,
+        task_id=task_id,
+        context=context,
+        kinds=kinds,
+        include_invalid=include_invalid,
+    )
+
+
+def ambil_memory(
+    key=None,
+    query=None,
+    *,
+    project_id: str | None = None,
+    task_id: str | None = None,
+    context: Sequence[str] | str | None = None,
+    kind: str | None = None,
+):
+    """
+    Interface umum untuk mengambil informasi dari long-term memory.
 
     Jika key diberikan, gunakan recall.
-
     Jika query diberikan, gunakan search_memory.
-
     Jika keduanya diberikan, key diprioritaskan.
     """
 
     if key is not None:
-        return recall_memory(key)
+        return recall_memory(
+            key,
+            project_id=project_id,
+            task_id=task_id,
+            context=context,
+            kind=kind,
+        )
 
     if query is not None:
-        return search_memory_tool(query)
+        return search_memory_tool(
+            query,
+            project_id=project_id,
+            task_id=task_id,
+            context=context,
+        )
 
     return {
         "status": "error",
-        "pesan": (
-            "Harus memberikan key "
-            "atau query."
-        )
+        "pesan": "Harus memberikan key atau query.",
     }
 
 
-def build_memory_context(query: str, *, max_chars: int = 6000) -> str:
-    """Build a bounded, model-facing memory context from persisted memory."""
+def build_memory_context(
+    query: str,
+    *,
+    project_id: str | None = None,
+    task_id: str | None = None,
+    context: Sequence[str] | str | None = None,
+    kinds: Sequence[str] | str | None = None,
+    max_chars: int = 6000,
+) -> str:
+    """Build a bounded, scoped, model-facing memory context."""
     if not isinstance(query, str) or not query.strip():
         return ""
+    if not isinstance(max_chars, int) or max_chars <= 0:
+        raise ValueError("max_chars must be a positive integer")
 
-    result = search_memory_tool(query.strip())
+    result = search_memory_tool(
+        query.strip(),
+        project_id=project_id,
+        task_id=task_id,
+        context=context,
+        kinds=kinds,
+    )
     if result.get("status") != "success":
         return ""
 
-    payload = result.get("hasil", {})
-    if not isinstance(payload, dict) or not payload:
+    records = result.get("records", [])
+    if not isinstance(records, list) or not records:
         return ""
 
-    encoded = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+    selected = []
+    for record in records:
+        candidate = selected + [record]
+        encoded = json.dumps(
+            {"records": candidate},
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+        if len(encoded) > max_chars:
+            break
+        selected = candidate
+
+    if not selected:
+        # Keep a hard character bound even when one record is individually large.
+        first = dict(records[0])
+        value = str(first.get("value", ""))
+        remaining = max(64, max_chars // 3)
+        first["value"] = value[:remaining] + (
+            "...[MEMORY_RECORD_TRUNCATED]"
+            if len(value) > remaining
+            else ""
+        )
+        selected = [first]
+
+    encoded = json.dumps(
+        {"records": selected},
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
     if len(encoded) > max_chars:
         encoded = encoded[:max_chars] + "...[MEMORY_TRUNCATED]"
 
