@@ -404,7 +404,7 @@ def test_tool_router_redacts_secrets_and_limits_structured_output(tmp_path):
         policy=PolicyEngine(registry.get),
         budget=BudgetManager(Budget(max_output_chars=50)),
         evidence=EvidenceStore(),
-        guard=GuardEngine(tmp_path),
+        guard=GuardEngine(tmp_path, allow_host_execution=True),
     )
     result = router.execute(
         ToolRequest(
