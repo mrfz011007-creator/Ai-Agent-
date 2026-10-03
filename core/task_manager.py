@@ -94,8 +94,11 @@ class TaskManager:
             self._persist(task)
         if task.status != TaskStatus.READY:
             raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
-        task.attempts += 1
+        # Validate the transition before mutating the attempt counter. A failed
+        # start must be side-effect free so later evidence IDs cannot skip an
+        # attempt number in memory.
         task.mark_running()
+        task.attempts += 1
         self._persist(task)
         self._checkpoint(task, event="started")
         return task
