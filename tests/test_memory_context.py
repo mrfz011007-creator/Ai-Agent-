@@ -36,13 +36,21 @@ def test_build_memory_context_reads_persisted_memory(tmp_path, monkeypatch):
 
 
 def test_build_memory_context_is_bounded(tmp_path, monkeypatch):
+    import json
+
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     remember("goal", "x" * 12000)
 
-    context = build_memory_context("goal", max_chars=100)
+    context = build_memory_context("goal", max_chars=300)
 
-    assert len(context) <= 100
-    assert "[MEMORY_" in context
+    assert len(context) <= 300
+    assert "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)" in context
+    assert "END PERSISTED MEMORY" in context
+    payload = context.split(
+        "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)\n", 1
+    )[1].rsplit("\nEND PERSISTED MEMORY", 1)[0]
+    decoded = json.loads(payload)
+    assert decoded["records"][0]["key"] == "goal"
 
 
 def test_build_memory_context_redacts_persisted_secrets(monkeypatch, tmp_path):
