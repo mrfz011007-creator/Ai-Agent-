@@ -189,3 +189,15 @@ def test_retry_enforces_execution_contract_limit_at_task_boundary(tmp_path):
         manager.retry("T8")
 
     assert manager.get("T8").status == TaskStatus.WAITING
+
+
+def test_start_rejects_pending_task_with_incomplete_dependency(tmp_path):
+    manager, _ = _manager(tmp_path)
+    manager.create(Task("DEP", "dependency", status=TaskStatus.PENDING))
+    manager.create(Task("T9", "dependent", dependencies=["DEP"]))
+
+    with pytest.raises(ValueError, match="dependencies are not completed"):
+        manager.start("T9")
+
+    assert manager.get("T9").status == TaskStatus.PENDING
+    assert manager.get("T9").attempts == 0
