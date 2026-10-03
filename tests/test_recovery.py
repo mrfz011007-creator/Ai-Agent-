@@ -427,3 +427,78 @@ def test_safe_reconciliation_rejects_successful_evidence_from_another_task(tmp_p
             "State appears reconciled.",
             evidence_ids=("E-R12-OTHER",),
         )
+
+
+def test_safe_reconciliation_retry_respects_contract_limit(tmp_path):
+    from core.execution_contract import ExecutionContract
+
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    contract = ExecutionContract(
+        objective="bounded retry",
+        allowed_tools=("tool",),
+        allowed_capabilities=("workspace.read",),
+        max_tool_calls=3,
+        retry_limit=0,
+        evidence_required=True,
+        completion_conditions=("verified",),
+    )
+    manager.create(Task("R13", "bounded retry", execution_contract=contract))
+    manager.start("R13")
+
+    evidence = EvidenceStore(store)
+    evidence.record(
+        evidence_id="E-R13",
+        task_id="R13",
+        tool="reconcile",
+        action="inspect",
+        result=ToolResult(True, "SUCCESS", "reconcile"),
+    )
+
+    recovery = RecoveryManager(
+        manager,
+        evidence,
+        BudgetManager(Budget(max_recovery_cycles=1)),
+    )
+    recovery.recover_task("R13")
+
+    with pytest.raises(ValueError, match="retry limit"):
+        recovery.reconcile(
+            "R13",
+            ReconcileOutcome.SAFE_TO_RETRY,
+            "Retry was inspected and considered safe.",
+            evidence_ids=("E-R13",),
+        )
+
+    assert manager.get("R13").status == TaskStatus.WAITING
+
+
+def test_safe_reconciliation_retry_consumes_recovery_budget(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
+    manager.create(Task("R14", "bounded reconciliation retry"))
+    manager.start("R14")
+
+    evidence = EvidenceStore(store)
+    evidence.record(
+        evidence_id="E-R14",
+        task_id="R14",
+        tool="reconcile",
+        action="inspect",
+        result=ToolResult(True, "SUCCESS", "reconcile"),
+    )
+
+    budget = BudgetManager(Budget(max_recovery_cycles=1))
+    recovery = RecoveryManager(manager, evidence, budget)
+    recovery.recover_task("R14")
+
+    result = recovery.reconcile(
+        "R14",
+        ReconcileOutcome.SAFE_TO_RETRY,
+        "Retry explicitly authorized after inspection.",
+        evidence_ids=("E-R14",),
+    )
+
+    assert result.action == "RETRY"
+    assert result.status == TaskStatus.RUNNING
+    assert budget.budget.recovery_cycles == 1
