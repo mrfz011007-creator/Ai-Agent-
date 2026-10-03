@@ -33,10 +33,18 @@ class ExecutionContract:
             tuple(Capability(value) for value in self.allowed_capabilities)
         except ValueError as error:
             raise ExecutionContractError(f"Unknown execution capability: {error}") from error
-        if isinstance(self.max_tool_calls, bool) or self.max_tool_calls < 1:
-            raise ExecutionContractError("max_tool_calls must be at least 1")
-        if isinstance(self.retry_limit, bool) or self.retry_limit < 0:
-            raise ExecutionContractError("retry_limit cannot be negative")
+        if (
+            isinstance(self.max_tool_calls, bool)
+            or not isinstance(self.max_tool_calls, int)
+            or self.max_tool_calls < 1
+        ):
+            raise ExecutionContractError("max_tool_calls must be a positive integer")
+        if (
+            isinstance(self.retry_limit, bool)
+            or not isinstance(self.retry_limit, int)
+            or self.retry_limit < 0
+        ):
+            raise ExecutionContractError("retry_limit must be a non-negative integer")
         if not isinstance(self.evidence_required, bool):
             raise ExecutionContractError("evidence_required must be a boolean")
         if any(not isinstance(condition, Mapping) for condition in self.completion_conditions):
