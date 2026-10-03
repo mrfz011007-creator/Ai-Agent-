@@ -83,6 +83,24 @@ class StateStore:
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS tool_executions (
+                    request_id TEXT PRIMARY KEY,
+                    task_id TEXT,
+                    attempt_id TEXT,
+                    tool TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    arguments_hash TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    success INTEGER,
+                    result_status TEXT,
+                    error TEXT,
+                    result_payload TEXT,
+                    evidence_id TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
     def save_task(self, task_id: str, status: str, attempts: int, payload: dict[str, Any]) -> None:
         with self._connect() as db:
@@ -247,6 +265,98 @@ class StateStore:
         result = dict(row)
         result["payload"] = json.loads(result["payload"])
         return result
+
+
+    def begin_tool_execution(
+        self,
+        request_id: str,
+        task_id: str | None,
+        attempt_id: str | None,
+        tool: str,
+        action: str,
+        arguments_hash: str,
+    ) -> dict[str, Any]:
+        """Durably claim a logical tool execution before running its side effect."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT request_id,task_id,attempt_id,tool,action,arguments_hash,status,"
+                "success,result_status,error,result_payload,evidence_id,created_at,updated_at "
+                "FROM tool_executions WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            if row is not None:
+                return dict(row)
+            db.execute(
+                """INSERT INTO tool_executions(
+                    request_id,task_id,attempt_id,tool,action,arguments_hash,status
+                ) VALUES (?,?,?,?,?,?,?)""",
+                (request_id, task_id, attempt_id, tool, action, arguments_hash, "STARTED"),
+            )
+            row = db.execute(
+                "SELECT request_id,task_id,attempt_id,tool,action,arguments_hash,status,"
+                "success,result_status,error,result_payload,evidence_id,created_at,updated_at "
+                "FROM tool_executions WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            return dict(row)
+
+    def load_tool_execution(self, request_id: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT request_id,task_id,attempt_id,tool,action,arguments_hash,status,"
+                "success,result_status,error,result_payload,evidence_id,created_at,updated_at "
+                "FROM tool_executions WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+        return None if row is None else dict(row)
+
+    def load_unknown_tool_execution(
+        self,
+        task_id: str | None,
+        tool: str,
+        action: str,
+    ) -> dict[str, Any] | None:
+        if task_id is None:
+            return None
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT request_id,task_id,attempt_id,tool,action,arguments_hash,status,"
+                "success,result_status,error,result_payload,evidence_id,created_at,updated_at "
+                "FROM tool_executions "
+                "WHERE task_id=? AND tool=? AND action=? AND status='UNKNOWN' "
+                "ORDER BY rowid DESC LIMIT 1",
+                (task_id, tool, action),
+            ).fetchone()
+        return None if row is None else dict(row)
+
+    def finalize_tool_execution(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        result: dict[str, Any] | None,
+        success: bool | None,
+        result_status: str | None,
+        error: str | None,
+        evidence_id: str | None,
+    ) -> None:
+        with self._connect() as db:
+            db.execute(
+                """UPDATE tool_executions
+                   SET status=?, success=?, result_status=?, error=?,
+                       result_payload=?, evidence_id=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE request_id=?""",
+                (
+                    status,
+                    None if success is None else int(success),
+                    result_status,
+                    error,
+                    json.dumps(result, sort_keys=True, default=str)
+                    if result is not None else None,
+                    evidence_id,
+                    request_id,
+                ),
+            )
 
     def save_plan(
         self,
