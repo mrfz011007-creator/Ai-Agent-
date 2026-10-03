@@ -103,6 +103,8 @@ def run_command(
             _terminate_process(process)
             stdout, out_truncated = _read_limited(stdout_path, output_limit)
             stderr, err_truncated = _read_limited(stderr_path, output_limit)
+            stdout = redact_text(stdout)
+            stderr = redact_text(stderr)
             if out_truncated or err_truncated:
                 stderr = f"{stderr}\nOUTPUT_TRUNCATED".strip()
             return {
