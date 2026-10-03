@@ -105,6 +105,7 @@ class CriteriaEvaluator:
         task_ids: Sequence[str],
         completed_task_ids: Sequence[str],
         failed_task_ids: Sequence[str] = (),
+        current_attempt_ids: Mapping[str, str] | None = None,
     ) -> tuple[bool, str, tuple[str, ...]]:
         normalized = validate_criteria(criteria)
         evidence_ids: list[str] = []
@@ -115,7 +116,9 @@ class CriteriaEvaluator:
                 for row in self.evidence_store.store.load_evidence_for_task(task_id):
                     evidence = self.evidence_store.get(row["evidence_id"])
                     if evidence is not None:
-                        task_evidence.append(evidence)
+                        expected_attempt_id = (current_attempt_ids or {}).get(task_id)
+                        if expected_attempt_id is None or evidence.attempt_id == expected_attempt_id:
+                            task_evidence.append(evidence)
                         if evidence.evidence_id not in evidence_ids:
                             evidence_ids.append(evidence.evidence_id)
 
@@ -126,6 +129,7 @@ class CriteriaEvaluator:
                 all_task_ids=tuple(task_ids),
                 completed_task_ids=tuple(completed_task_ids),
                 failed_task_ids=tuple(failed_task_ids),
+                expected_attempt_id=(current_attempt_ids or {}).get(task_id),
             )
             if not ok:
                 return False, reason, tuple(evidence_ids)
