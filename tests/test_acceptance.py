@@ -34,7 +34,11 @@ def _evidence(evidence, task_id, evidence_id, success=True, attempt_id="attempt-
 def test_acceptance_requires_artifact(tmp_path):
     _, evidence, _, gate, _ = _setup(tmp_path)
     _evidence(evidence, "A1", "build-1")
-    result = gate.verify(task_id="A1", build_evidence_id="build-1")
+    result = gate.verify(
+        task_id="A1",
+        build_evidence_id="build-1",
+        expected_attempt_id="attempt-1",
+    )
     assert result.status == VerificationStatus.FAILED
     assert "artifact" in result.reason.lower()
 
