@@ -54,18 +54,45 @@ class BudgetManager:
 
     def reserve_tool_call(self) -> None:
         self.check_runtime()
+        previous = self.budget.tool_calls
         self.budget.consume_tool()
-        self._persist()
+        try:
+            self._persist()
+        except Exception:
+            self.budget.tool_calls = previous
+            raise
 
     def reserve_model_call(self) -> None:
         self.check_runtime()
+        previous = self.budget.model_calls
         self.budget.consume_model()
-        self._persist()
+        try:
+            self._persist()
+        except Exception:
+            self.budget.model_calls = previous
+            raise
 
     def reserve_recovery_cycle(self) -> None:
         self.check_runtime()
+        previous = self.budget.recovery_cycles
         self.budget.consume_recovery()
-        self._persist()
+        try:
+            self._persist()
+        except Exception:
+            self.budget.recovery_cycles = previous
+            raise
+
+    def release_recovery_cycle(self) -> None:
+        """Undo a recovery reservation when the following state transition fails."""
+        if self.budget.recovery_cycles <= 0:
+            raise ValueError("No recovery cycle is reserved")
+        previous = self.budget.recovery_cycles
+        self.budget.recovery_cycles -= 1
+        try:
+            self._persist()
+        except Exception:
+            self.budget.recovery_cycles = previous
+            raise
 
     @property
     def elapsed_seconds(self) -> float:
