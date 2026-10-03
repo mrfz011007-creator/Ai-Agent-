@@ -25,7 +25,7 @@ Every record contains:
 - optional superseded record
 - tags
 
-Memory revisions are append-oriented: updating a memory invalidates the previous active revision and creates a new version. Historical records remain available for audit.
+Memory revisions are append-oriented: updating a memory invalidates the previous active revision and creates a new version. Historical records remain available until lifecycle compaction; execution evidence remains authoritative for audit.
 
 ## Retrieval
 
