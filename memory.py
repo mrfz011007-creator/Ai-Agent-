@@ -312,7 +312,11 @@ def _matches_scope(
     if context:
         requested = {item.lower() for item in context}
         record_context = {item.lower() for item in record.get("context", [])}
-        if record_context and not record_context.intersection(requested):
+        if record_context and not any(
+            requested_item in record_item or record_item in requested_item
+            for requested_item in requested
+            for record_item in record_context
+        ):
             return False
 
     return True
