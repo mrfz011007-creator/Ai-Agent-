@@ -353,3 +353,29 @@ def test_acceptance_requires_current_attempt_for_artifact_authority(tmp_path):
     )
     assert result.status == VerificationStatus.FAILED
     assert "current task attempt" in result.reason.lower()
+
+
+def test_execution_conditions_reject_stale_artifact_attempt(tmp_path):
+    _, evidence, artifacts, gate, _ = _setup(tmp_path)
+    path = tmp_path / "app.apk"
+    path.write_bytes(b"apk")
+    artifacts.register(
+        task_id="A1",
+        path=path,
+        kind="APK",
+        attempt_id="attempt-old",
+        evidence_id="build-old",
+    )
+    _evidence(evidence, "A1", "build-current", attempt_id="attempt-current")
+
+    result = gate.verify_execution(
+        task_id="A1",
+        evidence_ids=("build-current",),
+        completion_conditions=(
+            {"type": "artifact_exists", "task_id": "A1"},
+        ),
+        expected_attempt_id="attempt-current",
+    )
+
+    assert result.status == VerificationStatus.FAILED
+    assert "artifact" in result.reason.lower()
