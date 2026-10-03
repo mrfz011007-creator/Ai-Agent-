@@ -42,13 +42,11 @@ class GoalRunner:
         graph: TaskGraph,
         *,
         max_steps: int | None = None,
-        memory_context: str = "",
+        project_id: str | None = None,
     ) -> tuple[Plan, TaskGraph]:
         plan = self._persist(plan, PlanStatus.EXECUTING)
         steps = 0
         execution_context = {}
-        if memory_context:
-            execution_context["_memory"] = memory_context
 
         def execute_with_context(proposal, *, task_id, attempt_id=None):
             result = self.runtime.execute_model_proposal(
@@ -71,6 +69,22 @@ class GoalRunner:
             if max_steps is not None and steps >= max_steps:
                 plan = self._persist(plan, PlanStatus.WAITING)
                 return plan, graph
+
+            from memory_context import build_memory_context
+
+            ready_task = self.runtime.orchestrator.next_ready(graph)
+            task_memory_context = ""
+            if ready_task is not None:
+                task_memory_context = build_memory_context(
+                    plan.goal,
+                    project_id=project_id,
+                    task_id=ready_task.task_id,
+                    context=[ready_task.title],
+                )
+            if task_memory_context:
+                execution_context["_memory"] = task_memory_context
+            else:
+                execution_context.pop("_memory", None)
 
             task = self.runtime.orchestrator.execute_model_step(
                 graph,
@@ -95,11 +109,12 @@ class GoalRunner:
         *,
         plan_id: str | None = None,
         max_steps: int | None = None,
+        project_id: str | None = None,
     ) -> tuple[Plan, TaskGraph]:
         """Create and execute one bounded goal through the runtime boundary."""
         from memory_context import build_memory_context
 
-        memory_context = build_memory_context(goal)
+        memory_context = build_memory_context(goal, project_id=project_id)
         proposer = ModelPlanService(self.runtime.model_gateway.generate_text)
         proposal = proposer.propose(goal, memory_context=memory_context)
         resolved_id = plan_id or self._new_plan_id()
@@ -108,7 +123,7 @@ class GoalRunner:
             plan,
             graph,
             max_steps=max_steps,
-            memory_context=memory_context,
+            project_id=project_id,
         )
 
     def resume(
