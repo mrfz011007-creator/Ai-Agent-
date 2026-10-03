@@ -168,3 +168,32 @@ def test_memory_save_is_atomic_on_replace_failure(monkeypatch, tmp_path):
         memory.remember("stable", "replacement")
 
     assert memory.recall("stable")["value"] == "original"
+
+
+def test_search_memory_tokenizes_natural_language_queries(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+
+    memory.remember(
+        "launcher_project",
+        "LauncherOS",
+        kind="fact",
+        source="user",
+        project_id="launcher",
+        context=["LauncherOS"],
+    )
+    memory.remember(
+        "architecture_decision",
+        "Use Compose with native Android components",
+        kind="decision",
+        source="user",
+        project_id="launcher",
+        context=["LauncherOS"],
+    )
+
+    result = memory.search_memory("work on LauncherOS", project_id="launcher")
+
+    assert result["status"] == "success"
+    assert {record["key"] for record in result["records"]} == {
+        "launcher_project",
+        "architecture_decision",
+    }
