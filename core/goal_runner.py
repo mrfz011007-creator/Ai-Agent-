@@ -186,6 +186,12 @@ class GoalRunner:
         proposal = proposer.propose(goal, project_id=project_id, context=context)
         resolved_id = plan_id or self._new_plan_id()
         plan, graph = self.runtime.orchestrator.materialize(proposal, resolved_id)
+        plan = replace(
+            plan,
+            project_id=project_id,
+            context=dict(context or {}),
+        )
+        self.runtime.orchestrator.persist_plan(plan)
         return self._run_graph(plan, graph, max_steps=max_steps, project_id=project_id, context=context)
 
     def resume(
@@ -227,8 +233,8 @@ class GoalRunner:
             plan,
             graph,
             max_steps=max_steps,
-            project_id=None,
-            context=None,
+            project_id=plan.project_id,
+            context=plan.context,
         )
 
     @staticmethod
