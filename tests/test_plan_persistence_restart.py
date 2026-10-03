@@ -139,3 +139,38 @@ def test_existing_plan_table_migrates_without_project_scope(monkeypatch, tmp_pat
     assert restored.project_id is None
     assert restored.plan_id == "legacy-plan"
     assert restored.goal == "Legacy plan"
+
+
+def test_plan_project_scope_survives_status_updates_and_restart():
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory(prefix="ai-agent-plan-scope-") as tmp:
+        state_path = Path(tmp) / "state.sqlite3"
+        runtime1 = AgentRuntime.create(state_path=state_path)
+        proposal = runtime1.orchestrator.planner.propose(
+            "Scoped status update",
+            [Task("scope-status-001", "Inspect project")],
+            acceptance_criteria=("Scope must survive status updates",),
+        )
+        plan, _ = runtime1.orchestrator.materialize(
+            proposal,
+            "scope-status-plan",
+            project_id="launcher",
+        )
+
+        runtime1.orchestrator.persist_plan(
+            plan.__class__(
+                plan_id=plan.plan_id,
+                goal=plan.goal,
+                task_ids=plan.task_ids,
+                status=plan.status.EXECUTING,
+                acceptance_criteria=plan.acceptance_criteria,
+                project_id=plan.project_id,
+            )
+        )
+
+        runtime2 = AgentRuntime.create(state_path=state_path)
+        restored = runtime2.orchestrator.restore_plan("scope-status-plan")
+        assert restored is not None
+        assert restored.project_id == "launcher"
