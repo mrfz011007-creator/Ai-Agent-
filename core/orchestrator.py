@@ -122,18 +122,16 @@ class Orchestrator:
         tool_catalog=None,
         model_context=None,
     ) -> Task | None:
-        """Execute one task from model intent through runtime authorization and a completion gate."""
+        """Execute one task through separate model and tool failure boundaries."""
         task = self.start_next(graph)
         if task is None:
             return None
         attempt_id = f"{task.task_id}:attempt:{task.attempts}"
+
         try:
-            proposal = ModelExecutionService(model_call, tool_catalog=tool_catalog).propose(task.title, context=model_context)
-            result = execute_proposal(
-                proposal,
-                task_id=task.task_id,
-                attempt_id=attempt_id,
-            )
+            proposal = ModelExecutionService(
+                model_call, tool_catalog=tool_catalog
+            ).propose(task.title, context=model_context)
         except Exception as error:
             if handle_model_failure is not None:
                 decision = handle_model_failure(task.task_id, error)
@@ -141,6 +139,17 @@ class Orchestrator:
                 if current is not None and decision is not None and decision.action != "FAIL":
                     graph.tasks[task.task_id] = current
                     return current
+            failed = self.task_manager.fail(task.task_id, str(error))
+            graph.tasks[task.task_id] = failed
+            return failed
+
+        try:
+            result = execute_proposal(
+                proposal,
+                task_id=task.task_id,
+                attempt_id=attempt_id,
+            )
+        except Exception as error:
             failed = self.task_manager.fail(task.task_id, str(error))
             graph.tasks[task.task_id] = failed
             return failed
@@ -187,6 +196,7 @@ class Orchestrator:
         completed = self.task_manager.complete_with_gate(task.task_id, verification)
         graph.tasks[task.task_id] = completed
         return completed
+
 
     def run_model_plan(
         self,
