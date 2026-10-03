@@ -471,6 +471,30 @@ class StateStore:
         if not reason.strip():
             raise ValueError("Tool execution reconciliation requires a reason")
         with self._connect() as db:
+            execution = db.execute(
+                "SELECT task_id FROM tool_executions WHERE request_id=? "
+                "AND status IN ('STARTED','UNKNOWN')",
+                (request_id,),
+            ).fetchone()
+            if execution is None:
+                raise ValueError(
+                    f"Tool execution is not unresolved or does not exist: {request_id}"
+                )
+
+            if evidence_id is not None:
+                evidence = db.execute(
+                    "SELECT task_id,success FROM evidence WHERE evidence_id=?",
+                    (evidence_id,),
+                ).fetchone()
+                if evidence is None:
+                    raise ValueError(f"Reconciliation evidence does not exist: {evidence_id}")
+                if evidence["task_id"] != execution["task_id"]:
+                    raise ValueError("Reconciliation evidence belongs to another task")
+                if status == "RESOLVED_COMPLETED" and not bool(evidence["success"]):
+                    raise ValueError("Completed reconciliation requires successful evidence")
+                if status == "RESOLVED_FAILED" and bool(evidence["success"]):
+                    raise ValueError("Failed reconciliation requires unsuccessful evidence")
+
             cursor = db.execute(
                 """UPDATE tool_executions
                    SET status=?, error=?, evidence_id=?, updated_at=CURRENT_TIMESTAMP
