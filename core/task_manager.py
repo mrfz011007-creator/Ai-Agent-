@@ -109,6 +109,9 @@ class TaskManager:
         task = self._require(task_id)
         if task.status != TaskStatus.WAITING:
             raise ValueError(f"Invalid transition: {task.status} -> RUNNING")
+        contract = task.execution_contract
+        if contract is not None and (task.attempts - 1) >= contract.retry_limit:
+            raise ValueError("TASK_RETRY_LIMIT_EXCEEDED")
         def mutate() -> None:
             task.attempts += 1
             task.status = TaskStatus.RUNNING
