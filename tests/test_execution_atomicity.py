@@ -197,3 +197,49 @@ def test_uncertain_execution_blocks_replay_after_restart(tmp_path):
 
     assert second.status == "execution_reconciliation_required"
     assert len(calls) == 1
+
+
+def test_explicit_reconciliation_can_authorize_a_new_execution(tmp_path):
+    calls = []
+    registry = {
+        "side_effect": {
+            "func": lambda: calls.append("called") or {"success": True},
+            "permission": "safe",
+        }
+    }
+    router, _, store, _ = _router(tmp_path, registry)
+    store.save_evidence = lambda *args, **kwargs: (_ for _ in ()).throw(
+        OSError("evidence unavailable")
+    )
+
+    first = router.execute(
+        ToolRequest(
+            "side_effect",
+            "execute",
+            task_id="T-RECON",
+            request_id="REQ-RECON",
+        )
+    )
+    assert first.status == "execution_unknown"
+    assert len(calls) == 1
+
+    store.reconcile_tool_execution(
+        "REQ-RECON",
+        status="RETRY_ALLOWED",
+        reason="Operator verified the external operation did not take effect.",
+    )
+
+    # Restore evidence persistence before the explicitly authorized retry.
+    original_save = StateStore(tmp_path / "state.sqlite3").save_evidence
+    store.save_evidence = original_save
+    second = router.execute(
+        ToolRequest(
+            "side_effect",
+            "execute",
+            task_id="T-RECON",
+            request_id="REQ-RECON-2",
+        )
+    )
+
+    assert second.success
+    assert len(calls) == 2
