@@ -71,8 +71,15 @@ class GoalRunner:
                     raise ValueError(
                         "Memory tool task scope does not match active task"
                     )
+
                 if proposal.tool == "remember":
-                    arguments["task_id"] = task_id
+                    kind = str(arguments.get("kind", "fact")).strip().lower()
+                    if kind == "experience" and requested_task is None:
+                        arguments["task_id"] = task_id
+                    arguments["source"] = {
+                        "type": "model",
+                        "task_id": task_id,
+                    }
 
                 proposal = ExecutionProposal(
                     tool=proposal.tool,
