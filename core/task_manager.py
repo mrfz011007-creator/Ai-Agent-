@@ -132,6 +132,15 @@ class TaskManager:
         self._checkpoint(task, event="blocked", reason=reason)
         return task
 
+    def wait(self, task_id: str) -> Task:
+        """Move an interrupted active task to WAITING atomically."""
+        task = self._require(task_id)
+        if task.status not in (TaskStatus.RUNNING, TaskStatus.VERIFYING):
+            raise ValueError(f"Invalid transition: {task.status} -> WAITING")
+        return self._mutate_and_persist(
+            task, lambda: setattr(task, "status", TaskStatus.WAITING)
+        )
+
     def begin_verification(self, task_id: str) -> Task:
         task = self._require(task_id)
         task = self._mutate_and_persist(task, task.mark_verifying)
