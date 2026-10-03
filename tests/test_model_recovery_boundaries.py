@@ -39,6 +39,7 @@ def test_tool_exception_with_model_marker_is_not_model_recovery(tmp_path):
         execute_proposal=execute_proposal,
         verify_execution=lambda **kwargs: None,
         handle_model_failure=runtime.handle_model_failure,
+        tool_catalog={"fake": {"description": "test tool", "idempotent": True}},
     )
 
     assert result is not None
