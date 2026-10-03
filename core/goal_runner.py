@@ -162,6 +162,10 @@ class GoalRunner:
                     task.task_id for task in graph.tasks.values()
                     if task.status in (TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.BLOCKED)
                 ),
+                current_attempt_ids={
+                    task.task_id: f"{task.task_id}:attempt:{task.attempts}"
+                    for task in graph.tasks.values()
+                },
             )
             if acceptance.status.value != "PASSED":
                 return self._persist(plan, PlanStatus.FAILED), graph
