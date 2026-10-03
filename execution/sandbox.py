@@ -198,11 +198,13 @@ def prepare_sandbox(
     # The launcher is a shell script executed inside the new user/mount/network
     # namespace. It is removed by the parent after the child exits.
     launcher = Path(tempfile.gettempdir()) / f".ai-agent-launcher-{token}.sh"
+    root_q = shlex.quote(str(root))
+    work_q = shlex.quote(str(work_mount))
     lines = [
         "#!/bin/sh",
         "set -eu",
-        f'ROOT="{root}"',
-        f'WORK="{work_mount}"',
+        f"ROOT={root_q}",
+        f"WORK={work_q}",
         'mount -t tmpfs tmpfs "$ROOT"',
         'mkdir -p "$ROOT/usr" "$ROOT/etc" "$ROOT/dev" "$ROOT/proc" "$ROOT/tmp"',
         'ln -s usr/bin "$ROOT/bin"',
@@ -264,8 +266,9 @@ def cleanup_sandbox(root: str) -> None:
     name = root_path.name
     if not name.startswith(prefix):
         return
-    token = name[len(prefix):].rstrip("-")
-    if not token or any(char not in "0123456789abcdef" for char in token.lower()):
+    suffix = name[len(prefix):]
+    token = suffix.split("-", 1)[0]
+    if len(token) != 32 or any(char not in "0123456789abcdef" for char in token.lower()):
         return
     launcher = root_path.parent / f".ai-agent-launcher-{token}.sh"
     try:
