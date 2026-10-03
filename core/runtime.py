@@ -293,6 +293,26 @@ class AgentRuntime:
             evidence_id=evidence_id,
         )
 
+    def reconcile_task(
+        self,
+        task_id: str,
+        *,
+        outcome,
+        reason: str,
+        evidence_ids: tuple[str, ...] = (),
+    ):
+        """Explicitly reconcile a WAITING task before resume/retry."""
+        from core.recovery import ReconcileOutcome
+
+        if isinstance(outcome, str):
+            outcome = ReconcileOutcome(outcome)
+        return self.recovery_manager.reconcile(
+            task_id,
+            outcome,
+            reason,
+            tuple(evidence_ids),
+        )
+
     def recover_task(self, task_id: str):
         return self.recovery_manager.recover_task(task_id)
 
