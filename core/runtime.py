@@ -109,6 +109,30 @@ class AgentRuntime:
             orchestrator=orchestrator,
         )
 
+    def propose_memory_candidate(self, **kwargs):
+        from core.memory_learning import propose_memory_candidate
+        return propose_memory_candidate(self.state_store, **kwargs)
+
+    def list_memory_candidates(self, **kwargs):
+        from core.memory_learning import list_memory_candidates
+        return list_memory_candidates(self.state_store, **kwargs)
+
+    def commit_memory_candidate(self, candidate_id: str, *, reason: str):
+        from core.memory_learning import commit_memory_candidate
+        return commit_memory_candidate(
+            self.state_store,
+            candidate_id,
+            reason=reason,
+        )
+
+    def reject_memory_candidate(self, candidate_id: str, *, reason: str):
+        from core.memory_learning import reject_memory_candidate
+        return reject_memory_candidate(
+            self.state_store,
+            candidate_id,
+            reason=reason,
+        )
+
     def tool_catalog(self) -> dict[str, dict]:
         """Return non-executable tool metadata for model context."""
         from registry import get_tool_catalog
