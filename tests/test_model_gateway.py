@@ -237,3 +237,40 @@ def test_model_gateway_accepts_explicit_positive_max_attempts():
         max_attempts=1,
     )
     assert gateway.max_attempts == 1
+
+
+def test_model_budget_counts_each_actual_credential_attempt(monkeypatch):
+    from core.budget import BudgetManager
+    from core.contracts import Budget
+
+    monkeypatch.setenv("K1", "secret-1")
+    monkeypatch.setenv("K2", "secret-2")
+    budget = BudgetManager(Budget(max_model_calls=2))
+    gateway = ModelGateway(
+        credentials=[Credential("k1", "K1"), Credential("k2", "K2")],
+        client_factory=lambda secret: secret,
+        budget=budget,
+    )
+
+    def invoke(client):
+        if client == "secret-1":
+            raise RuntimeError("429 quota")
+        return "ok"
+
+    assert gateway.call(invoke) == "ok"
+    assert budget.budget.model_calls == 2
+
+
+def test_runtime_budget_survives_restart(tmp_path):
+    from core.runtime import AgentRuntime
+
+    state_path = tmp_path / "state.sqlite3"
+    first = AgentRuntime.create(state_path=state_path)
+    first.budget_manager.reserve_model_call()
+    first.budget_manager.reserve_tool_call()
+
+    second = AgentRuntime.create(state_path=state_path)
+    assert second.budget_manager.budget.model_calls == 1
+    assert second.budget_manager.budget.tool_calls == 1
+    assert second.budget_manager.remaining_model_calls == 19
+    assert second.budget_manager.remaining_tool_calls == 49
