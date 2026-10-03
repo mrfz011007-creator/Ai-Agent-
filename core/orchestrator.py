@@ -21,10 +21,13 @@ class Orchestrator:
         plan = self.planner.materialize(proposal, plan_id)
         graph = proposal.graph()
         for task in graph.tasks.values():
-            if self.task_manager.get(task.task_id) is not None:
-                raise ValueError(f"Task already exists: {task.task_id}")
+            # Check durable state first: TaskManager.get() now lazily restores
+            # persisted tasks, so checking memory first would mask the more
+            # precise persisted-duplicate condition.
             if self.store is not None and self.store.load_task(task.task_id) is not None:
                 raise ValueError(f"Persisted task already exists: {task.task_id}")
+            if self.task_manager.get(task.task_id) is not None:
+                raise ValueError(f"Task already exists: {task.task_id}")
 
         if self.store is not None:
             self.store.save_plan_with_tasks(
