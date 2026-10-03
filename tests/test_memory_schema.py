@@ -34,7 +34,7 @@ def test_versioned_v2_memory_is_migrated_without_data_loss(monkeypatch, tmp_path
                     {
                         "key": "legacy_v2_key",
                         "value": "legacy_v2_value",
-                        "source": {"type": "agent", "ref": "old-run"},
+                        "source": {"kind": "execution", "ref": "ev-model-resume"},
                         "project_id": None,
                         "task_id": None,
                         "context": {},
@@ -60,6 +60,9 @@ def test_versioned_v2_memory_is_migrated_without_data_loss(monkeypatch, tmp_path
     record = document["records"][0]
     assert record["memory_id"].startswith("mem-")
     assert record["kind"] == "fact"
+    assert record["source"]["type"] == "execution"
+    assert record["source"]["kind"] == "execution"
+    assert record["source"]["ref"] == "ev-model-resume"
     assert record["context"] == []
     assert record["valid"] is True
     assert record["supersedes"] is None
