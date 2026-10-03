@@ -199,6 +199,14 @@ class ToolRouter:
                 return ToolResult(
                     False, "task_limit_exceeded", request.tool, error=str(error)
                 )
+            except Exception as error:
+                self._budget.refund_tool_call()
+                return ToolResult(
+                    False,
+                    "task_persistence_failed",
+                    request.tool,
+                    error=redact_text(str(error)),
+                )
 
         if execution_store is not None:
             try:
