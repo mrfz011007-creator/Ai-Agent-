@@ -97,3 +97,45 @@ def test_resume_goal_restores_persisted_project_scope_without_repassing_it(monke
     assert resumed_plan.project_id == "launcher"
     assert graph.tasks["scoped-001"].status.value == "PENDING"
     assert resumed_plan.status.value == "WAITING"
+
+
+def test_existing_plan_table_migrates_without_project_scope(monkeypatch, tmp_path):
+    import json
+    import sqlite3
+
+    state_path = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(state_path) as db:
+        db.execute(
+            """
+            CREATE TABLE plans (
+                plan_id TEXT PRIMARY KEY,
+                goal TEXT NOT NULL,
+                status TEXT NOT NULL,
+                task_ids TEXT NOT NULL,
+                acceptance_criteria TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO plans(
+                plan_id, goal, status, task_ids, acceptance_criteria
+            ) VALUES (?,?,?,?,?)
+            """,
+            (
+                "legacy-plan",
+                "Legacy plan",
+                "VALIDATED",
+                json.dumps(["legacy-task"]),
+                json.dumps(["legacy criteria"]),
+            ),
+        )
+
+    runtime = AgentRuntime.create(state_path=state_path)
+    restored = runtime.orchestrator.restore_plan("legacy-plan")
+
+    assert restored is not None
+    assert restored.project_id is None
+    assert restored.plan_id == "legacy-plan"
+    assert restored.goal == "Legacy plan"
