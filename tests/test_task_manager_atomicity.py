@@ -167,3 +167,25 @@ def test_completion_rejects_evidence_from_another_attempt(tmp_path):
         manager.complete("T7", verification)
 
     assert manager.get("T7").status == TaskStatus.VERIFYING
+
+
+def test_retry_enforces_execution_contract_limit_at_task_boundary(tmp_path):
+    from core.execution_contract import ExecutionContract
+
+    manager, _ = _manager(tmp_path)
+    contract = ExecutionContract(
+        objective="bounded retry",
+        allowed_tools=("tool",),
+        allowed_capabilities=("workspace.read",),
+        retry_limit=0,
+        evidence_required=True,
+        completion_conditions=("verified",),
+    )
+    manager.create(Task("T8", "retry contract", execution_contract=contract, status=TaskStatus.READY))
+    manager.start("T8")
+    manager.wait("T8")
+
+    with pytest.raises(ValueError, match="TASK_RETRY_LIMIT_EXCEEDED"):
+        manager.retry("T8")
+
+    assert manager.get("T8").status == TaskStatus.WAITING
