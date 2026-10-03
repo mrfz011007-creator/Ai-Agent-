@@ -60,6 +60,17 @@ class ToolRouter:
             # side effects after completion, during verification, or while
             # waiting for reconciliation.
             task_status = getattr(task, "status", None)
+            # Lifecycle state is the outer execution boundary. Only a task
+            # that currently owns the execution phase may reach attempt
+            # binding; this preserves the stable task_not_executable result
+            # for terminal/waiting/verification states.
+            if getattr(task_status, "value", task_status) != "RUNNING":
+                return ToolResult(
+                    False,
+                    "task_not_executable",
+                    request.tool,
+                    error=f"Task is not executable in status: {task_status}",
+                )
             expected_attempt_id = f"{request.task_id}:attempt:{getattr(task, 'attempts', 0)}"
             if request.attempt_id != expected_attempt_id:
                 return ToolResult(
@@ -67,13 +78,6 @@ class ToolRouter:
                     "attempt_mismatch",
                     request.tool,
                     error=f"Tool request is not bound to current task attempt: {expected_attempt_id}",
-                )
-            if getattr(task_status, "value", task_status) != "RUNNING":
-                return ToolResult(
-                    False,
-                    "task_not_executable",
-                    request.tool,
-                    error=f"Task is not executable in status: {task_status}",
                 )
             contract = getattr(task, "execution_contract", None)
             if contract is not None and not contract.allows_tool(request.tool):
