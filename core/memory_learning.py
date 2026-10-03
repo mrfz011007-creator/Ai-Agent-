@@ -203,6 +203,9 @@ def commit_memory_candidate(
             raise ValueError(f"Candidate evidence not found: {evidence_id}")
         if not evidence["success"]:
             raise ValueError(f"Candidate evidence is unsuccessful: {evidence_id}")
+        candidate_task_id = row.get("task_id")
+        if candidate_task_id is not None and evidence["task_id"] != candidate_task_id:
+            raise ValueError(f"Candidate evidence belongs to another task: {evidence_id}")
 
     payload = row["payload"]
     source = payload["source"]
