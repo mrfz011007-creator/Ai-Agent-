@@ -35,8 +35,15 @@ class ModelPlanService:
             )
             if context_rows:
                 memory_text = json.dumps(context_rows, ensure_ascii=False, default=str)
+                memory_value_truncated = any(
+                    isinstance(row.get("value"), dict)
+                    and row["value"].get("_truncated") is True
+                    for row in context_rows
+                )
                 if len(memory_text) > MAX_PLANNER_CONTEXT_CHARS:
                     memory_text = memory_text[:MAX_PLANNER_CONTEXT_CHARS] + "...[MEMORY_CONTEXT_TRUNCATED]"
+                elif memory_value_truncated:
+                    memory_text += "\n[MEMORY_CONTEXT_TRUNCATED]"
                 prompt += "\n\nRELEVANT HISTORICAL MEMORY (CONTEXT ONLY):\n" + memory_text
         raw = self.model_call(prompt)
         if not isinstance(raw, str):
