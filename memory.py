@@ -280,7 +280,11 @@ def compact_memory(
     ]
     bounded_experiences = sorted(
         [record for record in experiences if record["retention"] != "durable"],
-        key=lambda record: (record["updated_at"], record["version"]),
+        key=lambda record: (
+            record["last_accessed_at"] or record["updated_at"],
+            record["updated_at"],
+            record["version"],
+        ),
         reverse=True,
     )[:max_active]
     keep_experience_ids = {
