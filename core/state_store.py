@@ -70,6 +70,8 @@ class StateStore:
                 )
             """)
             artifact_columns = {row[1] for row in db.execute("PRAGMA table_info(artifacts)").fetchall()}
+            if "attempt_id" not in artifact_columns:
+                db.execute("ALTER TABLE artifacts ADD COLUMN attempt_id TEXT")
             if "evidence_id" not in artifact_columns:
                 db.execute("ALTER TABLE artifacts ADD COLUMN evidence_id TEXT")
             db.execute("""
