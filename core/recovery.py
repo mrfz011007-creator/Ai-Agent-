@@ -197,6 +197,20 @@ class RecoveryController:
         if task is None:
             raise KeyError(f"Unknown task: {task_id}")
 
+        if task.status in (
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+            TaskStatus.BLOCKED,
+        ):
+            return RecoveryDecision(
+                task_id=task_id,
+                previous_status=task.status,
+                status=task.status,
+                action="NO_ACTION",
+                reason=f"Task is already terminal: {task.status.value}.",
+            )
+
         failure_class = classify_failure(status, error)
         if failure_class == FailureClass.RETRYABLE:
             return self.recovery_manager.retry_after_failure(
