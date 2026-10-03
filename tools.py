@@ -3,10 +3,52 @@ from __future__ import annotations
 import hashlib
 import os
 import shlex
+import tempfile
 from pathlib import Path
 
 from execution.command import run_command
 
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Replace a text file atomically within its parent directory."""
+    path = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    old_mode = None
+    try:
+        old_mode = path.stat().st_mode
+    except FileNotFoundError:
+        pass
+
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+        text=False,
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(content.encode("utf-8"))
+            stream.flush()
+            os.fsync(stream.fileno())
+        if old_mode is not None:
+            os.chmod(temp_path, old_mode & 0o7777)
+        os.replace(temp_path, path)
+        if os.name == "posix":
+            try:
+                dir_fd = os.open(path.parent, os.O_DIRECTORY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
 
 def workspace_root() -> Path:
     """Return the single configured workspace boundary used by legacy handlers."""
@@ -160,7 +202,7 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
         }
 
     updated_text = text.replace(old, new)
-    path.write_text(updated_text, encoding="utf-8")
+    _atomic_write_text(path, updated_text)
     return {
         "status": "success",
         "success": True,
@@ -220,7 +262,7 @@ def tulis_file(nama, isi, expected_sha256=None):
                     "pesan": "Penulisan ditolak: isi file berubah sejak snapshot terakhir.",
                     "current_sha256": current_sha256,
                 }
-        path.write_text(isi, encoding="utf-8")
+        _atomic_write_text(path, isi)
         return {
             "status": "success",
             "success": True,
