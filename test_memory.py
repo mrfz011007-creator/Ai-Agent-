@@ -173,3 +173,58 @@ def test_memory_recall_persists_last_accessed_at(tmp_path, monkeypatch):
     assert recalled["record"]["last_accessed_at"] is not None
     persisted = load_memory()["records"][0]
     assert persisted["last_accessed_at"] == recalled["record"]["last_accessed_at"]
+
+
+def test_memory_compaction_bounds_active_experiences_and_preserves_durable(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    from memory import compact_memory, load_memory, remember
+
+    for index in range(5):
+        remember(
+            f"task:{index}:execution",
+            {"output": "x" * 2000, "index": index},
+            memory_type="experience",
+            source={"kind": "execution", "ref": f"ev-{index}"},
+            provenance={"reason": "test"},
+            retention="ephemeral",
+        )
+
+    durable = remember(
+        "important-rule",
+        {"rule": "preserve this"},
+        memory_type="fact",
+        source="test",
+        provenance={"reason": "durable knowledge"},
+        retention="durable",
+    )["record"]
+
+    result = compact_memory(max_active_experiences=2, max_history_per_key=1)
+
+    store = load_memory()
+    active_experiences = [
+        item for item in store["records"]
+        if item["type"] == "experience" and item["status"] == "active"
+    ]
+    assert len(active_experiences) == 2
+    assert any(item["id"] == durable["id"] for item in store["records"])
+    assert result["removed_records"] == 3
+
+
+def test_memory_compaction_if_needed_uses_size_threshold(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("AI_AGENT_MEMORY_AUTO_COMPACT_BYTES", "1")
+    from memory import compact_memory_if_needed, load_memory, remember
+
+    remember(
+        "large-experience",
+        {"output": "x" * 5000},
+        memory_type="experience",
+        source={"kind": "execution", "ref": "ev-large"},
+        provenance={"reason": "threshold test"},
+        retention="ephemeral",
+    )
+
+    result = compact_memory_if_needed()
+    assert result["success"] is True
+    assert result["status"] == "compacted"
+    assert len(load_memory()["records"]) == 0
