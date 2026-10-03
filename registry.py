@@ -14,6 +14,7 @@ from tools import (
 from execution.command import run_command
 
 from memory import (
+    invalidate_memory,
     remember,
 )
 
