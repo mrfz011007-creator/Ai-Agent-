@@ -72,9 +72,13 @@ class StateStore:
                     status TEXT NOT NULL,
                     task_ids TEXT NOT NULL,
                     acceptance_criteria TEXT NOT NULL,
+                    project_id TEXT,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            plan_columns = {row[1] for row in db.execute("PRAGMA table_info(plans)").fetchall()}
+            if "project_id" not in plan_columns:
+                db.execute("ALTER TABLE plans ADD COLUMN project_id TEXT")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     checkpoint_id TEXT PRIMARY KEY,
@@ -400,6 +404,7 @@ class StateStore:
         task_ids: list[str] | tuple[str, ...],
         acceptance_criteria: list[str] | tuple[str, ...],
         tasks: list[tuple[str, str, int, dict[str, Any]]],
+        project_id: str | None = None,
     ) -> None:
         """Persist one plan and all of its initial tasks in one SQLite transaction."""
         with self._connect() as db:
@@ -415,14 +420,15 @@ class StateStore:
                     ),
                 )
             db.execute(
-                """INSERT INTO plans(plan_id,goal,status,task_ids,acceptance_criteria)
-                   VALUES (?,?,?,?,?)""",
+                """INSERT INTO plans(plan_id,goal,status,task_ids,acceptance_criteria,project_id)
+                   VALUES (?,?,?,?,?,?)""",
                 (
                     plan_id,
                     goal,
                     status,
                     json.dumps(list(task_ids)),
                     json.dumps(list(acceptance_criteria)),
+                    project_id,
                 ),
             )
 
@@ -433,15 +439,17 @@ class StateStore:
         status: str,
         task_ids: list[str] | tuple[str, ...],
         acceptance_criteria: list[str] | tuple[str, ...],
+        project_id: str | None = None,
     ) -> None:
         with self._connect() as db:
             db.execute(
-                """INSERT INTO plans(plan_id,goal,status,task_ids,acceptance_criteria)
-                   VALUES (?,?,?,?,?)
+                """INSERT INTO plans(plan_id,goal,status,task_ids,acceptance_criteria,project_id)
+                   VALUES (?,?,?,?,?,?)
                    ON CONFLICT(plan_id) DO UPDATE SET
                    goal=excluded.goal,status=excluded.status,
                    task_ids=excluded.task_ids,
                    acceptance_criteria=excluded.acceptance_criteria,
+                   project_id=excluded.project_id,
                    updated_at=CURRENT_TIMESTAMP""",
                 (
                     plan_id,
@@ -449,13 +457,14 @@ class StateStore:
                     status,
                     json.dumps(list(task_ids)),
                     json.dumps(list(acceptance_criteria)),
+                    project_id,
                 ),
             )
 
     def load_plan(self, plan_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute(
-                "SELECT plan_id,goal,status,task_ids,acceptance_criteria,updated_at "
+                "SELECT plan_id,goal,status,task_ids,acceptance_criteria,project_id,updated_at "
                 "FROM plans WHERE plan_id=?",
                 (plan_id,),
             ).fetchone()
