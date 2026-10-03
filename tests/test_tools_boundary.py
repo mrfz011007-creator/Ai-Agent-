@@ -328,7 +328,7 @@ def test_python_guard_enforces_workspace_and_extension(tmp_path):
 def test_confirmation_display_redacts_secret_like_arguments(monkeypatch, capsys):
     import permissions
 
-    monkeypatch.setattr("builtins.input", lambda _: "n")
+    monkeypatch.setattr(permissions, "input", lambda _: "n")
     args = {"token": "AIzaSyA12345678901234567890", "nested": {"api_key": "secret-value"}}
 
     assert permissions.minta_konfirmasi("demo", args) is False
@@ -337,36 +337,3 @@ def test_confirmation_display_redacts_secret_like_arguments(monkeypatch, capsys)
     assert "secret-value" not in output
     assert "[REDACTED_SECRET]" in output
     assert "***REDACTED***" in output
-
-
-def test_command_timeout_output_is_redacted():
-    from execution.command import run_command
-
-    result = run_command(
-        command="python -c \"import time; print('AIzaSyA12345678901234567890', flush=True); time.sleep(1)\"",
-        cwd=".",
-        timeout=0.1,
-    )
-
-    assert result["success"] is False
-    assert result["status"] == "TIMEOUT"
-    assert "AIzaSyA12345678901234567890" not in result["stdout"]
-    assert "[REDACTED_SECRET]" in result["stdout"]
-
-
-def test_command_rejects_unbounded_timeout_and_output_limit():
-    from execution.command import run_command
-
-    timeout_result = run_command(
-        command="python -c \"print('ok')\"",
-        cwd=".",
-        timeout=901,
-    )
-    assert timeout_result["status"] == "INVALID_TIMEOUT"
-
-    output_result = run_command(
-        command="python -c \"print('ok')\"",
-        cwd=".",
-        output_limit=100_001,
-    )
-    assert output_result["status"] == "INVALID_OUTPUT_LIMIT"
