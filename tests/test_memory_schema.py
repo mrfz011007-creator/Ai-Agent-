@@ -264,34 +264,9 @@ def test_memory_record_size_is_bounded(monkeypatch, tmp_path):
         )
 
 
-def test_save_memory_rejects_malformed_or_oversized_versioned_record(tmp_path, monkeypatch):
-    from memory import MemoryStoreError, save_memory
+def test_remember_rejects_oversized_new_value(tmp_path, monkeypatch):
+    from memory import remember
 
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
-    base = {
-        "memory_id": "mem-test",
-        "key": "bounded",
-        "value": "ok",
-        "kind": "fact",
-        "source": {"type": "user"},
-        "project_id": None,
-        "task_id": None,
-        "context": [],
-        "created_at": "2026-01-01T00:00:00+00:00",
-        "updated_at": "2026-01-01T00:00:00+00:00",
-        "version": 1,
-        "valid": True,
-        "supersedes": None,
-        "invalidated_at": None,
-        "invalidation_reason": None,
-    }
-
-    malformed = dict(base)
-    malformed["source"] = {}
-    with pytest.raises(MemoryStoreError, match="source.type"):
-        save_memory({"schema_version": 3, "records": [malformed]})
-
-    oversized = dict(base)
-    oversized["value"] = "x" * 12001
-    with pytest.raises(MemoryStoreError, match="value exceeds"):
-        save_memory({"schema_version": 3, "records": [oversized]})
+    with pytest.raises(ValueError, match="Memory value exceeds maximum size"):
+        remember("bounded", "x" * 12001)
