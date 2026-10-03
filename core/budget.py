@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import time
+from typing import Any
 
 from core.contracts import Budget
 
@@ -10,10 +11,42 @@ from core.contracts import Budget
 class BudgetManager:
     budget: Budget
     started_at: float = 0.0
+    state_store: Any | None = None
+    wall_clock: Any = time.time
+    started_at_wall: float = 0.0
 
     def __post_init__(self) -> None:
+        if self.state_store is not None:
+            saved = self.state_store.load_budget()
+            if saved is not None:
+                for field in (
+                    "max_tool_calls", "max_model_calls", "max_recovery_cycles",
+                    "max_runtime_seconds", "max_output_chars",
+                    "tool_calls", "model_calls", "recovery_cycles",
+                ):
+                    if field in saved:
+                        setattr(self.budget, field, saved[field])
+                self.started_at_wall = float(saved.get("started_at_wall", self.wall_clock()))
+            else:
+                self.started_at_wall = self.wall_clock()
+                self._persist()
         if self.started_at == 0.0:
             self.started_at = time.monotonic()
+
+    def _persist(self) -> None:
+        if self.state_store is None:
+            return
+        self.state_store.save_budget({
+            "max_tool_calls": self.budget.max_tool_calls,
+            "max_model_calls": self.budget.max_model_calls,
+            "max_recovery_cycles": self.budget.max_recovery_cycles,
+            "max_runtime_seconds": self.budget.max_runtime_seconds,
+            "max_output_chars": self.budget.max_output_chars,
+            "tool_calls": self.budget.tool_calls,
+            "model_calls": self.budget.model_calls,
+            "recovery_cycles": self.budget.recovery_cycles,
+            "started_at_wall": self.started_at_wall,
+        })
 
     def check_runtime(self) -> None:
         if self.elapsed_seconds >= self.budget.max_runtime_seconds:
@@ -22,17 +55,22 @@ class BudgetManager:
     def reserve_tool_call(self) -> None:
         self.check_runtime()
         self.budget.consume_tool()
+        self._persist()
 
     def reserve_model_call(self) -> None:
         self.check_runtime()
         self.budget.consume_model()
+        self._persist()
 
     def reserve_recovery_cycle(self) -> None:
         self.check_runtime()
         self.budget.consume_recovery()
+        self._persist()
 
     @property
     def elapsed_seconds(self) -> float:
+        if self.state_store is not None:
+            return max(0.0, self.wall_clock() - self.started_at_wall)
         return max(0.0, time.monotonic() - self.started_at)
 
     @property
