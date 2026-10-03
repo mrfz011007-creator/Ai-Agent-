@@ -203,8 +203,8 @@ TOOL_REGISTRY = {
     "remember": {
         "capabilities": ["workspace.write"],
         "func": remember,
-        "permission": "confirm",
-        "description": "Menyimpan informasi ke memory agent.",
+        "permission": "safe",
+        "description": "Menyimpan informasi ke memory agent dalam scope aktif.",
         "parameters": {
             "type": "object",
             "properties": {
