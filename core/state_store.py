@@ -376,8 +376,10 @@ class StateStore:
                 (request_id,),
             ).fetchone()
             if row is not None:
-                return dict(row)
-            db.execute(
+                result = dict(row)
+                result["claimed"] = False
+                return result
+            cursor = db.execute(
                 """INSERT OR IGNORE INTO tool_executions(
                     request_id,task_id,attempt_id,tool,action,arguments_hash,status
                 ) VALUES (?,?,?,?,?,?,?)""",
@@ -389,7 +391,9 @@ class StateStore:
                 "FROM tool_executions WHERE request_id=?",
                 (request_id,),
             ).fetchone()
-            return dict(row)
+            result = dict(row)
+            result["claimed"] = cursor.rowcount == 1
+            return result
 
     def load_tool_execution(self, request_id: str) -> dict[str, Any] | None:
         with self._connect() as db:
