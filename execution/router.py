@@ -295,6 +295,7 @@ class ToolRouter:
             tool=request.tool,
             action=request.action,
             result=result,
+            kind="execution",
         )
 
         result.evidence_id = evidence_id
