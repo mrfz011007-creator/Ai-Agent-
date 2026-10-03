@@ -36,14 +36,13 @@ def test_safe_resume_requires_explicit_reason(tmp_path):
     recovery.recover_task("R2")
 
     evidence = EvidenceStore(store)
-    evidence.record(
+    evidence.record_reconciliation(
         evidence_id="E-R2",
         task_id="R2",
         attempt_id="R2:attempt:1",
         tool="reconcile",
         action="inspect",
         result=ToolResult(True, "SUCCESS", "reconcile"),
-        kind="reconciliation",
     )
     result = recovery.reconcile(
         "R2",
@@ -109,14 +108,13 @@ def test_evidence_survives_restart_and_allows_safe_resume(tmp_path):
     db_path = tmp_path / "state.sqlite3"
     store = StateStore(db_path)
     evidence = EvidenceStore(store)
-    evidence.record(
+    evidence.record_reconciliation(
         evidence_id="E-R4",
         task_id="R4",
         attempt_id="R4:attempt:1",
         tool="reconcile",
         action="inspect",
         result=ToolResult(True, "SUCCESS", "reconcile"),
-        kind="reconciliation",
     )
 
     restarted_store = StateStore(db_path)
