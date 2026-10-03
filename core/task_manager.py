@@ -209,6 +209,34 @@ class TaskManager:
             raise
         return task
 
+    @staticmethod
+    def _task_persistence_payload(task: Task, *, result=None) -> dict:
+        if result is None:
+            result = task.result
+        if isinstance(result, VerificationResult):
+            result = {
+                "type": "VerificationResult",
+                "status": result.status.value,
+                "reason": result.reason,
+                "evidence_ids": list(result.evidence_ids),
+                "authority": result.authority,
+            }
+        return {
+            "title": task.title,
+            "dependencies": list(task.dependencies),
+            "tool_calls": task.tool_calls,
+            "execution_contract": (
+                task.execution_contract.to_dict()
+                if task.execution_contract is not None
+                else None
+            ),
+            "result": result,
+        }
+
+    @staticmethod
+    def task_persistence_record(task: Task) -> tuple[str, int, dict]:
+        return task.status.value, task.attempts, TaskManager._task_persistence_payload(task)
+
     def _persist(self, task: Task) -> None:
         if self.store is None:
             return
@@ -225,17 +253,7 @@ class TaskManager:
             task_id=task.task_id,
             status=task.status.value,
             attempts=task.attempts,
-            payload={
-                "title": task.title,
-                "dependencies": task.dependencies,
-                "tool_calls": task.tool_calls,
-                "execution_contract": (
-                    task.execution_contract.to_dict()
-                    if task.execution_contract is not None
-                    else None
-                ),
-                "result": result,
-            },
+            payload=self._task_persistence_payload(task, result=result),
         )
 
     def _checkpoint(self, task: Task, **payload) -> None:
