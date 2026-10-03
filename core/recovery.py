@@ -66,8 +66,7 @@ class RecoveryManager:
                 reason="Task is not interrupted.",
             )
 
-        task.status = TaskStatus.WAITING
-        self.task_manager.persist(task.task_id)
+        task = self.task_manager.wait(task_id)
         self.task_manager.checkpoint(
             task.task_id,
             event="recovery_required",
@@ -106,8 +105,7 @@ class RecoveryManager:
         except RuntimeError as exc:
             self.task_manager.fail(task_id, str(exc))
             return RecoveryDecision(task_id, TaskStatus.RUNNING, TaskStatus.FAILED, "BLOCK", str(exc))
-        task.status = TaskStatus.WAITING
-        self.task_manager.persist(task_id)
+        task = self.task_manager.wait(task_id)
         self.task_manager.checkpoint(task_id, event="recovery_retry", reason=error or status)
         task = self.task_manager.retry(task_id)
         return RecoveryDecision(task_id, TaskStatus.WAITING, task.status, "RETRY", error or status)
@@ -209,8 +207,7 @@ class RecoveryController:
         previous = task.status
         if failure_class == FailureClass.HUMAN_REQUIRED:
             if task.status == TaskStatus.RUNNING:
-                task.status = TaskStatus.WAITING
-                self.task_manager.persist(task_id)
+                task = self.task_manager.wait(task_id)
                 self.task_manager.checkpoint(
                     task_id, event="recovery_human_required", reason=reason
                 )
