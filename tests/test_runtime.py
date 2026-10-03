@@ -60,3 +60,24 @@ def test_router_bounds_omitted_command_timeout_to_remaining_runtime(tmp_path, mo
 
     assert result.status == "timeout"
     assert result.data["status"] == "TIMEOUT"
+
+
+def test_budget_counters_persist_across_runtime_restart(tmp_path):
+    db_path = tmp_path / "state.sqlite3"
+    runtime = AgentRuntime.create(state_path=db_path)
+    runtime.budget_manager.budget.max_tool_calls = 3
+    runtime.budget_manager.budget.max_model_calls = 3
+    runtime.budget_manager.budget.max_recovery_cycles = 3
+
+    runtime.budget_manager.reserve_tool_call()
+    runtime.budget_manager.reserve_model_call()
+    runtime.budget_manager.reserve_recovery_cycle()
+
+    restarted = AgentRuntime.create(state_path=db_path)
+
+    assert restarted.budget_manager.budget.tool_calls == 1
+    assert restarted.budget_manager.budget.model_calls == 1
+    assert restarted.budget_manager.budget.recovery_cycles == 1
+    assert restarted.budget_manager.remaining_tool_calls == 2
+    assert restarted.budget_manager.remaining_model_calls == 2
+    assert restarted.budget_manager.remaining_recovery_cycles == 2
