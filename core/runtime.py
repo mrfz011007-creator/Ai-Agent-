@@ -382,13 +382,20 @@ def execute_tool(
     *,
     source: str = "agent",
     task_id: str | None = None,
+    attempt_id: str | None = None,
 ):
-    return get_tool_router().execute(
+    runtime = get_runtime()
+    if attempt_id is None and task_id is not None:
+        task = runtime.task_manager.get(task_id)
+        if task is not None and task.attempts > 0:
+            attempt_id = f"{task_id}:attempt:{task.attempts}"
+    return runtime.tool_router.execute(
         ToolRequest(
             tool=name,
             action="execute",
             arguments=args,
             source=source,
             task_id=task_id,
+            attempt_id=attempt_id,
         )
     )
