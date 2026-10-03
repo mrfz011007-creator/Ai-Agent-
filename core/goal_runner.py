@@ -83,6 +83,9 @@ class GoalRunner:
                     source={"kind": "execution", "ref": result.evidence_id or task_id},
                     provenance={"reason": "bounded task execution result", "task_id": task_id},
                     tags=["execution", "success" if result.success else "failure"],
+                    # Raw execution traces are high-volume; durable reusable
+                    # knowledge is produced by bounded reflection instead.
+                    retention="ephemeral",
                 )
             except Exception:
                 experience_record = {"record": {"value": experience_value}}
