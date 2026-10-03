@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 
 from core.contracts import TaskStatus
@@ -91,7 +92,11 @@ class GoalRunner:
                 experience_record = {"record": {"value": experience_value}}
 
             evidence_refs = [result.evidence_id] if result.evidence_id else []
-            if evidence_refs:
+            reflect_success = os.environ.get("AI_AGENT_REFLECT_ON_SUCCESS", "0").lower() in {
+                "1", "true", "yes", "on"
+            }
+            should_reflect = bool(evidence_refs) and (not result.success or reflect_success)
+            if should_reflect:
                 try:
                     self.runtime.memory.reflect_and_commit(
                         model_call=self.runtime.model_gateway.generate_text,
