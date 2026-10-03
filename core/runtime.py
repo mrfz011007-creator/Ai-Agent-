@@ -144,8 +144,12 @@ class AgentRuntime:
         import uuid
         if not goal.strip():
             raise ValueError("Goal cannot be empty")
+        from memory_context import build_memory_context
         proposer = ModelPlanService(self.model_gateway.generate_text)
-        proposal = proposer.propose(goal)
+        proposal = proposer.propose(
+            goal,
+            memory_context=build_memory_context(goal),
+        )
         resolved_plan_id = plan_id or f"plan-{uuid.uuid4().hex[:12]}"
         return self.orchestrator.materialize(proposal, resolved_plan_id)
 
