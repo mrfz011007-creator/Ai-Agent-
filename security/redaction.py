@@ -3,6 +3,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+_SENSITIVE_KEY_PATTERN = re.compile(
+    r"(?i)(api[_-]?key|token|secret|password|passwd|credential|authorization)"
+)
+
 _SECRET_PATTERNS = (
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-+/=]{12,}"),
     re.compile(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,;]+"),
@@ -24,7 +28,14 @@ def redact_value(value: Any) -> Any:
     if isinstance(value, str):
         return redact_text(value)
     if isinstance(value, dict):
-        return {key: redact_value(item) for key, item in value.items()}
+        return {
+            key: (
+                "***REDACTED***"
+                if _SENSITIVE_KEY_PATTERN.search(str(key))
+                else redact_value(item)
+            )
+            for key, item in value.items()
+        }
     if isinstance(value, list):
         return [redact_value(item) for item in value]
     if isinstance(value, tuple):
