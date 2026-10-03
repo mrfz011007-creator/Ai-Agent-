@@ -328,7 +328,7 @@ def test_workspace_guard_denies_command_outside_workspace(tmp_path):
         policy=PolicyEngine(registry.get),
         budget=BudgetManager(Budget()),
         evidence=EvidenceStore(),
-        guard=GuardEngine(tmp_path),
+        guard=GuardEngine(tmp_path, allow_host_execution=True),
     )
     result = router.execute(ToolRequest(
         tool="run_command",
@@ -370,7 +370,7 @@ def test_command_runner_reports_timeout(tmp_path):
 def test_workspace_guard_denies_destructive_commands(tmp_path):
     from security.guard import GuardEngine
 
-    guard = GuardEngine(tmp_path)
+    guard = GuardEngine(tmp_path, allow_host_execution=True)
     result = guard.check(
         tool="run_command",
         arguments={"command": "rm -rf project", "cwd": str(tmp_path)},
