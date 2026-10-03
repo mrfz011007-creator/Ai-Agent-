@@ -72,3 +72,10 @@ def _validate_value(name: str, value: Any, spec: Mapping[str, Any]) -> None:
         raise SchemaValidationError(
             f"INVALID_ARGUMENT_TYPE: {name} expected {expected}"
         )
+
+    minimum = spec.get("minimum")
+    if minimum is not None and value < minimum:
+        raise SchemaValidationError(f"ARGUMENT_BELOW_MINIMUM: {name}")
+    maximum = spec.get("maximum")
+    if maximum is not None and value > maximum:
+        raise SchemaValidationError(f"ARGUMENT_ABOVE_MAXIMUM: {name}")
