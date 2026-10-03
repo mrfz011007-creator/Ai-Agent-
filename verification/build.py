@@ -44,10 +44,18 @@ class BuildManager:
             )
 
         artifact_ids: list[str] = []
+        resolved_cwd = Path(cwd).resolve()
         for path in artifact_paths or []:
+            artifact_path = (resolved_cwd / path).resolve()
+            try:
+                artifact_path.relative_to(resolved_cwd)
+            except ValueError as error:
+                raise ValueError(
+                    f"Artifact path escapes build workspace: {path}"
+                ) from error
             artifact = self.artifact_manager.register(
                 task_id=task_id,
-                path=Path(cwd) / path,
+                path=artifact_path,
                 kind=self._kind_for(path),
                 attempt_id=attempt_id,
                 source_commit=source_commit,
