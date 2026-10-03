@@ -293,3 +293,49 @@ def test_recovery_controller_handles_model_exhaustion(tmp_path):
 
     assert decision.action == "WAIT_FOR_MODEL"
     assert runtime.task_manager.get(task.task_id).status == TaskStatus.WAITING
+
+
+class FailingTaskStore:
+    def __init__(self, store):
+        self.store = store
+        self.fail_next = False
+
+    def save_task(self, *args, **kwargs):
+        if self.fail_next:
+            self.fail_next = False
+            raise OSError("task persistence unavailable")
+        return self.store.save_task(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.store, name)
+
+
+def test_retry_persistence_failure_rolls_back_attempt_and_recovery_budget(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    failing_store = FailingTaskStore(store)
+    manager = TaskManager(store=failing_store, checkpoints=CheckpointManager(store))
+    task = manager.create(Task("R13", "retry persistence failure"))
+    manager.start("R13")
+    budget = BudgetManager(Budget(max_recovery_cycles=1), state_store=store)
+    recovery = RecoveryManager(manager, EvidenceStore(store), budget)
+
+    failing_store.fail_next = True
+    try:
+        recovery.retry_after_failure(
+            "R13", status="timeout", error="connection timed out", idempotent=True
+        )
+        assert False, "retry persistence failure should propagate"
+    except OSError:
+        pass
+
+    current = manager.get("R13")
+    assert current.status == TaskStatus.WAITING
+    assert current.attempts == 1
+    assert budget.budget.recovery_cycles == 0
+
+    restored = StateStore(tmp_path / "state.sqlite3").load_task("R13")
+    assert restored["status"] == "WAITING"
+    assert restored["attempts"] == 1
+
+    restored_budget = StateStore(tmp_path / "state.sqlite3").load_budget()
+    assert restored_budget["recovery_cycles"] == 0
