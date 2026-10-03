@@ -154,3 +154,16 @@ exit
 Check the memory file size again after the process exits. Do not delete `memory.json` or `agent_state.sqlite3` during this validation.
 
 The current defaults are 8 MiB automatic compaction, 500 active non-durable execution experiences, and 5 retained historical revisions per memory identity. Override them only when there is a concrete storage requirement.
+
+
+## Reflection quota policy
+
+Execution experiences are persisted locally without requiring another model call. By default, reflection is performed for failed executions only to avoid spending a Gemini call on every successful tool invocation.
+
+Set the following only when success-based reflection is required:
+
+```bash
+export AI_AGENT_REFLECT_ON_SUCCESS=1
+```
+
+The default keeps the existing experience → reflection → memory-candidate pipeline for failures while preserving a low-quota path for successful execution.
