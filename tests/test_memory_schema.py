@@ -23,6 +23,52 @@ def test_legacy_memory_is_migrated_without_data_loss(monkeypatch, tmp_path):
     assert document["records"][0]["value"] == "legacy_value"
 
 
+
+def test_versioned_v2_memory_is_migrated_without_data_loss(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    (tmp_path / "memory.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "records": [
+                    {
+                        "key": "legacy_v2_key",
+                        "value": "legacy_v2_value",
+                        "source": {"type": "agent", "ref": "old-run"},
+                        "project_id": None,
+                        "task_id": None,
+                        "context": {},
+                        "created_at": "2026-01-01T00:00:00+00:00",
+                        "updated_at": "2026-01-01T00:00:00+00:00",
+                        "version": 1,
+                        "confidence": 0.8,
+                        "evidence_refs": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = memory.recall("legacy_v2_key")
+
+    assert result["status"] == "success"
+    assert result["value"] == "legacy_v2_value"
+
+    document = memory.load_memory_document()
+    assert document["schema_version"] == memory.MEMORY_SCHEMA_VERSION
+    record = document["records"][0]
+    assert record["memory_id"].startswith("mem-")
+    assert record["kind"] == "fact"
+    assert record["context"] == []
+    assert record["valid"] is True
+    assert record["supersedes"] is None
+    assert record["invalidated_at"] is None
+    assert record["invalidation_reason"] is None
+    assert record["confidence"] == 0.8
+    assert record["evidence_refs"] == []
+
+
 def test_memory_versions_preserve_history_and_invalidate_previous(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
 
