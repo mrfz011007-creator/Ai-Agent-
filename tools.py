@@ -10,6 +10,7 @@ from execution.command import run_command
 DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_SEARCH_RESULTS = 5000
 
+
 def _max_file_bytes() -> int:
     value = int(os.environ.get("AI_AGENT_MAX_FILE_BYTES", str(DEFAULT_MAX_FILE_BYTES)))
     if value < 1:
@@ -118,7 +119,9 @@ def cari_teks(query, pola="*.py"):
 
     root = workspace_root()
     hasil = []
-    max_results = int(os.environ.get("AI_AGENT_MAX_SEARCH_RESULTS", str(DEFAULT_MAX_SEARCH_RESULTS)))
+    max_results = int(
+        os.environ.get("AI_AGENT_MAX_SEARCH_RESULTS", str(DEFAULT_MAX_SEARCH_RESULTS))
+    )
     if max_results < 1:
         raise ValueError("AI_AGENT_MAX_SEARCH_RESULTS must be positive")
     max_bytes = _max_file_bytes()
@@ -136,13 +139,25 @@ def cari_teks(query, pola="*.py"):
             with resolved.open("r", encoding="utf-8") as stream:
                 for nomor, line in enumerate(stream, 1):
                     if query.lower() in line.lower():
-                        hasil.append({"path": str(resolved.relative_to(root)), "line": nomor, "text": line.rstrip("\n")})
+                        hasil.append(
+                            {
+                                "path": str(resolved.relative_to(root)),
+                                "line": nomor,
+                                "text": line.rstrip("\n"),
+                            }
+                        )
                         if len(hasil) >= max_results:
                             break
         except (OSError, UnicodeDecodeError):
             continue
 
-    return {"status": "success", "success": True, "query": query, "hasil": hasil, "truncated": len(hasil) >= max_results}
+    return {
+        "status": "success",
+        "success": True,
+        "query": query,
+        "hasil": hasil,
+        "truncated": len(hasil) >= max_results,
+    }
 
 
 def _sha256_text(text: str) -> str:
@@ -160,14 +175,23 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
 
     path = path_aman(nama)
     max_bytes = _max_file_bytes()
-    if path.stat().st_size > max_bytes:
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
         return {
             "status": "error",
             "success": False,
-            "code": "FILE_TOO_LARGE",
-            "pesan": "File melebihi batas ukuran patch.",
+            "code": "FILE_NOT_FOUND",
+            "pesan": f"File tidak ditemukan: {nama}",
         }
-    raw = path.read_bytes()
+    except IsADirectoryError:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "NOT_A_FILE",
+            "pesan": f"Target bukan file: {nama}",
+        }
+
     if len(raw) > max_bytes:
         return {
             "status": "error",
