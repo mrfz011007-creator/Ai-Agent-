@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,12 +31,27 @@ _DESTRUCTIVE_EXECUTABLES = {
 class GuardEngine:
     """Concrete safety checks after permission and before execution."""
 
-    def __init__(self, workspace_root: str | Path):
+    def __init__(
+        self,
+        workspace_root: str | Path,
+        *,
+        allow_host_execution: bool | None = None,
+    ):
         self.workspace_root = Path(workspace_root).resolve()
+        if allow_host_execution is None:
+            allow_host_execution = os.environ.get(
+                "AI_AGENT_ALLOW_HOST_EXECUTION", ""
+            ).strip().lower() in {"1", "true", "yes"}
+        self.allow_host_execution = bool(allow_host_execution)
 
     def check(self, *, tool: str, arguments: dict) -> GuardResult:
         cwd = arguments.get("cwd")
         if tool == "run_command":
+            if not self.allow_host_execution:
+                return GuardResult(
+                    False,
+                    "HOST_EXECUTION_NOT_SANDBOXED",
+                )
             if not cwd:
                 return GuardResult(False, "WORKSPACE_CWD_REQUIRED")
             try:
