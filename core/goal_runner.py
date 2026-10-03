@@ -120,13 +120,11 @@ class GoalRunner:
 
         waiting = [task for task in graph.tasks.values() if task.status == TaskStatus.WAITING]
         if waiting:
-            if len(waiting) > 1:
-                raise RuntimeError("Cannot resume multiple waiting tasks in one plan")
-            self.runtime.task_manager.retry(waiting[0].task_id)
-            restored = self.runtime.orchestrator.restore_graph(plan_id)
-            if restored is None:
-                raise KeyError(f"Unknown persisted plan: {plan_id}")
-            plan, graph = restored
+            # WAITING is an explicit recovery boundary. Never turn it into a
+            # retry implicitly: interrupted side effects may already have
+            # happened, and recovery requires persistent evidence/reconciliation.
+            plan = self._persist(plan, PlanStatus.WAITING)
+            return plan, graph
 
         return self._run_graph(plan, graph, max_steps=max_steps)
 
