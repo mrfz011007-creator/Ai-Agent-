@@ -1,4 +1,5 @@
-from core.contracts import Task, TaskStatus
+from core.contracts import Task, TaskStatus, ToolResult
+from core.execution_contract import ExecutionContract
 from core.plan import TaskGraph
 from core.runtime import AgentRuntime
 
@@ -25,7 +26,7 @@ def test_model_wait_can_resume_without_incrementing_attempt(tmp_path):
 def test_tool_exception_with_model_marker_is_not_model_recovery(tmp_path):
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
     task = runtime.task_manager.create(
-        Task("MODEL-MARKER", "tool failure", status=TaskStatus.READY)
+        Task("MODEL-MARKER", "tool failure", status=TaskStatus.PENDING)
     )
     graph = TaskGraph()
     graph.add(task)
@@ -48,8 +49,18 @@ def test_tool_exception_with_model_marker_is_not_model_recovery(tmp_path):
 
 def test_resume_goal_retries_model_wait_without_replanning(tmp_path, monkeypatch):
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    contract = ExecutionContract(
+        objective="resume model task",
+        allowed_tools=("fake",),
+        completion_conditions=({"type": "evidence_success"},),
+    )
     task = runtime.task_manager.create(
-        Task("MODEL-PLAN", "resume model task", status=TaskStatus.READY)
+        Task(
+            "MODEL-PLAN",
+            "resume model task",
+            status=TaskStatus.READY,
+            execution_contract=contract,
+        )
     )
     runtime.task_manager.start(task.task_id)
     runtime.handle_model_failure(
