@@ -229,7 +229,7 @@ class RecoveryController:
         reason = error or status
         previous = task.status
         if failure_class == FailureClass.HUMAN_REQUIRED:
-            if task.status == TaskStatus.RUNNING:
+            if task.status in (TaskStatus.RUNNING, TaskStatus.VERIFYING):
                 task.status = TaskStatus.WAITING
                 self.task_manager.persist(task_id)
                 self.task_manager.checkpoint(
