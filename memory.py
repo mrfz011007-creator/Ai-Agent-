@@ -153,12 +153,26 @@ def _normalize_legacy_context(context: Any) -> list[str]:
     return _normalize_context(context)
 
 
+_LEGACY_VERSIONED_BASE_FIELDS = frozenset({
+    "key",
+    "value",
+    "source",
+    "project_id",
+    "task_id",
+    "context",
+    "created_at",
+    "updated_at",
+    "version",
+})
+
+
 def _is_legacy_versioned_record(record: Mapping[str, Any]) -> bool:
-    # Version 2 records from the pre-identity/invalidation schema carried
-    # confidence/evidence_refs but did not yet have the fields introduced here.
+    # Every schema-2 record is legacy now that the durable identity and
+    # invalidation fields are part of schema 3. Require the old core payload
+    # so malformed records are still rejected instead of being guessed.
     return (
         not _MEMORY_REQUIRED_FIELDS.issubset(record)
-        and any(field in record for field in ("confidence", "evidence_refs"))
+        and _LEGACY_VERSIONED_BASE_FIELDS.issubset(record)
     )
 
 
