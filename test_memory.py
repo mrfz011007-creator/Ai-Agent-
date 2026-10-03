@@ -212,7 +212,7 @@ def test_memory_compaction_bounds_active_experiences_and_preserves_durable(tmp_p
 
 def test_memory_compaction_if_needed_uses_size_threshold(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
-    monkeypatch.setenv("AI_AGENT_MEMORY_AUTO_COMPACT_BYTES", "1")
+    monkeypatch.setenv("AI_AGENT_MEMORY_AUTO_COMPACT_BYTES", "100000")
     from memory import compact_memory_if_needed, load_memory, remember
 
     remember(
@@ -224,6 +224,7 @@ def test_memory_compaction_if_needed_uses_size_threshold(tmp_path, monkeypatch):
         retention="ephemeral",
     )
 
+    monkeypatch.setenv("AI_AGENT_MEMORY_AUTO_COMPACT_BYTES", "1")
     result = compact_memory_if_needed()
     assert result["success"] is True
     assert result["status"] == "compacted"
