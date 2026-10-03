@@ -41,8 +41,5 @@ def test_build_memory_context_is_bounded(tmp_path, monkeypatch):
 
     context = build_memory_context("goal", max_chars=100)
 
-    assert len(context) <= 100 + len(
-        "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)\n"
-        + "\nEND PERSISTED MEMORY"
-    ) + 40
+    assert len(context) <= 100
     assert "[MEMORY_" in context
