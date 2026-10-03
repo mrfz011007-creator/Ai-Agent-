@@ -15,6 +15,9 @@ env/
 
 # Local runtime data
 memory.json
+agent_state.sqlite3
+agent_state.sqlite3-wal
+agent_state.sqlite3-shm
 
 # Termux / editor files
 *.swp
