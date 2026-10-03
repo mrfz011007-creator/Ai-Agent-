@@ -287,7 +287,7 @@ class StateStore:
             if row is not None:
                 return dict(row)
             db.execute(
-                """INSERT INTO tool_executions(
+                """INSERT OR IGNORE INTO tool_executions(
                     request_id,task_id,attempt_id,tool,action,arguments_hash,status
                 ) VALUES (?,?,?,?,?,?,?)""",
                 (request_id, task_id, attempt_id, tool, action, arguments_hash, "STARTED"),
@@ -358,6 +358,38 @@ class StateStore:
                     request_id,
                 ),
             )
+
+    @staticmethod
+    def _decode_tool_execution_result(row: dict[str, Any]) -> dict[str, Any] | None:
+        payload = row.get("result_payload")
+        if payload is None:
+            return None
+        return json.loads(payload)
+
+    def reconcile_tool_execution(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        reason: str,
+        evidence_id: str | None = None,
+    ) -> None:
+        """Explicitly resolve an UNKNOWN/STARTED execution before further replay."""
+        if status not in {"RESOLVED_COMPLETED", "RESOLVED_FAILED", "RETRY_ALLOWED"}:
+            raise ValueError(f"Invalid tool execution reconciliation status: {status}")
+        if not reason.strip():
+            raise ValueError("Tool execution reconciliation requires a reason")
+        with self._connect() as db:
+            cursor = db.execute(
+                """UPDATE tool_executions
+                   SET status=?, error=?, evidence_id=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE request_id=? AND status IN ('STARTED','UNKNOWN')""",
+                (status, reason, evidence_id, request_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    f"Tool execution is not unresolved or does not exist: {request_id}"
+                )
 
     def save_plan(
         self,
