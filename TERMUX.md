@@ -112,3 +112,45 @@ python -c "from cryptography import x509; import google.genai; print('dependenci
 ```
 
 If the import still fails, the failure is specific to the local Termux/Python package environment and should be diagnosed from the device rather than by changing the agent source blindly.
+
+
+## Memory lifecycle verification
+
+The runtime automatically compacts an oversized local memory store at startup. Existing memory is not deleted wholesale: active non-experience memory and active durable experiences are preserved, while older non-durable execution experiences are bounded.
+
+Optional diagnostics before and after starting the agent:
+
+```bash
+stat -c '%s' memory.json
+python - <<'PY'
+from memory import load_memory
+
+store = load_memory()
+counts = {}
+for record in store["records"]:
+    key = (record["type"], record["status"], record["retention"])
+    counts[key] = counts.get(key, 0) + 1
+
+print("memory_records:", len(store["records"]))
+for key, count in sorted(counts.items()):
+    print(key, count)
+PY
+```
+
+Then run:
+
+```bash
+python agent.py
+```
+
+Use only the non-destructive smoke inputs:
+
+```text
+lokasi saya
+lihat file
+exit
+```
+
+Check the memory file size again after the process exits. Do not delete `memory.json` or `agent_state.sqlite3` during this validation.
+
+The current defaults are 8 MiB automatic compaction, 500 active non-durable execution experiences, and 5 retained historical revisions per memory identity. Override them only when there is a concrete storage requirement.
