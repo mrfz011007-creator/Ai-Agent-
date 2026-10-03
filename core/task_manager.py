@@ -66,7 +66,18 @@ class TaskManager:
         contract = task.execution_contract
         if contract is not None and task.tool_calls >= contract.max_tool_calls:
             raise RuntimeError("TASK_TOOL_CALL_LIMIT_EXCEEDED")
-        return self._mutate_and_persist(task, lambda: setattr(task, "tool_calls", task.tool_calls + 1))
+        return self._mutate_and_persist(
+            task, lambda: setattr(task, "tool_calls", task.tool_calls + 1)
+        )
+
+    def refund_tool_call(self, task_id: str) -> Task:
+        """Compensate a task-local tool reservation when setup cannot continue."""
+        task = self._require(task_id)
+        if task.tool_calls <= 0:
+            raise RuntimeError("TASK_TOOL_CALL_REFUND_UNDERFLOW")
+        return self._mutate_and_persist(
+            task, lambda: setattr(task, "tool_calls", task.tool_calls - 1)
+        )
 
     def mark_ready(self, task_id: str) -> Task:
         task = self._require(task_id)
