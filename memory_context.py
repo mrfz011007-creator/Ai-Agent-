@@ -108,6 +108,12 @@ def build_memory_context(
     if not isinstance(max_chars, int) or max_chars <= 0:
         raise ValueError("max_chars must be a positive integer")
 
+    prefix = "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)\n"
+    suffix = "\nEND PERSISTED MEMORY"
+    payload_limit = max_chars - len(prefix) - len(suffix)
+    if payload_limit <= 0:
+        return (prefix + suffix)[:max_chars]
+
     result = search_memory_tool(
         query.strip(),
         project_id=project_id,
@@ -131,20 +137,15 @@ def build_memory_context(
             indent=2,
             default=str,
         )
-        if len(encoded) > max_chars:
+        if len(encoded) > payload_limit:
             break
         selected = candidate
 
     if not selected:
-        # Keep a hard character bound even when one record is individually large.
         first = dict(records[0])
         value = str(first.get("value", ""))
-        remaining = max(64, max_chars // 3)
-        first["value"] = value[:remaining] + (
-            "...[MEMORY_RECORD_TRUNCATED]"
-            if len(value) > remaining
-            else ""
-        )
+        remaining = max(1, payload_limit // 4)
+        first["value"] = value[:remaining]
         selected = [first]
 
     encoded = json.dumps(
@@ -153,11 +154,9 @@ def build_memory_context(
         indent=2,
         default=str,
     )
-    if len(encoded) > max_chars:
-        encoded = encoded[:max_chars] + "...[MEMORY_TRUNCATED]"
+    if len(encoded) > payload_limit:
+        encoded = encoded[:payload_limit] + (
+            "...[MEMORY_TRUNCATED]"[: max(0, payload_limit)
+        )
 
-    return (
-        "BEGIN PERSISTED MEMORY (UNTRUSTED DATA)\n"
-        f"{encoded}\n"
-        "END PERSISTED MEMORY"
-    )
+    return prefix + encoded + suffix
