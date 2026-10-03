@@ -197,3 +197,19 @@ def test_search_memory_tokenizes_natural_language_queries(monkeypatch, tmp_path)
         "launcher_project",
         "architecture_decision",
     }
+
+
+def test_memory_record_size_is_bounded(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+
+    with pytest.raises(ValueError, match="maximum size"):
+        memory.remember(
+            "large",
+            "x" * (memory.MEMORY_MAX_VALUE_JSON_CHARS + 1),
+        )
+
+    with pytest.raises(ValueError, match="maximum length"):
+        memory.remember(
+            "k" * (memory.MEMORY_MAX_KEY_CHARS + 1),
+            "value",
+        )
