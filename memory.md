@@ -46,3 +46,18 @@ Memory is not evidence. Verified execution evidence remains authoritative for co
 ## Compatibility
 
 The legacy flat key/value memory.json format is automatically migrated into typed fact records on load.
+
+
+## Lifecycle and storage bounds
+
+Automatic execution experiences are stored with ephemeral retention and bounded payloads; the full execution evidence remains in the authoritative evidence store. Oversized experience values are replaced by a short preview plus SHA-256 and original-size metadata.
+
+The JSON store performs automatic compaction when it exceeds the configured threshold:
+
+- AI_AGENT_MEMORY_AUTO_COMPACT_BYTES — default 8 MiB.
+- AI_AGENT_MEMORY_MAX_ACTIVE_EXPERIENCES — default 500 non-durable active experiences.
+- AI_AGENT_MEMORY_MAX_HISTORY_PER_KEY — default 5 historical revisions per memory identity.
+
+Compaction preserves all active non-experience memory and active durable experiences. It does not delete execution evidence.
+
+Memory values included in model context are bounded per record before the planner/executor applies its overall context limit.
