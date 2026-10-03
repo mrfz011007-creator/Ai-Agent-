@@ -1,3 +1,5 @@
+import pytest
+
 from core.runtime import AgentRuntime
 from core.contracts import Task, TaskStatus
 from core.task_manager import TaskManager
