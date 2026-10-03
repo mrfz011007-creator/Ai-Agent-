@@ -62,12 +62,14 @@ class AcceptanceGate:
 
     def verify_plan_criteria(
         self, *, criteria, task_ids, completed_task_ids, failed_task_ids=(),
+        current_attempt_ids=None,
     ) -> VerificationResult:
         passed, reason, evidence_ids = self.criteria.evaluate_plan_criteria(
             criteria=criteria,
             task_ids=task_ids,
             completed_task_ids=completed_task_ids,
             failed_task_ids=failed_task_ids,
+            current_attempt_ids=current_attempt_ids,
         )
         return VerificationResult(
             VerificationStatus.PASSED if passed else VerificationStatus.FAILED,
