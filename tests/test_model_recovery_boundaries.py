@@ -1,13 +1,12 @@
-from core.contracts import TaskStatus, ToolResult
+from core.contracts import Task, TaskStatus
+from core.plan import TaskGraph
 from core.runtime import AgentRuntime
 
 
 def test_model_wait_can_resume_without_incrementing_attempt(tmp_path):
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
     task = runtime.task_manager.create(
-        __import__("core.contracts", fromlist=["Task"]).Task(
-            "MODEL-WAIT", "model recovery", status=TaskStatus.READY
-        )
+        Task("MODEL-WAIT", "model recovery", status=TaskStatus.READY)
     )
     runtime.task_manager.start(task.task_id)
 
@@ -26,23 +25,22 @@ def test_model_wait_can_resume_without_incrementing_attempt(tmp_path):
 def test_tool_exception_with_model_marker_is_not_model_recovery(tmp_path):
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
     task = runtime.task_manager.create(
-        __import__("core.contracts", fromlist=["Task"]).Task(
-            "MODEL-MARKER", "tool failure", status=TaskStatus.READY
-        )
+        Task("MODEL-MARKER", "tool failure", status=TaskStatus.READY)
     )
-    runtime.task_manager.start(task.task_id)
+    graph = TaskGraph()
+    graph.add(task)
 
-    class Proposal:
-        tool = "fake"
-        action = "execute"
+    def execute_proposal(proposal, **kwargs):
+        raise RuntimeError("MODEL_CREDENTIALS_EXHAUSTED from tool")
 
     result = runtime.orchestrator.execute_model_step(
-        runtime.orchestrator.restore_graph if False else __import__("core.plan", fromlist=["TaskGraph"]).TaskGraph(),
+        graph,
         model_call=lambda prompt: '{"tool":"fake","action":"execute","arguments":{}}',
-        execute_proposal=lambda proposal, **kwargs: (_ for _ in ()).throw(
-            RuntimeError("MODEL_CREDENTIALS_EXHAUSTED from tool")
-        ),
+        execute_proposal=execute_proposal,
         verify_execution=lambda **kwargs: None,
+        handle_model_failure=runtime.handle_model_failure,
     )
 
-    assert result is None
+    assert result is not None
+    assert result.status == TaskStatus.FAILED
+    assert runtime.task_manager.get(task.task_id).status == TaskStatus.FAILED
