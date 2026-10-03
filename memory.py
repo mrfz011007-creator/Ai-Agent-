@@ -531,7 +531,10 @@ def search_memory(
             context=normalized_context,
         ):
             continue
-        if _record_matches_query(record, query):
+        if (
+            _record_matches_query(record, query)
+            or (task_id is not None and record["task_id"] == task_id)
+        ):
             records.append(record)
 
     records.sort(
