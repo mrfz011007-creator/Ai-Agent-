@@ -379,3 +379,34 @@ def test_execution_conditions_reject_stale_artifact_attempt(tmp_path):
 
     assert result.status == VerificationStatus.FAILED
     assert "artifact" in result.reason.lower()
+
+
+def test_required_acceptance_criterion_cannot_be_vacuous(tmp_path):
+    _, evidence, artifacts, gate, _ = _setup(tmp_path)
+    path = tmp_path / "app.apk"
+    path.write_bytes(b"apk")
+    artifact = artifacts.register(
+        task_id="A1",
+        path=path,
+        kind="APK",
+        attempt_id="attempt-1",
+        evidence_id="build-1",
+    )
+    _evidence(evidence, "A1", "build-1", attempt_id="attempt-1")
+
+    result = gate.verify(
+        task_id="A1",
+        build_evidence_id="build-1",
+        artifact_ids=(artifact.artifact_id,),
+        expected_attempt_id="attempt-1",
+        criteria=(
+            AcceptanceCriterion(
+                "empty-required",
+                "This criterion must contain a verifiable requirement",
+                required=True,
+            ),
+        ),
+    )
+
+    assert result.status == VerificationStatus.FAILED
+    assert "no evidence or artifact requirement" in result.reason
