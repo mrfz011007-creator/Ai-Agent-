@@ -1,7 +1,6 @@
-import pytest
-
 from __future__ import annotations
 
+import pytest
 from core.budget import BudgetManager
 from core.contracts import Budget, Task, TaskStatus, ToolRequest
 from core.state_store import StateStore
