@@ -140,6 +140,12 @@ class RecoveryManager:
             if any(item.task_id != task_id for item in evidence):
                 raise ValueError("Safe reconciliation evidence belongs to another task")
             if outcome == ReconcileOutcome.SAFE_TO_RETRY:
+                contract = task.execution_contract
+                if contract is not None and (task.attempts - 1) >= contract.retry_limit:
+                    raise ValueError("Execution contract retry limit reached")
+                if self.budget is None:
+                    raise RuntimeError("Recovery budget is not configured")
+                self.budget.reserve_recovery_cycle()
                 task = self.task_manager.retry(task_id)
                 action = "RETRY"
             else:
