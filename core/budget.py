@@ -26,10 +26,10 @@ class BudgetManager:
                 ):
                     if field in saved:
                         setattr(self.budget, field, saved[field])
-                self.started_at_wall = float(saved.get("started_at_wall", self.wall_clock()))
-            else:
-                self.started_at_wall = self.wall_clock()
-                self._persist()
+            # Runtime duration is a per-process execution bound. Counters remain
+            # persistent, but a restart must receive a fresh runtime window.
+            self.started_at_wall = self.wall_clock()
+            self._persist()
         if self.started_at == 0.0:
             self.started_at = time.monotonic()
 
