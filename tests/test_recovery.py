@@ -12,6 +12,26 @@ from core.contracts import ToolResult
 from verification.evidence import EvidenceStore
 
 
+
+def test_tool_failure_on_terminal_task_is_idempotent(tmp_path):
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(
+        Task("R0", "already failed", status=TaskStatus.READY)
+    )
+    runtime.task_manager.start(task.task_id)
+    runtime.task_manager.fail(task.task_id, "first failure")
+
+    decision = runtime.recovery_controller.handle_tool_failure(
+        task.task_id,
+        status="error",
+        error="second failure",
+    )
+
+    assert decision.action == "NO_ACTION"
+    assert decision.status == TaskStatus.FAILED
+    assert runtime.task_manager.get(task.task_id).status == TaskStatus.FAILED
+
+
 def test_unknown_state_is_blocked(tmp_path):
     store = StateStore(tmp_path / "state.sqlite3")
     manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
