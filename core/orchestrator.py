@@ -167,7 +167,14 @@ class Orchestrator:
             return failed
 
         current_attempt_id = f"{task.task_id}:attempt:{current.attempts}"
-        self.task_manager.begin_verification(task.task_id)
+        try:
+            self.task_manager.begin_verification(task.task_id)
+        except Exception:
+            # A failed durable transition must leave the graph aligned with
+            # TaskManager's rolled-back in-memory state.
+            graph.tasks[task.task_id] = self.task_manager.get(task.task_id)
+            raise
+
         try:
             verification = verify_execution(
                 task_id=task.task_id,
@@ -184,7 +191,13 @@ class Orchestrator:
             graph.tasks[task.task_id] = failed
             return failed
 
-        completed = self.task_manager.complete_with_gate(task.task_id, verification)
+        try:
+            completed = self.task_manager.complete_with_gate(task.task_id, verification)
+        except Exception:
+            # Completion is durable only when TaskManager persistence succeeds.
+            # Preserve the graph's durable VERIFYING state on persistence failure.
+            graph.tasks[task.task_id] = self.task_manager.get(task.task_id)
+            raise
         graph.tasks[task.task_id] = completed
         return completed
 
@@ -296,7 +309,11 @@ class Orchestrator:
             failed = self.task_manager.fail(task.task_id, verification.reason)
             graph.tasks[task.task_id] = failed
             return failed
-        self.task_manager.begin_verification(task.task_id)
+        try:
+            self.task_manager.begin_verification(task.task_id)
+        except Exception:
+            graph.tasks[task.task_id] = self.task_manager.get(task.task_id)
+            raise
         try:
             final = verify(task, verification)
         except Exception as error:
@@ -307,7 +324,11 @@ class Orchestrator:
             failed = self.task_manager.fail(task.task_id, final.reason)
             graph.tasks[task.task_id] = failed
             return failed
-        completed = self.task_manager.complete_with_gate(task.task_id, final)
+        try:
+            completed = self.task_manager.complete_with_gate(task.task_id, final)
+        except Exception:
+            graph.tasks[task.task_id] = self.task_manager.get(task.task_id)
+            raise
         graph.tasks[task.task_id] = completed
         return completed
 
