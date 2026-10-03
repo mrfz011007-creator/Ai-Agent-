@@ -328,3 +328,24 @@ def test_acceptance_proves_build_test_artifact_chain_through_router(tmp_path):
     )
     assert tampered.status == VerificationStatus.FAILED
     assert "integrity" in tampered.reason.lower()
+
+
+def test_acceptance_requires_current_attempt_for_artifact_authority(tmp_path):
+    _, evidence, artifacts, gate, _ = _setup(tmp_path)
+    path = tmp_path / "app.apk"
+    path.write_bytes(b"apk")
+    artifact = artifacts.register(
+        task_id="A1",
+        path=path,
+        kind="APK",
+        attempt_id="A1:attempt:0",
+        evidence_id="build-1",
+    )
+    _evidence(evidence, "A1", "build-1", attempt_id="A1:attempt:1")
+    result = gate.verify(
+        task_id="A1",
+        build_evidence_id="build-1",
+        artifact_ids=(artifact.artifact_id,),
+    )
+    assert result.status == VerificationStatus.FAILED
+    assert "current task attempt" in result.reason.lower()
