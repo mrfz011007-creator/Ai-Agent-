@@ -237,7 +237,14 @@ def test_autonomous_remember_uses_real_router_without_interactive_confirmation(t
         project_id="launcher",
         task_id="memory-router-task",
     )
+    candidates = runtime.list_memory_candidates(
+        project_id="launcher",
+        task_id="memory-router-task",
+    )
     assert plan.status.value == "COMPLETED"
     assert graph.tasks["memory-router-task"].status == TaskStatus.COMPLETED
     assert restored["status"] == "success"
     assert restored["value"] == "offline-mode"
+    assert len(candidates) == 1
+    assert candidates[0].kind == "experience"
+    assert candidates[0].status.value == "PENDING"
