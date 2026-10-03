@@ -198,3 +198,46 @@ def test_model_memory_write_rejects_cross_project_scope(tmp_path, monkeypatch):
     assert not called
     assert plan.status.value == "FAILED"
     assert graph.tasks["remember-task"].status == TaskStatus.FAILED
+
+
+def test_autonomous_remember_uses_real_router_without_interactive_confirmation(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    monkeypatch.setattr(
+        runtime.model_gateway,
+        "generate_text",
+        lambda prompt, **kwargs: (
+            '{"goal":"store project note","tasks":'
+            '[{"task_id":"memory-router-task","title":"Store project note","dependencies":[]}],'
+            '"acceptance_criteria":["memory is stored"]}'
+        ),
+    )
+    monkeypatch.setattr(
+        runtime.model_gateway,
+        "text",
+        lambda prompt, **kwargs: (
+            '{"tool":"remember","action":"execute","arguments":'
+            '{"key":"project_note","value":"offline-mode"}}'
+        ),
+    )
+
+    plan, graph = runtime.run_goal(
+        "store project note",
+        plan_id="plan-real-memory-router",
+        project_id="launcher",
+    )
+
+    from memory import recall
+
+    restored = recall(
+        "project_note",
+        project_id="launcher",
+        task_id="memory-router-task",
+    )
+    assert plan.status.value == "COMPLETED"
+    assert graph.tasks["memory-router-task"].status == TaskStatus.COMPLETED
+    assert restored["status"] == "success"
+    assert restored["value"] == "offline-mode"
