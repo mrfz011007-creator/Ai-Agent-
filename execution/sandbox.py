@@ -213,25 +213,31 @@ def prepare_sandbox(
     ]
     for source in _bind_sources(executable, env):
         target = root / source.relative_to("/")
+        source_q = shlex.quote(str(source))
+        target_q = shlex.quote(str(target))
         lines += [
-            f'mkdir -p "{target}"',
-            f'mount --bind "{source}" "{target}"',
-            f'mount -o remount,ro,bind "{target}"',
+            f"mkdir -p {target_q}",
+            f"mount --bind {source_q} {target_q}",
+            f"mount -o remount,ro,bind {target_q}",
         ]
     lines += [
         'mount -t proc proc "$ROOT/proc"',
         'mount -t tmpfs tmpfs "$ROOT/tmp"',
-        f'mkdir -p "$ROOT{work_mount}"',
-        f'mount --bind "{work_mount}" "$ROOT{work_mount}"',
-        f'mount -o remount,rw,bind "$ROOT{work_mount}"',
-        f'mkdir -p "$ROOT{work_mount}/.sandbox-home" "$ROOT{work_mount}/.sandbox-tmp" "$ROOT{work_mount}/.gradle"',
-        f'cd "$ROOT{work_mount}"',
+        'mkdir -p "$ROOT$WORK"',
+        'mount --bind "$WORK" "$ROOT$WORK"',
+        'mount -o remount,rw,bind "$ROOT$WORK"',
+        'mkdir -p "$ROOT$WORK/.sandbox-home" "$ROOT$WORK/.sandbox-tmp" "$ROOT$WORK/.gradle"',
+        'cd "$ROOT$WORK"',
         f'exec chroot "$ROOT" {shlex.join([executable, *argv[1:]])}',
     ]
     # launcher is created in the host root only to pass source paths; it is not
     # mounted into the child root.
-    launcher.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    launcher.chmod(0o700)
+    try:
+        launcher.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        launcher.chmod(0o700)
+    except Exception:
+        cleanup_sandbox(str(root))
+        raise
 
     # The launcher itself is the only host-side executable. User+mount+network
     # namespaces prevent privilege escalation, host writes and network access.
