@@ -70,6 +70,7 @@ class Evidence:
     error: str | None = None
     attempt_id: str | None = None
     kind: str = "execution"
+    authority: str = "execution_router"
 
 
 @dataclass(frozen=True)
