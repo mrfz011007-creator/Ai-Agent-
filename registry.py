@@ -296,6 +296,7 @@ def get_tool_catalog():
             "parameters": entry["parameters"],
             "permission": entry["permission"],
             "capabilities": entry.get("capabilities", []),
+            "idempotent": entry.get("idempotent", False),
         }
         for name, entry in TOOL_REGISTRY.items()
     }
