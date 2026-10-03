@@ -81,7 +81,7 @@ def test_search_memory_prioritizes_project_scope_over_global_match(tmp_path, mon
 
     remember(
         "same_key",
-        "project-specific value",
+        "project-specific value for target",
         kind="fact",
         source="user",
         project_id="launcher",
