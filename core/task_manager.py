@@ -17,6 +17,8 @@ class TaskManager:
     def create(self, task: Task) -> Task:
         if task.task_id in self.tasks:
             raise ValueError(f"Task already exists: {task.task_id}")
+        if self.store is not None and self.store.load_task(task.task_id) is not None:
+            raise ValueError(f"Persisted task already exists: {task.task_id}")
         self.tasks[task.task_id] = task
         try:
             self._persist(task)
@@ -26,7 +28,10 @@ class TaskManager:
         return task
 
     def get(self, task_id: str) -> Task | None:
-        return self.tasks.get(task_id)
+        task = self.tasks.get(task_id)
+        if task is not None:
+            return task
+        return self.restore(task_id)
 
     def restore(self, task_id: str) -> Task | None:
         if self.store is None:
