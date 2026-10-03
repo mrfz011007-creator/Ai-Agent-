@@ -84,6 +84,12 @@ class AcceptanceGate:
         criteria: tuple[AcceptanceCriterion, ...] = (),
         expected_attempt_id: str | None = None,
     ) -> VerificationResult:
+        if not expected_attempt_id:
+            return VerificationResult(
+                VerificationStatus.FAILED,
+                "Acceptance verification requires an explicit current task attempt",
+                (build_evidence_id, *test_evidence_ids),
+            )
         evidence_ids: list[str] = [build_evidence_id, *test_evidence_ids]
 
         build = self.verifier.verify_task_evidence(task_id, (build_evidence_id,), expected_attempt_id)
