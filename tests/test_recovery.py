@@ -409,3 +409,23 @@ def test_recovery_accepts_evidence_from_current_attempt(tmp_path):
     assert result.action == "RESUME"
     assert result.status == TaskStatus.RUNNING
 
+
+
+def test_human_required_recovery_blocks_verifying_task(tmp_path):
+    from core.contracts import TaskStatus
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task("CTRL-V", "verification recovery"))
+    runtime.task_manager.start(task.task_id)
+    runtime.task_manager.begin_verification(task.task_id)
+
+    controller = runtime.recovery_controller
+    decision = controller.handle_tool_failure(
+        task.task_id,
+        status="budget_exceeded",
+        error="TOOL_BUDGET_EXCEEDED",
+    )
+
+    assert decision.action == "HUMAN_REQUIRED"
+    assert decision.status == TaskStatus.BLOCKED
+    assert runtime.task_manager.get(task.task_id).status == TaskStatus.BLOCKED
