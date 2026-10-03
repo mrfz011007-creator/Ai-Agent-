@@ -52,7 +52,7 @@ def test_resume_goal_retries_model_wait_without_replanning(tmp_path, monkeypatch
     contract = ExecutionContract(
         objective="resume model task",
         allowed_tools=("fake",),
-        completion_conditions=({"type": "evidence_success"},),
+        completion_conditions=({"type": "evidence_success", "task_id": "MODEL-PLAN"},),
     )
     task = runtime.task_manager.create(
         Task(
