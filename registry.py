@@ -178,8 +178,12 @@ TOOL_REGISTRY = {
             "properties": {
                 "command": {"type": "string"},
                 "cwd": {"type": "string"},
+                "timeout": {"type": "number", "minimum": 0.001, "maximum": 900.0},
+                "output_limit": {"type": "integer", "minimum": 1, "maximum": 100000},
+                "max_output_chars": {"type": "integer", "minimum": 1, "maximum": 100000},
             },
             "required": ["command"],
+            "additionalProperties": False,
         },
     },
 
