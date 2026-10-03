@@ -113,3 +113,20 @@ def test_test_manager_reports_exit_status(tmp_path):
     )
     assert result.success
     assert result.exit_code == 0
+
+
+def test_build_manager_rejects_artifact_path_outside_cwd(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    outside = tmp_path.parent / "outside-artifact.bin"
+    outside.write_bytes(b"outside")
+    manager = BuildManager(ArtifactManager(store), _FakeRouter())
+
+    import pytest
+    with pytest.raises(ValueError, match="escapes build workspace"):
+        manager.build(
+            task_id="B2",
+            command="python -c " + repr("print('ok')"),
+            cwd=tmp_path,
+            artifact_paths=["../outside-artifact.bin"],
+            attempt_id="attempt-1",
+        )
