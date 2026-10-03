@@ -175,11 +175,20 @@ class ToolRouter:
                     error=guard.reason,
                 )
 
-        if self._task_tool_call_consumer is not None and request.task_id is not None:
-            try:
-                self._task_tool_call_consumer(request.task_id)
-            except RuntimeError as error:
-                return ToolResult(False, "task_limit_exceeded", request.tool, error=str(error))
+        # Check the task-local quota without mutating it. Mutation is deferred
+        # until the handler exists and the global budget has been reserved.
+        if (
+            self._task_tool_call_consumer is not None
+            and request.task_id is not None
+            and contract is not None
+            and getattr(task, "tool_calls", 0) >= contract.max_tool_calls
+        ):
+            return ToolResult(
+                False,
+                "task_limit_exceeded",
+                request.tool,
+                error="TASK_TOOL_CALL_LIMIT_EXCEEDED",
+            )
 
         function = metadata.get("func")
         if function is None:
@@ -194,6 +203,12 @@ class ToolRouter:
                 request.tool,
                 error=str(error),
             )
+
+        if self._task_tool_call_consumer is not None and request.task_id is not None:
+            try:
+                self._task_tool_call_consumer(request.task_id)
+            except RuntimeError as error:
+                return ToolResult(False, "task_limit_exceeded", request.tool, error=str(error))
 
         evidence_id = f"ev-{uuid.uuid4().hex[:12]}"
 
