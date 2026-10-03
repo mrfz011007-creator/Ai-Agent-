@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -322,33 +323,65 @@ def _matches_scope(
     return True
 
 
+_QUERY_STOPWORDS = frozenset({
+    "the", "and", "or", "with", "from", "into", "work", "on", "for",
+    "this", "that", "are", "is", "was", "were", "use", "make", "task",
+    "project", "yang", "dan", "atau", "dengan", "untuk", "dari", "pada", "ke", "di",
+})
+
+
+def _query_terms(query: str) -> tuple[str, ...]:
+    terms = {
+        term
+        for term in re.findall(r"\w+", query.lower(), flags=re.UNICODE)
+        if len(term) >= 3 and term not in _QUERY_STOPWORDS
+    }
+    return tuple(sorted(terms, key=lambda item: (-len(item), item)))
+
+
+def _record_fields(record: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "key": str(record.get("key", "")).lower(),
+        "value": str(record.get("value", "")).lower(),
+        "kind": str(record.get("kind", "")).lower(),
+        "source": str(record.get("source", "")).lower(),
+        "project_id": str(record.get("project_id", "")).lower(),
+        "task_id": str(record.get("task_id", "")).lower(),
+        "context": str(record.get("context", "")).lower(),
+    }
+
+
 def _record_matches_query(record: Mapping[str, Any], query: str) -> bool:
-    needle = query.lower()
-    searchable = [
-        str(record.get("key", "")),
-        str(record.get("value", "")),
-        str(record.get("kind", "")),
-        str(record.get("source", "")),
-        str(record.get("project_id", "")),
-        str(record.get("task_id", "")),
-        str(record.get("context", "")),
-    ]
-    return any(needle in item.lower() for item in searchable)
+    terms = _query_terms(query)
+    if not terms:
+        return query.lower() in str(record.get("key", "")).lower()
+
+    fields = _record_fields(record)
+    return any(
+        term in field
+        for term in terms
+        for field in fields.values()
+    )
 
 
 def _record_match_score(record: Mapping[str, Any], query: str) -> int:
-    needle = query.lower()
+    terms = _query_terms(query)
+    if not terms:
+        return 100 if query.lower() in str(record.get("key", "")).lower() else 0
+
+    fields = _record_fields(record)
     score = 0
-    key = str(record.get("key", "")).lower()
-    value = str(record.get("value", "")).lower()
-    if key == needle:
-        score += 100
-    elif needle in key:
-        score += 50
-    if needle in value:
-        score += 20
-    if needle in str(record.get("context", "")).lower():
-        score += 10
+    for term in terms:
+        if term == fields["key"]:
+            score += 100
+        elif term in fields["key"]:
+            score += 50
+        if term in fields["context"]:
+            score += 30
+        if term in fields["value"]:
+            score += 20
+        if term in fields["project_id"] or term in fields["task_id"]:
+            score += 15
     return score
 
 
