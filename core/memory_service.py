@@ -1,8 +1,20 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Mapping
 
-from memory import invalidate_memory, remember, search_memory, update_memory
+from memory import (
+    DEFAULT_AUTO_COMPACT_BYTES,
+    compact_memory_if_needed,
+    invalidate_memory,
+    remember,
+    search_memory,
+    update_memory,
+)
+
+MAX_EXPERIENCE_VALUE_CHARS = 6000
+MAX_PROMPT_RECORD_VALUE_CHARS = 3000
 from core.reflection import ReflectionService
 from core import reflection_queue
 
@@ -12,6 +24,9 @@ class MemoryService:
 
     def __init__(self, *, project_id: str | None = None):
         self.project_id = project_id
+        # Clean oversized legacy/runtime memory at startup without touching
+        # the store when it is already below the configured threshold.
+        compact_memory_if_needed()
 
     def retrieve(self, query: str, *, project_id: str | None = None,
                  task_id: str | None = None, context: Mapping[str, Any] | None = None,
@@ -53,6 +68,14 @@ class MemoryService:
                           importance: float | None = None, confidence: float | None = None,
                           retention: str = "normal", summary: str | None = None,
                           evidence_refs: list[str] | None = None) -> dict[str, Any]:
+        serialized = json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
+        if len(serialized) > MAX_EXPERIENCE_VALUE_CHARS:
+            value = {
+                "_truncated": True,
+                "sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+                "original_chars": len(serialized),
+                "preview": serialized[:MAX_EXPERIENCE_VALUE_CHARS] + "...[TRUNCATED]",
+            }
         return remember(key, value, memory_type="experience",
                         project_id=project_id if project_id is not None else self.project_id,
                         task_id=task_id, context=context, source=source, provenance=provenance,
@@ -154,11 +177,34 @@ class MemoryService:
 
 
 def memory_prompt_context(result: Mapping[str, Any]) -> list[dict[str, Any]]:
-    return [{"type": item["record"].get("type"), "key": item["record"].get("key"),
-             "value": item["record"].get("value"), "summary": item["record"].get("summary"),
-             "project_id": item["record"].get("project_id"), "task_id": item["record"].get("task_id"),
-             "context": item["record"].get("context"), "source": item["record"].get("source"),
-             "provenance": item["record"].get("provenance"), "importance": item["record"].get("importance"),
-             "confidence": item["record"].get("confidence"), "retention": item["record"].get("retention"),
-             "version": item["record"].get("version"), "updated_at": item["record"].get("updated_at"),
-             "tags": item["record"].get("tags")} for item in result.get("results", [])]
+    """Return bounded memory rows suitable for model context."""
+    rows = []
+    for item in result.get("results", []):
+        record = item["record"]
+        value = record.get("value")
+        serialized = json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
+        if len(serialized) > MAX_PROMPT_RECORD_VALUE_CHARS:
+            value = {
+                "_truncated": True,
+                "sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+                "original_chars": len(serialized),
+                "preview": serialized[:MAX_PROMPT_RECORD_VALUE_CHARS] + "...[TRUNCATED]",
+            }
+        rows.append({
+            "type": record.get("type"),
+            "key": record.get("key"),
+            "value": value,
+            "summary": record.get("summary"),
+            "project_id": record.get("project_id"),
+            "task_id": record.get("task_id"),
+            "context": record.get("context"),
+            "source": record.get("source"),
+            "provenance": record.get("provenance"),
+            "importance": record.get("importance"),
+            "confidence": record.get("confidence"),
+            "retention": record.get("retention"),
+            "version": record.get("version"),
+            "updated_at": record.get("updated_at"),
+            "tags": record.get("tags"),
+        })
+    return rows
