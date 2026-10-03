@@ -322,3 +322,44 @@ def test_guard_still_allows_non_shell_executables(tmp_path):
         arguments={"cwd": str(workspace), "command": "python -c 'print(1)'"},
     )
     assert result.allowed is True
+
+
+def test_router_rejects_task_tool_call_bound_to_stale_attempt(tmp_path):
+    from core.budget import Budget, BudgetManager
+    from core.contracts import Task, TaskStatus, ToolRequest
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+    from verification.evidence import EvidenceStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    called = []
+    registry = {
+        "write": {
+            "func": lambda: called.append(True) or {"success": True},
+            "permission": "safe",
+            "capabilities": ["workspace.write"],
+        },
+    }
+    task = Task("ATTEMPT-1", "attempt-bound tool", status=TaskStatus.RUNNING, attempts=2)
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=EvidenceStore(),
+        task_getter=lambda task_id: task if task_id == task.task_id else None,
+    )
+
+    result = router.execute(
+        ToolRequest(
+            tool="write",
+            action="execute",
+            arguments={},
+            task_id=task.task_id,
+            attempt_id="ATTEMPT-1:attempt:1",
+        )
+    )
+
+    assert result.success is False
+    assert result.status == "attempt_mismatch"
+    assert called == []
