@@ -176,6 +176,14 @@ class RecoveryManager:
             reason=reason,
         )
 
+    def can_resume_model_wait(self, task_id: str) -> bool:
+        """Return whether a WAITING task is blocked only on model availability."""
+        task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+        if task is None or task.status != TaskStatus.WAITING:
+            return False
+        result = task.result
+        return isinstance(result, dict) and result.get("recovery_action") == "WAIT_FOR_MODEL"
+
     def recover_tasks(self, task_ids: tuple[str, ...] | list[str]) -> list[RecoveryDecision]:
         """Recover only the supplied task IDs; unrelated plans remain untouched."""
         decisions = []
@@ -259,6 +267,10 @@ class RecoveryController:
             previous = task.status
             if task.status == TaskStatus.RUNNING:
                 task.status = TaskStatus.WAITING
+                task.result = {
+                    "reason": message,
+                    "recovery_action": "WAIT_FOR_MODEL",
+                }
                 self.task_manager.persist(task_id)
                 self.task_manager.checkpoint(
                     task_id, event="model_waiting", reason=message
