@@ -13,61 +13,78 @@ concurrency:
 jobs:
   export:
     runs-on: ubuntu-24.04
-    container:
-      image: barichello/godot-ci:4.3
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare Godot templates
-        run: |
-          mkdir -p "$HOME/.local/share/godot/export_templates"
-          if [ -d /root/.local/share/godot/export_templates/4.3.stable ]; then
-            cp -a /root/.local/share/godot/export_templates/4.3.stable "$HOME/.local/share/godot/export_templates/4.3.stable"
-          fi
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
-      - name: Configure Android export environment
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
+            cmake;3.10.2.4988404
+            ndk;23.2.8568313
+
+      - name: Install Godot 4.3 headless and export templates
         shell: bash
         run: |
           set -euo pipefail
-          JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")}"
-          ANDROID_SDK_PATH="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}}"
-          KEYSTORE="$HOME/.local/share/godot/keystores/debug.keystore"
-          mkdir -p "$HOME/.config/godot" "$(dirname "$KEYSTORE")"
-          keytool -genkeypair -v -keystore "$KEYSTORE" -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+          mkdir -p "$HOME/.local/bin" "$HOME/.local/share/godot/export_templates/4.3.stable"
+          curl -fsSL "https://downloads.tuxfamily.org/godotengine/4.3/Godot_v4.3-stable_linux_headless.64.zip" -o /tmp/godot.zip
+          unzip -qo /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN="$(find /tmp/godot -type f -name 'godot*' -perm -111 -print -quit)"
+          test -n "$GODOT_BIN"
+          cp "$GODOT_BIN" "$HOME/.local/bin/godot"
+          chmod +x "$HOME/.local/bin/godot"
+          curl -fsSL "https://downloads.tuxfamily.org/godotengine/4.3/Godot_v4.3-stable_export_templates.tpz" -o /tmp/templates.tpz
+          unzip -qo /tmp/templates.tpz -d "$HOME/.local/share/godot/export_templates/4.3.stable"
+          test -s "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          godot --headless --version
+
+      - name: Configure Android export
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$HOME/.local/share/godot/debug.keystore"
+          mkdir -p "$HOME/.config/godot"
+          keytool -genkeypair -v             -keystore "$KEYSTORE"             -alias androiddebugkey             -keyalg RSA             -keysize 2048             -validity 10000             -storepass android             -keypass android             -dname "CN=Android Debug,O=Android,C=US"
+
           cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
 
           [resource]
 
-          export/android/android_sdk_path = "$ANDROID_SDK_PATH"
+          export/android/android_sdk_path = "$ANDROID_SDK_ROOT"
           export/android/java_sdk_path = "$JAVA_HOME"
           export/android/debug_keystore = "$KEYSTORE"
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
-          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$ANDROID_SDK_PATH" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$KEYSTORE" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
           sed -i 's|^keystore/debug=.*|keystore/debug="'"$KEYSTORE"'"|' godot/export_presets.cfg
           sed -i 's|^keystore/debug_user=.*|keystore/debug_user="androiddebugkey"|' godot/export_presets.cfg
           sed -i 's|^keystore/debug_password=.*|keystore/debug_password="android"|' godot/export_presets.cfg
-          grep -E '^keystore/debug(_user|_password)?=' godot/export_presets.cfg
 
-      - name: Verify Android SDK packages
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
+      - name: Validate Android SDK
         shell: bash
         run: |
           set -euo pipefail
-          SDKMANAGER="$(command -v sdkmanager || true)"
-          if [ -z "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f -print -quit 2>/dev/null || true)"
-          fi
-          test -n "$SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "build-tools;34.0.0" "platforms;android-34"
-          test -x "$ANDROID_HOME/build-tools/34.0.0/apksigner"
-          test -x "$ANDROID_HOME/platform-tools/adb"
+          test -x "$ANDROID_SDK_ROOT/platform-tools/adb"
+          test -x "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner"
+          test -d "$ANDROID_SDK_ROOT/platforms/android-34"
+          sdkmanager --list | grep -F 'build-tools;34.0.0' | head -n 1
 
       - name: Validate Godot project
         run: |
@@ -79,9 +96,12 @@ jobs:
           godot --headless --path godot --verbose --export-debug "Android" build/EchoesOfTheForgotten.apk
 
       - name: Verify APK
+        shell: bash
         run: |
+          set -euo pipefail
           test -s godot/build/EchoesOfTheForgotten.apk
           file godot/build/EchoesOfTheForgotten.apk
+          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --verbose godot/build/EchoesOfTheForgotten.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
