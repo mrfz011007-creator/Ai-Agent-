@@ -104,7 +104,8 @@ class StateStore:
                     payload TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
-            """)            db.execute("""
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS agent_budget (
                     budget_id INTEGER PRIMARY KEY CHECK (budget_id = 1),
                     payload TEXT NOT NULL,
