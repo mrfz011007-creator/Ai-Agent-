@@ -58,7 +58,15 @@ class ModelGateway:
         self.client_factory = client_factory
         self.clock = clock
         self.cooldown_seconds = cooldown_seconds
-        self.max_attempts = max_attempts or max(1, len(credentials))
+        if max_attempts is not None and (
+            isinstance(max_attempts, bool)
+            or not isinstance(max_attempts, int)
+            or max_attempts < 1
+        ):
+            raise ValueError("max_attempts must be a positive integer")
+        self.max_attempts = (
+            max(1, len(credentials)) if max_attempts is None else max_attempts
+        )
         self.budget = budget
         self.config = config or ModelConfig.from_environment()
         provider_name = getattr(provider, "name", None)
@@ -162,9 +170,9 @@ class ModelGateway:
 
     def generate_text(
         self,
-        *,
         prompt: str,
-        system_instruction: str,
+        *,
+        system_instruction: str = "",
         response_mime_type: str | None = None,
     ) -> str:
         """High-level model API used by planners and execution services."""
