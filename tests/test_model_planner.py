@@ -37,3 +37,39 @@ def test_model_plan_service_rejects_natural_language_acceptance_criteria():
         assert False, "natural-language acceptance criteria must be rejected"
     except PlanGraphError:
         pass
+
+
+def test_model_planner_rejects_unknown_contract_tool():
+    service = ModelPlanService(
+        lambda _: (
+            '{"goal":"inspect","tasks":[{"task_id":"x","title":"Inspect","dependencies":[],'
+            '"execution_contract":{"objective":"inspect","allowed_tools":["not_real"],'
+            '"allowed_capabilities":["workspace.read"],"completion_conditions":'
+            '[{"type":"evidence_success","task_id":"x"}]}}],'
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+        ),
+        tool_catalog={"lihat": {"capabilities": ["workspace.read"]}},
+    )
+    try:
+        service.propose("inspect")
+        assert False, "unknown tool contract must be rejected before execution"
+    except PlanGraphError:
+        pass
+
+
+def test_model_planner_rejects_underdeclared_contract_capability():
+    service = ModelPlanService(
+        lambda _: (
+            '{"goal":"execute","tasks":[{"task_id":"x","title":"Execute","dependencies":[],'
+            '"execution_contract":{"objective":"execute","allowed_tools":["run_command"],'
+            '"allowed_capabilities":["workspace.read"],"completion_conditions":'
+            '[{"type":"evidence_success","task_id":"x"}]}}],'
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+        ),
+        tool_catalog={"run_command": {"capabilities": ["process.execute"]}},
+    )
+    try:
+        service.propose("execute")
+        assert False, "underdeclared tool capability must be rejected"
+    except PlanGraphError:
+        pass
