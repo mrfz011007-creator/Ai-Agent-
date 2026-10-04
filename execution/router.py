@@ -109,7 +109,7 @@ class ToolRouter:
         schema = metadata.get("parameters")
         if schema is not None:
             try:
-                validate_tool_arguments(schema, request.arguments)
+                validate_tool_arguments(schema, arguments)
             except SchemaValidationError as error:
                 return ToolResult(False, "schema_invalid", request.tool, error=str(error))
 
@@ -117,7 +117,7 @@ class ToolRouter:
             PolicyContext(
                 tool=request.tool,
                 action=request.action,
-                arguments=request.arguments,
+                arguments=arguments,
                 source=request.source,
                 task_id=request.task_id,
             )
@@ -140,7 +140,7 @@ class ToolRouter:
         if self._guard is not None:
             guard = self._guard.check(
                 tool=request.tool,
-                arguments=dict(request.arguments),
+                arguments=dict(arguments),
             )
             if not guard.allowed:
                 return ToolResult(False, "guard_denied", request.tool, error=guard.reason)
@@ -269,7 +269,7 @@ class ToolRouter:
         evidence_id = f"ev-{uuid.uuid4().hex[:12]}"
 
         try:
-            data = function(**dict(request.arguments))
+            data = function(**dict(arguments))
             safe_data = redact_value(data)
             max_output = self._budget.budget.max_output_chars
             remaining = max_output
