@@ -13,19 +13,54 @@ jobs:
       image: barichello/godot-ci:4.3
     steps:
       - uses: actions/checkout@v4
+
       - name: Prepare Godot templates
         run: |
-          mkdir -p ~/.local/share/godot/export_templates
+          mkdir -p "$HOME/.local/share/godot/export_templates"
           if [ -d /root/.local/share/godot/export_templates/4.3.stable ]; then
-            cp -a /root/.local/share/godot/export_templates/4.3.stable ~/.local/share/godot/export_templates/4.3.stable
+            cp -a /root/.local/share/godot/export_templates/4.3.stable "$HOME/.local/share/godot/export_templates/4.3.stable"
           fi
+
+      - name: Configure Android export environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")}"
+          ANDROID_SDK_PATH="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}}"
+          KEYSTORE="$HOME/.local/share/godot/keystores/debug.keystore"
+          mkdir -p "$HOME/.config/godot" "$(dirname "$KEYSTORE")"
+          keytool -genkeypair -v -keystore "$KEYSTORE" -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+          cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+
+          export/android/android_sdk_path = "$ANDROID_SDK_PATH"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$KEYSTORE"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$ANDROID_SDK_PATH" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
       - name: Validate Godot project
         run: |
           godot --headless --path godot --editor --quit
+
       - name: Export Android debug APK
         run: |
           mkdir -p godot/build
           godot --headless --path godot --verbose --export-debug "Android" build/EchoesOfTheForgotten.apk
+
+      - name: Verify APK
+        run: |
+          test -s godot/build/EchoesOfTheForgotten.apk
+          file godot/build/EchoesOfTheForgotten.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
