@@ -6,6 +6,7 @@ from pathlib import Path
 from core.contracts import VerificationResult, VerificationStatus
 from verification.artifacts import ArtifactManager
 from verification.verifier import Verifier
+from verification.criteria import CriteriaEvaluator
 
 
 @dataclass(frozen=True)
@@ -23,15 +24,17 @@ class AcceptanceGate:
     def __init__(self, verifier: Verifier, artifacts: ArtifactManager):
         self.verifier = verifier
         self.artifacts = artifacts
+        self.criteria = CriteriaEvaluator(verifier.evidence_store, artifacts)
 
     def verify_execution(
         self,
         *,
         task_id: str,
         evidence_ids: tuple[str, ...],
+        completion_conditions=(),
         expected_attempt_id: str | None = None,
     ) -> VerificationResult:
-        """Acceptance gate for non-build tasks using successful execution evidence."""
+        """Verify evidence and every machine-verifiable task completion condition."""
         if not evidence_ids:
             return VerificationResult(
                 VerificationStatus.FAILED,
@@ -42,10 +45,46 @@ class AcceptanceGate:
         )
         if verification.status != VerificationStatus.PASSED:
             return verification
+        passed, reason, condition_evidence = self.criteria.evaluate_task_conditions(
+            task_id=task_id,
+            evidence_ids=tuple(evidence_ids),
+            conditions=tuple(completion_conditions),
+            expected_attempt_id=expected_attempt_id,
+        )
+        if not passed:
+            return VerificationResult(
+                VerificationStatus.FAILED,
+                f"Completion conditions failed: {reason}",
+                tuple(dict.fromkeys((*evidence_ids, *condition_evidence))),
+            )
         return VerificationResult(
             VerificationStatus.PASSED,
-            "Execution evidence verified",
-            verification.evidence_ids,
+            "Execution evidence and completion conditions verified",
+            tuple(dict.fromkeys((*evidence_ids, *condition_evidence))),
+            authority="acceptance_gate",
+        )
+
+    def verify_plan_criteria(
+        self,
+        *,
+        criteria,
+        task_ids,
+        completed_task_ids,
+        failed_task_ids=(),
+        current_attempt_ids=None,
+    ) -> VerificationResult:
+        """Verify the finite machine-verifiable criteria for a completed plan."""
+        passed, reason, evidence_ids = self.criteria.evaluate_plan_criteria(
+            criteria=criteria,
+            task_ids=task_ids,
+            completed_task_ids=completed_task_ids,
+            failed_task_ids=failed_task_ids,
+            current_attempt_ids=current_attempt_ids,
+        )
+        return VerificationResult(
+            VerificationStatus.PASSED if passed else VerificationStatus.FAILED,
+            reason,
+            evidence_ids,
             authority="acceptance_gate",
         )
 
