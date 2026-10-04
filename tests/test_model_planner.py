@@ -26,3 +26,14 @@ def test_model_plan_service_model_output_cannot_inject_execution_fields():
     )
     proposal = service.propose("build")
     assert not hasattr(proposal.tasks[0], "command")
+
+
+def test_model_plan_service_rejects_natural_language_acceptance_criteria():
+    service = ModelPlanService(
+        lambda _: '{"goal":"build APK","tasks":[{"task_id":"inspect","title":"Inspect","dependencies":[]}],"acceptance_criteria":["artifact exists"]}'
+    )
+    try:
+        service.propose("build APK")
+        assert False, "natural-language acceptance criteria must be rejected"
+    except PlanGraphError:
+        pass
