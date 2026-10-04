@@ -31,6 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.local/bin" "$HOME/.local/share/godot/export_templates/4.3.stable"
+          rm -rf /tmp/godot /tmp/godot-templates
           curl -fsSL "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip" -o /tmp/godot.zip
           unzip -qo /tmp/godot.zip -d /tmp/godot
           GODOT_BIN="$(find /tmp/godot -type f -perm -111 -print -quit)"
@@ -38,7 +39,10 @@ jobs:
           cp "$GODOT_BIN" "$HOME/.local/bin/godot"
           chmod +x "$HOME/.local/bin/godot"
           curl -fsSL "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz" -o /tmp/templates.tpz
-          unzip -qo /tmp/templates.tpz -d "$HOME/.local/share/godot/export_templates/4.3.stable"
+          unzip -qo /tmp/templates.tpz -d /tmp/godot-templates
+          TEMPLATE_DIR="$(find /tmp/godot-templates -type f -name 'android_debug.apk' -print -quit | xargs -r dirname)"
+          test -n "$TEMPLATE_DIR"
+          cp -a "$TEMPLATE_DIR/." "$HOME/.local/share/godot/export_templates/4.3.stable/"
           test -s "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           godot --headless --version
