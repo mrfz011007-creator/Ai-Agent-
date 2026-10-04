@@ -5,6 +5,8 @@ from enum import Enum
 from typing import Any, Iterable, Mapping
 
 from core.contracts import Task, TaskStatus
+from core.execution_contract import ExecutionContract, ExecutionContractError
+from verification.criteria import validate_criteria, CriterionValidationError
 
 
 class PlanStatus(str, Enum):
@@ -24,7 +26,7 @@ class Plan:
     goal: str
     task_ids: tuple[str, ...]
     status: PlanStatus = PlanStatus.PROPOSED
-    acceptance_criteria: tuple[str, ...] = ()
+    acceptance_criteria: tuple[Mapping[str, object], ...] = ()
     project_id: str | None = None
 
 
@@ -109,7 +111,7 @@ class TaskGraph:
 class PlanProposal:
     goal: str
     tasks: tuple[Task, ...]
-    acceptance_criteria: tuple[str, ...] = ()
+    acceptance_criteria: tuple[Mapping[str, object], ...] = ()
 
     def graph(self) -> TaskGraph:
         graph = TaskGraph()
@@ -122,11 +124,15 @@ class PlanProposal:
 class Planner:
     """Deterministic plan validator/builder. Models may propose; Planner validates."""
 
-    def propose(self, goal: str, tasks: Iterable[Task], acceptance_criteria: Iterable[str] = ()) -> PlanProposal:
+    def propose(self, goal: str, tasks: Iterable[Task], acceptance_criteria: Iterable[Mapping[str, object]] = ()) -> PlanProposal:
         goal = goal.strip()
         if not goal:
             raise PlanGraphError("Goal cannot be empty")
-        proposal = PlanProposal(goal, tuple(tasks), tuple(acceptance_criteria))
+        try:
+            criteria = validate_criteria(tuple(acceptance_criteria))
+        except CriterionValidationError as error:
+            raise PlanGraphError(f"Invalid machine-verifiable acceptance criteria: {error}") from error
+        proposal = PlanProposal(goal, tuple(tasks), criteria)
         proposal.graph()
         return proposal
 
@@ -152,6 +158,15 @@ class Planner:
 
 class PlanDecoder:
     """Convert untrusted model output into a validated PlanProposal."""
+\n    _SAFE_READ_ONLY_TOOLS = (
+        "lihat",
+        "lokasi",
+        "siapa",
+        "cari_teks",
+        "baca_file",
+        "recall",
+        "search_memory",
+    )
 
     @staticmethod
     def from_mapping(payload: Mapping[str, Any]) -> PlanProposal:
@@ -162,8 +177,12 @@ class PlanDecoder:
             raise PlanGraphError("Model plan goal must be a non-empty string")
         if not isinstance(raw_tasks, list):
             raise PlanGraphError("Model plan tasks must be a list")
-        if not isinstance(criteria, (list, tuple)) or not all(isinstance(item, str) and item.strip() for item in criteria):
-            raise PlanGraphError("Model acceptance criteria must be non-empty strings")
+        try:
+            criteria = validate_criteria(criteria)
+        except CriterionValidationError as error:
+            raise PlanGraphError(
+                f"Invalid machine-verifiable acceptance criteria: {error}"
+            ) from error
         tasks = []
         for item in raw_tasks:
             if not isinstance(item, Mapping):
@@ -176,5 +195,30 @@ class PlanDecoder:
                 raise PlanGraphError(f"Task title missing: {task_id}")
             if not isinstance(dependencies, (list, tuple)) or not all(isinstance(dep, str) and dep.strip() for dep in dependencies):
                 raise PlanGraphError(f"Invalid dependencies: {task_id}")
-            tasks.append(Task(task_id=task_id, title=title, dependencies=list(dependencies)))
-        return PlanProposal(goal=goal.strip(), tasks=tuple(tasks), acceptance_criteria=tuple(item.strip() for item in criteria))
+            contract_payload = item.get("execution_contract")
+            if contract_payload is None:
+                execution_contract = ExecutionContract(
+                    objective=title.strip(),
+                    allowed_tools=cls._SAFE_READ_ONLY_TOOLS,
+                    allowed_capabilities=("workspace.read",),
+                    completion_conditions=(
+                        {"type": "evidence_success", "task_id": task_id.strip()},
+                    ),
+                )
+            else:
+                try:
+                    execution_contract = ExecutionContract.from_dict(contract_payload)
+                except (ExecutionContractError, TypeError, ValueError) as error:
+                    raise PlanGraphError(
+                        f"Invalid execution contract: {task_id}: {error}"
+                    ) from error
+
+            tasks.append(
+                Task(
+                    task_id=task_id.strip(),
+                    title=title.strip(),
+                    dependencies=list(dependencies),
+                    execution_contract=execution_contract,
+                )
+            )
+        return PlanProposal(goal=goal.strip(), tasks=tuple(tasks), acceptance_criteria=tuple(dict(item) for item in criteria))
