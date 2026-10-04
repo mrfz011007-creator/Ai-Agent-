@@ -443,7 +443,7 @@ def test_safe_reconciliation_retry_respects_contract_limit(tmp_path):
         max_tool_calls=3,
         retry_limit=0,
         evidence_required=True,
-        completion_conditions=("verified",),
+        completion_conditions=({"type": "evidence_success", "task_id": "R13"},),
     )
     manager.create(Task("R13", "bounded retry", execution_contract=contract))
     manager.start("R13")
