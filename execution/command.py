@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import shlex
 import signal
@@ -88,7 +89,31 @@ def run_command(
     """Execute one bounded process; authorization is owned by ToolRouter."""
     if max_output_chars is not None:
         output_limit = max_output_chars
-    if output_limit <= 0:
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        return {
+            "success": False,
+            "status": "INVALID_TIMEOUT",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "timeout must be a finite positive number",
+        }
+    if (
+        isinstance(output_limit, bool)
+        or not isinstance(output_limit, int)
+        or output_limit <= 0
+    ):
+        return {
+            "success": False,
+            "status": "INVALID_OUTPUT_LIMIT",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "output_limit must be a positive integer",
+        }
         return {
             "success": False,
             "status": "INVALID_OUTPUT_LIMIT",
