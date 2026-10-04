@@ -1,0 +1,1 @@
+Android CI trigger for Echoes of the Forgotten. Remove when workflow policy is finalized.
