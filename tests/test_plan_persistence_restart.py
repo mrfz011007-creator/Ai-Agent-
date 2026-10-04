@@ -28,7 +28,7 @@ def test_materialized_plan_and_graph_round_trip_after_runtime_restart():
                     dependencies=["roundtrip-001"],
                 ),
             ],
-            acceptance_criteria=("Both tasks survive restart",),
+            acceptance_criteria=({"type": "all_tasks_completed"},),
         )
 
         plan1, graph1 = orchestrator1.materialize(
@@ -80,7 +80,7 @@ def test_resume_goal_restores_persisted_project_scope_without_repassing_it(monke
     proposal = runtime1.orchestrator.planner.propose(
         "Scoped resume",
         [Task("scoped-001", "Inspect launcher")],
-        acceptance_criteria=("Scope survives restart",),
+        acceptance_criteria=({"type": "all_tasks_completed"},),
     )
     runtime1.orchestrator.materialize(
         proposal,
@@ -151,7 +151,7 @@ def test_plan_project_scope_survives_status_updates_and_restart():
         proposal = runtime1.orchestrator.planner.propose(
             "Scoped status update",
             [Task("scope-status-001", "Inspect project")],
-            acceptance_criteria=("Scope must survive status updates",),
+            acceptance_criteria=({"type": "all_tasks_completed"},),
         )
         plan, _ = runtime1.orchestrator.materialize(
             proposal,
