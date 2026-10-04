@@ -97,6 +97,12 @@ class StateStore:
                     payload TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
+            """)            db.execute("""
+                CREATE TABLE IF NOT EXISTS agent_budget (
+                    budget_id INTEGER PRIMARY KEY CHECK (budget_id = 1),
+                    payload TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
             """)
             db.execute("""
                 CREATE TABLE IF NOT EXISTS tool_executions (
@@ -356,6 +362,28 @@ class StateStore:
         result = dict(row)
         result["payload"] = json.loads(result["payload"])
         return result
+
+
+    def save_budget(self, payload: dict[str, Any]) -> None:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO agent_budget(budget_id,payload)
+                   VALUES (1,?)
+                   ON CONFLICT(budget_id) DO UPDATE SET
+                   payload=excluded.payload, updated_at=CURRENT_TIMESTAMP""",
+                (json.dumps(payload, sort_keys=True, default=str),),
+            )
+
+    def load_budget(self) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT payload,updated_at FROM agent_budget WHERE budget_id=1"
+            ).fetchone()
+        if row is None:
+            return None
+        payload = json.loads(row["payload"])
+        payload["updated_at"] = row["updated_at"]
+        return payload
 
 
     def begin_tool_execution(
