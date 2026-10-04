@@ -15,4 +15,15 @@ jobs:
           test -f godot/project.godot
           test -f godot/Main.tscn
           test -f godot/main.gd
+          test -f godot/export_presets.cfg
           grep -q 'config/name="Echoes of the Forgotten"' godot/project.godot
+      - name: Check gameplay contracts
+        run: |
+          grep -q 'KEY_A: attack' godot/main.gd
+          grep -q 'KEY_S: skill' godot/main.gd
+          grep -q 'KEY_P: use_potion' godot/main.gd
+          grep -q 'KEY_G: guard' godot/main.gd
+          grep -q 'KEY_L: load_game' godot/main.gd
+          grep -q 'KEY_R:' godot/main.gd
+          grep -q 'game_won = true' godot/main.gd
+          grep -q 'defeated = true' godot/main.gd
