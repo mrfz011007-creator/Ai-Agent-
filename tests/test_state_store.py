@@ -51,3 +51,19 @@ def test_latest_checkpoint_is_available_after_restart(tmp_path):
     assert checkpoint is not None
     assert checkpoint["task_id"] == "checkpoint"
     assert checkpoint["payload"]["status"] == "RUNNING"
+
+
+def test_memory_sqlite_state_survives_multiple_connections():
+    store = StateStore(":memory:")
+    store.save_task(
+        task_id="memory-task",
+        status="RUNNING",
+        attempts=1,
+        payload={"title": "memory task", "dependencies": []},
+    )
+
+    saved = store.load_task("memory-task")
+
+    assert saved is not None
+    assert saved["status"] == "RUNNING"
+    assert saved["attempts"] == 1
