@@ -117,13 +117,13 @@ class ModelGateway:
             credential = available[0]
             tried.add(credential.name)
             attempts += 1
-            if self.budget is not None:
-                self.budget.reserve_model_call()
             credential.state = CredentialState.HEALTHY
             secret = os.getenv(credential.secret_env)
             if not secret:
                 credential.state = CredentialState.UNKNOWN
                 continue
+            if self.budget is not None:
+                self.budget.reserve_model_call()
 
             try:
                 if self.provider is not None:
