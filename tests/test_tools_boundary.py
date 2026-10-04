@@ -439,3 +439,42 @@ def test_patch_file_rejects_oversized_result(monkeypatch, tmp_path):
     assert result["success"] is False
     assert result["code"] == "FILE_TOO_LARGE"
     assert (workspace / "small.txt").read_text(encoding="utf-8") == "small"
+
+
+def test_router_bounds_command_timeout_to_remaining_runtime(tmp_path, monkeypatch):
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    runtime.budget_manager.budget.max_runtime_seconds = 5.0
+    runtime.budget_manager.started_at = 0.0
+    runtime.tool_router._confirmation = lambda tool, args: True
+
+    captured = {}
+
+    def fake_command(**arguments):
+        captured.update(arguments)
+        return {
+            "success": True,
+            "status": "SUCCESS",
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    metadata = runtime.tool_router._registry_getter("run_command")
+    original = metadata["func"]
+    metadata["func"] = fake_command
+    try:
+        from core.contracts import ToolRequest
+        result = runtime.tool_router.execute(
+            ToolRequest(
+                tool="run_command",
+                action="execute",
+                arguments={"command": "echo ok", "timeout": 900},
+            )
+        )
+    finally:
+        metadata["func"] = original
+
+    assert result.success is True
+    assert 0 < captured["timeout"] <= 5.0
