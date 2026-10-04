@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: ["experiment/**"]
+  pull_request:
 
 jobs:
   export:
