@@ -1,0 +1,28 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/echoes-of-the-forgotten"]
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Godot templates
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates
+          mv /root/.local/share/godot/export_templates/4.3.stable ~/.local/share/godot/export_templates/4.3.stable
+      - name: Export Android debug APK
+        run: |
+          mkdir -p build
+          cd godot
+          godot --headless --verbose --export-debug "Android" build/EchoesOfTheForgotten.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echoes-of-the-Forgotten-debug
+          path: godot/build/EchoesOfTheForgotten.apk
