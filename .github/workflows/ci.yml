@@ -1,13 +1,20 @@
 name: Godot CI
 
 on:
-  push:
-    branches: ["main", "experiment/**"]
+  workflow_dispatch:
   pull_request:
+  push:
+    branches: ["experiment/echoes-bug-hunt-fix"]
+
+concurrency:
+  group: echoes-bug-hunt-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.3
     steps:
       - uses: actions/checkout@v4
       - name: Check project files
@@ -15,4 +22,18 @@ jobs:
           test -f godot/project.godot
           test -f godot/Main.tscn
           test -f godot/main.gd
+          test -f godot/export_presets.cfg
           grep -q 'config/name="Echoes of the Forgotten"' godot/project.godot
+      - name: Run gameplay regression tests
+        run: |
+          godot --headless --path godot --script tests/test_main.gd
+      - name: Check gameplay contracts
+        run: |
+          grep -q 'KEY_A: attack' godot/main.gd
+          grep -q 'KEY_S: skill' godot/main.gd
+          grep -q 'KEY_P: use_potion' godot/main.gd
+          grep -q 'KEY_G: guard' godot/main.gd
+          grep -q 'KEY_L: load_game' godot/main.gd
+          grep -q 'KEY_R:' godot/main.gd
+          grep -q 'game_won = true' godot/main.gd
+          grep -q 'defeated = true' godot/main.gd

@@ -3,26 +3,107 @@ name: Android APK
 on:
   workflow_dispatch:
   push:
-    branches: ["experiment/echoes-of-the-forgotten"]
+    branches: ["experiment/echoes-bug-hunt-fix"]
+
+concurrency:
+  group: echoes-bug-hunt-${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: true
 
 jobs:
   export:
     runs-on: ubuntu-24.04
-    container:
-      image: barichello/godot-ci:4.3
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare Godot templates
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0"
+
+      - name: Install Godot 4.3 headless and export templates
+        shell: bash
         run: |
-          mkdir -p ~/.local/share/godot/export_templates
-          mv /root/.local/share/godot/export_templates/4.3.stable ~/.local/share/godot/export_templates/4.3.stable
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin" "$HOME/.local/share/godot/export_templates/4.3.stable"
+          rm -rf /tmp/godot /tmp/godot-templates
+          curl -fsSL "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip" -o /tmp/godot.zip
+          unzip -qo /tmp/godot.zip -d /tmp/godot
+          GODOT_BIN="$(find /tmp/godot -type f -perm -111 -print -quit)"
+          test -n "$GODOT_BIN"
+          cp "$GODOT_BIN" "$HOME/.local/bin/godot"
+          chmod +x "$HOME/.local/bin/godot"
+          curl -fsSL "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz" -o /tmp/templates.tpz
+          unzip -qo /tmp/templates.tpz -d /tmp/godot-templates
+          TEMPLATE_DIR="$(find /tmp/godot-templates -type f -name 'android_debug.apk' -print -quit | xargs -r dirname)"
+          test -n "$TEMPLATE_DIR"
+          cp -a "$TEMPLATE_DIR/." "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          test -s "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          godot --headless --version
+
+      - name: Configure Android export
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$HOME/.local/share/godot/debug.keystore"
+          mkdir -p "$HOME/.config/godot"
+          keytool -genkeypair -v             -keystore "$KEYSTORE"             -alias androiddebugkey             -keyalg RSA             -keysize 2048             -validity 10000             -storepass android             -keypass android             -dname "CN=Android Debug,O=Android,C=US"
+
+          cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+
+          export/android/android_sdk_path = "$ANDROID_SDK_ROOT"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$KEYSTORE"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+
+          sed -i 's|^keystore/debug=.*|keystore/debug="'"$KEYSTORE"'"|' godot/export_presets.cfg
+          sed -i 's|^keystore/debug_user=.*|keystore/debug_user="androiddebugkey"|' godot/export_presets.cfg
+          sed -i 's|^keystore/debug_password=.*|keystore/debug_password="android"|' godot/export_presets.cfg
+
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
+      - name: Validate Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$ANDROID_SDK_ROOT/platform-tools/adb"
+          test -x "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner"
+          test -d "$ANDROID_SDK_ROOT/platforms/android-34"
+          sdkmanager --list | grep -F 'build-tools;34.0.0' | head -n 1
+
+      - name: Validate Godot project
+        run: |
+          godot --headless --path godot --editor --quit
+
       - name: Export Android debug APK
         run: |
-          mkdir -p build
-          cd godot
-          godot --headless --verbose --export-debug "Android" build/EchoesOfTheForgotten.apk
+          mkdir -p godot/build
+          godot --headless --path godot --verbose --export-debug "Android" build/EchoesOfTheForgotten.apk
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s godot/build/EchoesOfTheForgotten.apk
+          file godot/build/EchoesOfTheForgotten.apk
+          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --verbose godot/build/EchoesOfTheForgotten.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Echoes-of-the-Forgotten-debug
           path: godot/build/EchoesOfTheForgotten.apk
+          if-no-files-found: error
