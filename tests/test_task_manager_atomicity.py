@@ -179,7 +179,7 @@ def test_retry_enforces_execution_contract_limit_at_task_boundary(tmp_path):
         allowed_capabilities=("workspace.read",),
         retry_limit=0,
         evidence_required=True,
-        completion_conditions=("verified",),
+        completion_conditions=({"type": "evidence_success", "task_id": "T8"},),
     )
     manager.create(Task("T8", "retry contract", execution_contract=contract, status=TaskStatus.READY))
     manager.start("T8")
