@@ -175,6 +175,7 @@ class PlanDecoder:
         "baca_file",
         "recall",
         "search_memory",
+        "remember",
     )
 
     @classmethod
@@ -221,7 +222,7 @@ class PlanDecoder:
                 execution_contract = ExecutionContract(
                     objective=title.strip(),
                     allowed_tools=cls._SAFE_READ_ONLY_TOOLS,
-                    allowed_capabilities=("workspace.read",),
+                    allowed_capabilities=("workspace.read", "workspace.write"),
                     completion_conditions=(
                         {"type": "evidence_success", "task_id": task_id.strip()},
                     ),
