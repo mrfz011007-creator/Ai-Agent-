@@ -21,6 +21,27 @@ class ModelPlanService:
     """Turns untrusted model text into a deterministic, validated plan proposal."""
 
     model_call: Callable[[str], str]
+    tool_catalog: Mapping[str, Any] | None = None
+
+    def _validate_tool_contracts(self, proposal: PlanProposal) -> None:
+        if self.tool_catalog is None:
+            return
+        for task in proposal.tasks:
+            contract = task.execution_contract
+            if contract is None:
+                continue
+            for tool_name in contract.allowed_tools:
+                metadata = self.tool_catalog.get(tool_name)
+                if metadata is None:
+                    raise PlanGraphError(
+                        f"Unknown tool in execution contract: {task.task_id}: {tool_name}"
+                    )
+                declared = tuple(metadata.get("capabilities", ()))
+                if any(capability not in contract.allowed_capabilities for capability in declared):
+                    raise PlanGraphError(
+                        "Execution contract capability exceeds selected tools: "
+                        f"{task.task_id}: {tool_name}"
+                    )
 
     def propose(self, goal: str, *, memory_context: str = "") -> PlanProposal:
         if not isinstance(goal, str) or not goal.strip():
@@ -40,4 +61,6 @@ class ModelPlanService:
             payload: Mapping[str, Any] = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise PlanGraphError("Model planner returned invalid JSON") from exc
-        return PlanDecoder.from_mapping(payload)
+        proposal = PlanDecoder.from_mapping(payload)
+        self._validate_tool_contracts(proposal)
+        return proposal
