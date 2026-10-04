@@ -45,10 +45,13 @@ class AcceptanceGate:
         )
         if verification.status != VerificationStatus.PASSED:
             return verification
+        conditions = tuple(completion_conditions) or (
+            {"type": "evidence_success", "task_id": task_id},
+        )
         passed, reason, condition_evidence = self.criteria.evaluate_task_conditions(
             task_id=task_id,
             evidence_ids=tuple(evidence_ids),
-            conditions=tuple(completion_conditions),
+            conditions=conditions,
             expected_attempt_id=expected_attempt_id,
         )
         if not passed:
