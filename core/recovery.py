@@ -152,6 +152,9 @@ class RecoveryManager:
                 raise ValueError("Safe reconciliation requires successful evidence")
             if any(item.task_id != task_id for item in evidence):
                 raise ValueError("Safe reconciliation evidence belongs to another task")
+            expected_attempt_id = f"{task_id}:attempt:{task.attempts}"
+            if any(item.attempt_id != expected_attempt_id for item in evidence):
+                raise ValueError("Safe reconciliation evidence must belong to the interrupted attempt")
             if outcome == ReconcileOutcome.SAFE_TO_RETRY:
                 contract = task.execution_contract
                 if contract is not None and (task.attempts - 1) >= contract.retry_limit:
