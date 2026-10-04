@@ -33,7 +33,7 @@ jobs:
           mkdir -p "$HOME/.local/bin" "$HOME/.local/share/godot/export_templates/4.3.stable"
           curl -fsSL "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip" -o /tmp/godot.zip
           unzip -qo /tmp/godot.zip -d /tmp/godot
-          GODOT_BIN="$(find /tmp/godot -type f -name 'godot*' -perm -111 -print -quit)"
+          GODOT_BIN="$(find /tmp/godot -type f -perm -111 -print -quit)"
           test -n "$GODOT_BIN"
           cp "$GODOT_BIN" "$HOME/.local/bin/godot"
           chmod +x "$HOME/.local/bin/godot"
