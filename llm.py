@@ -92,10 +92,13 @@ def propose_plan_gemini(goal):
     return get_runtime().model_gateway.generate_text(
         prompt=goal,
         system_instruction=(
-            "Return ONLY a JSON plan with keys goal, tasks, "
-            "acceptance_criteria. Each task has task_id, title, "
-            "dependencies. Do not include commands, tool arguments, "
-            "secrets, markdown, or executable instructions."
+            "Return ONLY a JSON plan matching the runtime planning schema. "
+            "Every task must include execution_contract with objective, "
+            "allowed_tools, allowed_capabilities, max_tool_calls, retry_limit, "
+            "evidence_required, and machine-verifiable completion_conditions. "
+            "acceptance_criteria must use only the supported machine-verifiable "
+            "criterion types. Do not include natural-language criteria, commands, "
+            "tool arguments, secrets, markdown, or executable instructions."
         ),
         response_mime_type="application/json",
     )
