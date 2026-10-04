@@ -159,7 +159,11 @@ class RecoveryManager:
                 if self.budget is None:
                     raise RuntimeError("Recovery budget is not configured")
                 self.budget.reserve_recovery_cycle()
-                task = self.task_manager.retry(task_id)
+                try:
+                    task = self.task_manager.retry(task_id)
+                except Exception:
+                    self.budget.release_recovery_cycle()
+                    raise
                 action = "RETRY"
             else:
                 task = self.task_manager.resume(task_id)
