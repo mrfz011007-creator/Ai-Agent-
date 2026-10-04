@@ -7,8 +7,17 @@ import subprocess
 import threading
 from pathlib import Path
 
+try:
+    import resource
+except ImportError:
+    resource = None
+
+from security.redaction import redact_text
+
 
 DEFAULT_OUTPUT_LIMIT = 100_000
+DEFAULT_MEMORY_LIMIT_MB = 1024
+MIN_MEMORY_LIMIT_MB = 128
 
 def _read_pipe_limited(stream, limit: int) -> tuple[str, bool]:
     data = bytearray()
@@ -68,7 +77,6 @@ def _terminate_process(process: subprocess.Popen) -> None:
 
 
 
-from security.redaction import redact_text
 def run_command(
     *,
     command: str,
@@ -109,6 +117,39 @@ def run_command(
             "stderr": "",
         }
 
+    def _limits() -> None:
+        if resource is None:
+            return
+        cpu_seconds = max(1, int(timeout) + 1)
+        if hasattr(resource, "RLIMIT_CPU"):
+            resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
+        if hasattr(resource, "RLIMIT_NOFILE"):
+            resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
+        if hasattr(resource, "RLIMIT_NPROC"):
+            resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
+
+        memory_mb = int(
+            os.environ.get(
+                "AI_AGENT_PROCESS_MEMORY_MB",
+                str(DEFAULT_MEMORY_LIMIT_MB),
+            )
+        )
+        if memory_mb < MIN_MEMORY_LIMIT_MB:
+            raise ValueError(
+                f"AI_AGENT_PROCESS_MEMORY_MB must be >= {MIN_MEMORY_LIMIT_MB}"
+            )
+
+        is_android = (
+            os.environ.get("PREFIX", "").startswith("/data/")
+            or Path("/system/bin").exists()
+        )
+        if hasattr(resource, "RLIMIT_AS") and not is_android:
+            memory_bytes = memory_mb * 1024 * 1024
+            resource.setrlimit(
+                resource.RLIMIT_AS,
+                (memory_bytes, memory_bytes),
+            )
+
     try:
         process = subprocess.Popen(
             argv,
@@ -116,6 +157,7 @@ def run_command(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=(os.name == "posix"),
+            preexec_fn=_limits if os.name == "posix" else None,
         )
         stdout_thread, stdout_result = _start_pipe_reader(process.stdout, output_limit)
         stderr_thread, stderr_result = _start_pipe_reader(process.stderr, output_limit)
@@ -141,8 +183,7 @@ def run_command(
 
         if timed_out:
             if truncated:
-                stderr = f"{stderr}
-OUTPUT_TRUNCATED".strip()
+                stderr = f"{stderr}\nOUTPUT_TRUNCATED".strip()
             return {
                 "success": False,
                 "status": "TIMEOUT",
@@ -160,7 +201,15 @@ OUTPUT_TRUNCATED".strip()
             "stderr": stderr,
             "output_truncated": truncated,
         }
-    except OSError as error:
+    except ValueError as error:
+        return {
+            "success": False,
+            "status": "INVALID_RESOURCE_LIMIT",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": str(error),
+        }
+    except (OSError, subprocess.SubprocessError) as error:
         return {
             "success": False,
             "status": "EXECUTION_ERROR",
