@@ -174,3 +174,41 @@ def test_runtime_resume_goal_does_not_implicitly_retry_waiting_task(tmp_path, mo
     assert graph.tasks["interrupted"].status == TaskStatus.WAITING
     assert graph.tasks["interrupted"].attempts == 1
     assert calls == []
+
+
+def test_goal_runner_rejects_unproven_plan_artifact_criterion(tmp_path, monkeypatch):
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+
+    def fake_generate_text(prompt, **kwargs):
+        if "USER GOAL:" in prompt:
+            return (
+                '{"goal":"inspect workspace","tasks":'
+                '[{"task_id":"inspect","title":"Inspect workspace","dependencies":[]}],'
+                '"acceptance_criteria":[{"type":"artifact_exists","task_id":"inspect"}]}'
+            )
+        return '{"tool":"lokasi","action":"execute","arguments":{}}'
+
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", fake_generate_text)
+
+    def fake_execute(proposal, *, task_id, attempt_id=None):
+        evidence_id = "ev-artifact-criterion"
+        result = ToolResult(
+            True, "success", proposal.tool, data={"ok": True}, evidence_id=evidence_id
+        )
+        runtime.evidence_store.record(
+            evidence_id=evidence_id,
+            task_id=task_id,
+            attempt_id=attempt_id,
+            tool=proposal.tool,
+            action=proposal.action,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "execute_model_proposal", fake_execute)
+
+    plan, graph = runtime.run_goal("inspect workspace", plan_id="plan-artifact-gate")
+
+    assert graph.tasks["inspect"].status == TaskStatus.COMPLETED
+    assert plan.status.value == "FAILED"
+    assert runtime.state_store.load_plan("plan-artifact-gate")["status"] == "FAILED"
