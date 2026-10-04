@@ -473,3 +473,24 @@ def test_tool_router_bounds_arbitrary_string_data(tmp_path):
     assert result.success is True
     assert len(result.data["isi"]) == 32
     assert result.data["output_truncated"] is True
+
+
+def test_persistent_tool_budget_refund_survives_restart(tmp_path):
+    from core.budget import BudgetManager
+    from core.contracts import Budget
+    from core.state_store import StateStore
+
+    state_path = tmp_path / "state.sqlite3"
+    store = StateStore(state_path)
+    budget = BudgetManager(Budget(max_tool_calls=2), state_store=store)
+
+    budget.reserve_tool_call()
+    assert store.load_budget()["tool_calls"] == 1
+
+    budget.refund_tool_call()
+
+    assert budget.budget.tool_calls == 0
+    assert store.load_budget()["tool_calls"] == 0
+
+    restarted = BudgetManager(Budget(), state_store=StateStore(state_path))
+    assert restarted.budget.tool_calls == 0
