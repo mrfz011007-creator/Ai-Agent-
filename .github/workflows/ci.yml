@@ -7,7 +7,9 @@ on:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.3
     steps:
       - uses: actions/checkout@v4
       - name: Check project files
