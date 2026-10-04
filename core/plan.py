@@ -171,6 +171,8 @@ class PlanDecoder:
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> PlanProposal:
+        if not isinstance(payload, Mapping):
+            raise PlanGraphError("Model plan must be an object")
         goal = payload.get("goal")
         raw_tasks = payload.get("tasks")
         criteria = payload.get("acceptance_criteria", ())
