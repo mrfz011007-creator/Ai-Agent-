@@ -4,7 +4,7 @@ from core.plan import PlanGraphError
 
 def test_model_plan_service_decodes_valid_json():
     service = ModelPlanService(
-        lambda _: '{"goal":"build APK","tasks":[{"task_id":"inspect","title":"Inspect","dependencies":[]}],"acceptance_criteria":["artifact exists"]}'
+        lambda _: '{"goal":"build APK","tasks":[{"task_id":"inspect","title":"Inspect","dependencies":[]}],"acceptance_criteria":[{"type":"artifact_exists","task_id":"inspect"}]}'
     )
     proposal = service.propose("build APK")
     assert proposal.goal == "build APK"
