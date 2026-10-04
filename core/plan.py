@@ -34,6 +34,14 @@ class PlanGraphError(ValueError):
     pass
 
 
+MAX_PLAN_TASKS = 50
+MAX_GOAL_CHARS = 12000
+MAX_TASK_ID_CHARS = 200
+MAX_TASK_TITLE_CHARS = 2000
+MAX_TASK_DEPENDENCIES = 50
+MAX_PLAN_CRITERIA = 50
+
+
 @dataclass
 class TaskGraph:
     tasks: dict[str, Task] = field(default_factory=dict)
@@ -178,8 +186,16 @@ class PlanDecoder:
         criteria = payload.get("acceptance_criteria", ())
         if not isinstance(goal, str) or not goal.strip():
             raise PlanGraphError("Model plan goal must be a non-empty string")
-        if not isinstance(raw_tasks, list):
-            raise PlanGraphError("Model plan tasks must be a list")
+        if len(goal) > MAX_GOAL_CHARS:
+            raise PlanGraphError(f"Model plan goal exceeds {MAX_GOAL_CHARS} characters")
+        if not isinstance(raw_tasks, list) or not raw_tasks:
+            raise PlanGraphError("Model plan tasks must be a non-empty list")
+        if len(raw_tasks) > MAX_PLAN_TASKS:
+            raise PlanGraphError(f"Model plan exceeds task limit: {MAX_PLAN_TASKS}")
+        if isinstance(criteria, (list, tuple)) and len(criteria) > MAX_PLAN_CRITERIA:
+            raise PlanGraphError(
+                f"Model plan exceeds acceptance-criteria limit: {MAX_PLAN_CRITERIA}"
+            )
         try:
             criteria = validate_criteria(criteria)
         except CriterionValidationError as error:
@@ -198,6 +214,8 @@ class PlanDecoder:
                 raise PlanGraphError(f"Task title missing: {task_id}")
             if not isinstance(dependencies, (list, tuple)) or not all(isinstance(dep, str) and dep.strip() for dep in dependencies):
                 raise PlanGraphError(f"Invalid dependencies: {task_id}")
+            if len(dependencies) > MAX_TASK_DEPENDENCIES:
+                raise PlanGraphError(f"Too many dependencies: {task_id}")
             contract_payload = item.get("execution_contract")
             if contract_payload is None:
                 execution_contract = ExecutionContract(
