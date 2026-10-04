@@ -5,6 +5,7 @@ import os
 import re
 import tempfile
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -20,6 +21,26 @@ MEMORY_MAX_SOURCE_JSON_CHARS = 2048
 
 class MemoryStoreError(RuntimeError):
     """Raised when persisted memory cannot be safely decoded."""
+
+
+@contextmanager
+def _memory_write_lock():
+    """Serialize memory read-modify-write operations across processes."""
+    path = memory_file()
+    lock_path = path.with_name(path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as stream:
+        if os.name != "posix":
+            yield
+            return
+
+        import fcntl
+
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
 def memory_file() -> Path:
@@ -414,23 +435,23 @@ def save_memory(memory: Mapping[str, Any]) -> None:
     if not isinstance(memory, Mapping):
         raise TypeError("memory must be a mapping")
 
-    schema_version = memory.get("schema_version")
-    if schema_version in (LEGACY_VERSIONED_SCHEMA_VERSION, MEMORY_SCHEMA_VERSION) and "records" in memory:
-        if schema_version == LEGACY_VERSIONED_SCHEMA_VERSION:
-            document = _migrate_versioned_document(memory)
-        else:
-            records = memory.get("records")
-            if not isinstance(records, list):
-                raise MemoryStoreError("Memory records must be a list")
-            document = {
-                "schema_version": MEMORY_SCHEMA_VERSION,
-                "records": [_validate_record(record) for record in records],
-            }
-        _save_document(document)
-        return
+    with _memory_write_lock():
+        schema_version = memory.get("schema_version")
+        if schema_version in (LEGACY_VERSIONED_SCHEMA_VERSION, MEMORY_SCHEMA_VERSION) and "records" in memory:
+            if schema_version == LEGACY_VERSIONED_SCHEMA_VERSION:
+                document = _migrate_versioned_document(memory)
+            else:
+                records = memory.get("records")
+                if not isinstance(records, list):
+                    raise MemoryStoreError("Memory records must be a list")
+                document = {
+                    "schema_version": MEMORY_SCHEMA_VERSION,
+                    "records": [_validate_record(record) for record in records],
+                }
+            _save_document(document)
+            return
 
-    _save_document(_migrate_legacy(memory))
-
+        _save_document(_migrate_legacy(memory))
 
 def _active_records(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return [dict(record) for record in records if bool(record.get("valid"))]
@@ -586,63 +607,64 @@ def remember(
     if len(source_json) > MEMORY_MAX_SOURCE_JSON_CHARS:
         raise ValueError("Memory source exceeds maximum size")
 
-    document = _load_document()
-    now = _now()
-    records = list(document["records"])
+    with _memory_write_lock():
+        document = _load_document()
+        now = _now()
+        records = list(document["records"])
 
-    matches = [
-        record
-        for record in records
-        if record["key"] == key
-        and record["kind"] == kind
-        and record["project_id"] == project_id
-        and record["task_id"] == task_id
-        and record["valid"]
-    ]
-    previous = max(matches, key=_record_order) if matches else None
-    version = int(previous["version"]) + 1 if previous else 1
-    memory_id = f"mem-{uuid.uuid4().hex}"
+        matches = [
+            record
+            for record in records
+            if record["key"] == key
+            and record["kind"] == kind
+            and record["project_id"] == project_id
+            and record["task_id"] == task_id
+            and record["valid"]
+        ]
+        previous = max(matches, key=_record_order) if matches else None
+        version = int(previous["version"]) + 1 if previous else 1
+        memory_id = f"mem-{uuid.uuid4().hex}"
 
-    if previous is not None:
-        for record in records:
-            if record["memory_id"] == previous["memory_id"]:
-                record["valid"] = False
-                record["invalidated_at"] = now
-                record["invalidation_reason"] = "Superseded by a newer version"
-                break
+        if previous is not None:
+            for record in records:
+                if record["memory_id"] == previous["memory_id"]:
+                    record["valid"] = False
+                    record["invalidated_at"] = now
+                    record["invalidation_reason"] = "Superseded by a newer version"
+                    break
 
-    record = {
-        "memory_id": memory_id,
-        "key": key,
-        "value": value,
-        "kind": kind,
-        "source": normalized_source,
-        "project_id": project_id,
-        "task_id": task_id,
-        "context": normalized_context,
-        "created_at": now,
-        "updated_at": now,
-        "version": version,
-        "valid": True,
-        "supersedes": previous["memory_id"] if previous else None,
-        "invalidated_at": None,
-        "invalidation_reason": None,
-    }
-    records.append(record)
-    document["records"] = records
-    _save_document(document)
+        record = {
+            "memory_id": memory_id,
+            "key": key,
+            "value": value,
+            "kind": kind,
+            "source": normalized_source,
+            "project_id": project_id,
+            "task_id": task_id,
+            "context": normalized_context,
+            "created_at": now,
+            "updated_at": now,
+            "version": version,
+            "valid": True,
+            "supersedes": previous["memory_id"] if previous else None,
+            "invalidated_at": None,
+            "invalidation_reason": None,
+        }
+        records.append(record)
+        document["records"] = records
+        _save_document(document)
 
-    return {
-        "status": "success",
-        "success": True,
-        "key": key,
-        "value": value,
-        "memory_id": memory_id,
-        "kind": kind,
-        "version": version,
-        "project_id": project_id,
-        "task_id": task_id,
-    }
+        return {
+            "status": "success",
+            "success": True,
+            "key": key,
+            "value": value,
+            "memory_id": memory_id,
+            "kind": kind,
+            "version": version,
+            "project_id": project_id,
+            "task_id": task_id,
+        }
 
 
 def recall(
@@ -800,31 +822,32 @@ def invalidate_memory(
     if not reason:
         raise ValueError("Invalidation reason cannot be empty")
 
-    result = recall(
-        key,
-        project_id=project_id,
-        task_id=task_id,
-        kind=kind,
-    )
-    if result["status"] != "success":
-        return result
+    with _memory_write_lock():
+        result = recall(
+            key,
+            project_id=project_id,
+            task_id=task_id,
+            kind=kind,
+        )
+        if result["status"] != "success":
+            return result
 
-    target_id = result["record"]["memory_id"]
-    document = _load_document()
-    now = _now()
-    for record in document["records"]:
-        if record["memory_id"] == target_id:
-            record["valid"] = False
-            record["invalidated_at"] = now
-            record["invalidation_reason"] = reason
-            break
-    _save_document(document)
+        target_id = result["record"]["memory_id"]
+        document = _load_document()
+        now = _now()
+        for record in document["records"]:
+            if record["memory_id"] == target_id:
+                record["valid"] = False
+                record["invalidated_at"] = now
+                record["invalidation_reason"] = reason
+                break
+        _save_document(document)
 
-    return {
-        "status": "success",
-        "success": True,
-        "key": key,
-        "memory_id": target_id,
-        "invalidated_at": now,
-        "reason": reason,
-    }
+        return {
+            "status": "success",
+            "success": True,
+            "key": key,
+            "memory_id": target_id,
+            "invalidated_at": now,
+            "reason": reason,
+        }
