@@ -452,6 +452,7 @@ def test_safe_reconciliation_retry_respects_contract_limit(tmp_path):
     evidence.record(
         evidence_id="E-R13",
         task_id="R13",
+        attempt_id="R13:attempt:1",
         tool="reconcile",
         action="inspect",
         result=ToolResult(True, "SUCCESS", "reconcile"),
