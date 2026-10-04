@@ -35,3 +35,37 @@ def test_runtime_plan_goal_uses_model_gateway_boundary(tmp_path, monkeypatch):
     assert graph.tasks["build"].title == "Build app"
     assert calls
     assert "build app" in calls[0]
+
+
+def test_runtime_budget_survives_restart(tmp_path):
+    state_path = tmp_path / "state.sqlite3"
+    first = AgentRuntime.create(state_path=state_path)
+    first.budget_manager.budget.max_tool_calls = 3
+    first.budget_manager.budget.max_model_calls = 3
+    first.budget_manager.budget.max_recovery_cycles = 3
+
+    first.budget_manager.reserve_tool_call()
+    first.budget_manager.reserve_model_call()
+    first.budget_manager.reserve_recovery_cycle()
+
+    second = AgentRuntime.create(state_path=state_path)
+
+    assert second.budget_manager.budget.tool_calls == 1
+    assert second.budget_manager.budget.model_calls == 1
+    assert second.budget_manager.budget.recovery_cycles == 1
+    assert second.budget_manager.remaining_tool_calls == 2
+    assert second.budget_manager.remaining_model_calls == 2
+    assert second.budget_manager.remaining_recovery_cycles == 2
+
+
+def test_runtime_budget_window_resets_after_restart(tmp_path):
+    state_path = tmp_path / "state.sqlite3"
+    first = AgentRuntime.create(state_path=state_path)
+    first.budget_manager.budget.max_runtime_seconds = 1.0
+    first.budget_manager.started_at_wall = 0.0
+    first.budget_manager._persist()
+
+    second = AgentRuntime.create(state_path=state_path)
+
+    assert second.budget_manager.elapsed_seconds < 1.0
+    assert second.budget_manager.remaining_runtime_seconds > 0.0
