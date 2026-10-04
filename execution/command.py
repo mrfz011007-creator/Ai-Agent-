@@ -4,11 +4,37 @@ import os
 import shlex
 import signal
 import subprocess
-import tempfile
+import threading
 from pathlib import Path
 
 
 DEFAULT_OUTPUT_LIMIT = 100_000
+
+def _read_pipe_limited(stream, limit: int) -> tuple[str, bool]:
+    data = bytearray()
+    truncated = False
+    while True:
+        chunk = stream.read(8192)
+        if not chunk:
+            break
+        remaining = limit - len(data)
+        if remaining > 0:
+            data.extend(chunk[:remaining])
+        if len(chunk) > max(0, remaining):
+            truncated = True
+    return bytes(data).decode("utf-8", errors="replace"), truncated
+
+
+def _start_pipe_reader(stream, limit: int):
+    result = {"data": "", "truncated": False}
+
+    def reader():
+        result["data"], result["truncated"] = _read_pipe_limited(stream, limit)
+
+    worker = threading.Thread(target=reader, daemon=True)
+    worker.start()
+    return worker, result
+
 
 
 def _read_limited(path: str, limit: int) -> tuple[str, bool]:
@@ -83,43 +109,49 @@ def run_command(
             "stderr": "",
         }
 
-    stdout_file = tempfile.NamedTemporaryFile(prefix="ai-agent-out-", delete=False)
-    stderr_file = tempfile.NamedTemporaryFile(prefix="ai-agent-err-", delete=False)
-    stdout_path, stderr_path = stdout_file.name, stderr_file.name
-    stdout_file.close()
-    stderr_file.close()
-
     try:
         process = subprocess.Popen(
             argv,
             cwd=str(Path(cwd).resolve()),
-            stdout=open(stdout_path, "wb"),
-            stderr=open(stderr_path, "wb"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             start_new_session=(os.name == "posix"),
         )
+        stdout_thread, stdout_result = _start_pipe_reader(process.stdout, output_limit)
+        stderr_thread, stderr_result = _start_pipe_reader(process.stderr, output_limit)
+
+        timed_out = False
         try:
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
+            timed_out = True
             _terminate_process(process)
-            stdout, out_truncated = _read_limited(stdout_path, output_limit)
-            stderr, err_truncated = _read_limited(stderr_path, output_limit)
-            stdout = redact_text(stdout)
-            stderr = redact_text(stderr)
-            if out_truncated or err_truncated:
-                stderr = f"{stderr}\nOUTPUT_TRUNCATED".strip()
+        finally:
+            stdout_thread.join(timeout=2)
+            stderr_thread.join(timeout=2)
+
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+
+        stdout = redact_text(stdout_result["data"])
+        stderr = redact_text(stderr_result["data"])
+        truncated = bool(stdout_result["truncated"] or stderr_result["truncated"])
+
+        if timed_out:
+            if truncated:
+                stderr = f"{stderr}
+OUTPUT_TRUNCATED".strip()
             return {
                 "success": False,
                 "status": "TIMEOUT",
                 "exit_code": None,
                 "stdout": stdout,
                 "stderr": stderr or "TIMEOUT",
+                "output_truncated": truncated,
             }
 
-        stdout, out_truncated = _read_limited(stdout_path, output_limit)
-        stderr, err_truncated = _read_limited(stderr_path, output_limit)
-        stdout = redact_text(stdout)
-        stderr = redact_text(stderr)
-        truncated = out_truncated or err_truncated
         return {
             "success": process.returncode == 0,
             "status": "SUCCESS" if process.returncode == 0 else "FAILED",
@@ -136,9 +168,3 @@ def run_command(
             "stdout": "",
             "stderr": str(error),
         }
-    finally:
-        for path in (stdout_path, stderr_path):
-            try:
-                Path(path).unlink()
-            except FileNotFoundError:
-                pass
