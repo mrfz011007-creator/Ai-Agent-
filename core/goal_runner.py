@@ -211,7 +211,10 @@ class GoalRunner:
         from memory_context import build_memory_context
 
         memory_context = build_memory_context(goal, project_id=project_id)
-        proposer = ModelPlanService(self.runtime.model_gateway.generate_text)
+        proposer = ModelPlanService(
+            self.runtime.model_gateway.generate_text,
+            tool_catalog=self.runtime.tool_catalog(),
+        )
         proposal = proposer.propose(goal, memory_context=memory_context)
         resolved_id = plan_id or self._new_plan_id()
         plan, graph = self.runtime.orchestrator.materialize(
