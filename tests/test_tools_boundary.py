@@ -425,3 +425,17 @@ def test_baca_file_rejects_oversized_file(monkeypatch, tmp_path):
 
     assert result["success"] is False
     assert result["code"] == "FILE_TOO_LARGE"
+
+ 
+def test_patch_file_rejects_oversized_result(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("AI_AGENT_MAX_FILE_BYTES", "16")
+    (workspace / "small.txt").write_text("small", encoding="utf-8")
+
+    result = tools.patch_file("small.txt", "small", "01234567890123456789")
+
+    assert result["success"] is False
+    assert result["code"] == "FILE_TOO_LARGE"
+    assert (workspace / "small.txt").read_text(encoding="utf-8") == "small"
