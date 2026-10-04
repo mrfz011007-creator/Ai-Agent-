@@ -217,3 +217,22 @@ def test_model_budget_failure_does_not_rotate_or_retry(monkeypatch):
         CredentialState.HEALTHY,
         CredentialState.UNKNOWN,
     ]
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5])
+def test_model_gateway_rejects_invalid_max_attempts(value):
+    with pytest.raises(ValueError, match="max_attempts must be a positive integer"):
+        ModelGateway(
+            credentials=[Credential("k1", "K1")],
+            client_factory=lambda secret: secret,
+            max_attempts=value,
+        )
+
+
+def test_model_gateway_accepts_explicit_positive_max_attempts():
+    gateway = ModelGateway(
+        credentials=[Credential("k1", "K1"), Credential("k2", "K2")],
+        client_factory=lambda secret: secret,
+        max_attempts=1,
+    )
+    assert gateway.max_attempts == 1
