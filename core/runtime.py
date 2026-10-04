@@ -279,9 +279,19 @@ class AgentRuntime:
         expected_attempt_id: str | None = None,
     ):
         """Verify execution and move the task to VERIFYING without completing it."""
+        task = self.task_manager.get(task_id) or self.task_manager.restore(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        contract = task.execution_contract
+        completion_conditions = (
+            tuple(contract.completion_conditions)
+            if contract is not None
+            else ({"type": "evidence_success", "task_id": task_id},)
+        )
         verification = self.acceptance_gate.verify_execution(
             task_id=task_id,
             evidence_ids=tuple(evidence_ids),
+            completion_conditions=completion_conditions,
             expected_attempt_id=expected_attempt_id,
         )
         if verification.status.value == "PASSED":
