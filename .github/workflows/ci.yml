@@ -17,6 +17,9 @@ jobs:
           test -f godot/main.gd
           test -f godot/export_presets.cfg
           grep -q 'config/name="Echoes of the Forgotten"' godot/project.godot
+      - name: Run gameplay regression tests
+        run: |
+          godot --headless --path godot --script tests/test_main.gd
       - name: Check gameplay contracts
         run: |
           grep -q 'KEY_A: attack' godot/main.gd
