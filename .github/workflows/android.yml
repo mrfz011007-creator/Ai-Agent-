@@ -2,8 +2,6 @@ name: Android APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["experiment/**"]
   pull_request:
   push:
     branches: ["experiment/echoes-bug-hunt-fix"]
