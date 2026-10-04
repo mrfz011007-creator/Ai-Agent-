@@ -105,9 +105,22 @@ class RecoveryManager:
         except RuntimeError as exc:
             self.task_manager.fail(task_id, str(exc))
             return RecoveryDecision(task_id, TaskStatus.RUNNING, TaskStatus.FAILED, "BLOCK", str(exc))
-        task = self.task_manager.wait(task_id)
-        self.task_manager.checkpoint(task_id, event="recovery_retry", reason=error or status)
-        task = self.task_manager.retry(task_id)
+        previous_status = task.status
+        task.status = TaskStatus.WAITING
+        try:
+            self.task_manager.persist(task_id)
+        except Exception:
+            task.status = previous_status
+            if hasattr(self.budget, "release_recovery_cycle"):
+                self.budget.release_recovery_cycle()
+            raise
+        try:
+            self.task_manager.checkpoint(task_id, event="recovery_retry", reason=error or status)
+            task = self.task_manager.retry(task_id)
+        except Exception:
+            if hasattr(self.budget, "release_recovery_cycle"):
+                self.budget.release_recovery_cycle()
+            raise
         return RecoveryDecision(task_id, TaskStatus.WAITING, task.status, "RETRY", error or status)
 
     def reconcile(
