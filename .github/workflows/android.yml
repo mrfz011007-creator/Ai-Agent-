@@ -24,12 +24,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platform-tools
-            platforms;android-34
-            build-tools;34.0.0
-            cmake;3.10.2.4988404
-            ndk;23.2.8568313
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0 cmake;3.10.2.4988404 ndk;23.2.8568313"
 
       - name: Install Godot 4.3 headless and export templates
         shell: bash
