@@ -390,3 +390,24 @@ def test_run_command_schema_rejects_unbounded_and_unknown_arguments():
             schema,
             {"command": "print", "unexpected": True},
         )
+
+
+
+def test_command_output_bounding_does_not_use_unbounded_temp_files(monkeypatch, tmp_path):
+    from execution import command as command_module
+
+    def fail_tempfile(*args, **kwargs):
+        raise AssertionError("run_command must not use temporary output files")
+
+    monkeypatch.setattr(command_module, "NamedTemporaryFile", fail_tempfile, raising=False)
+
+    result = command_module.run_command(
+        command='python -c "print(\'x\' * 1000000)"',
+        cwd=str(tmp_path),
+        timeout=5,
+        output_limit=100,
+    )
+
+    assert result["success"] is True
+    assert result["output_truncated"] is True
+    assert len(result["stdout"]) == 100
