@@ -6,6 +6,10 @@ on:
     branches: ["experiment/**"]
   pull_request:
 
+concurrency:
+  group: echoes-bug-hunt-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   export:
     runs-on: ubuntu-24.04
