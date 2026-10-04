@@ -94,8 +94,9 @@ def test_plan_decoder_supplies_safe_default_execution_contract():
         "baca_file",
         "recall",
         "search_memory",
+        "remember",
     )
-    assert contract.allowed_capabilities == ("workspace.read",)
+    assert contract.allowed_capabilities == ("workspace.read", "workspace.write")
     assert contract.completion_conditions == (
         {"type": "evidence_success", "task_id": "inspect"},
     )
