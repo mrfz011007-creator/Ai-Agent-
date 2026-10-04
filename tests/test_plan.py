@@ -37,7 +37,7 @@ def test_plan_only_becomes_validated_after_graph_validation():
     proposal = planner.propose(
         "build APK",
         [Task("inspect", "inspect"), Task("build", "build", dependencies=["inspect"])],
-        ["APK exists and passes tests"],
+        [{"type": "all_tasks_completed"}],
     )
     plan = planner.materialize(proposal, "plan-1")
     assert plan.status == PlanStatus.VALIDATED
@@ -68,7 +68,7 @@ def test_plan_decoder_validates_model_dependencies():
             {"task_id": "inspect", "title": "Inspect project"},
             {"task_id": "build", "title": "Build APK", "dependencies": ["inspect"]},
         ],
-        "acceptance_criteria": ["APK exists"],
+        "acceptance_criteria": [{"type":"all_tasks_completed"}],
     })
     proposal.graph().validate()
     assert proposal.goal == "build APK"
