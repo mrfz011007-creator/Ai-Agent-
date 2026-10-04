@@ -40,7 +40,7 @@ def test_goal_runner_memory_reaches_planner_and_execution(tmp_path, monkeypatch)
         return (
             '{"goal":"work on LauncherOS","tasks":'
             '[{"task_id":"inspect","title":"Inspect LauncherOS","dependencies":[]}],'
-            '"acceptance_criteria":["inspection succeeds"]}'
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
         )
 
     def fake_text(prompt, **kwargs):
@@ -102,7 +102,7 @@ def test_model_memory_write_is_bound_to_active_task_and_project(tmp_path, monkey
         return (
             '{"goal":"remember launcher constraint","tasks":'
             '[{"task_id":"remember-task","title":"Record launcher constraint","dependencies":[]}],'
-            '"acceptance_criteria":["memory request is routed"]}'
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
         )
 
     def fake_text(prompt, **kwargs):
@@ -168,7 +168,7 @@ def test_model_memory_write_rejects_cross_project_scope(tmp_path, monkeypatch):
         return (
             '{"goal":"remember launcher constraint","tasks":'
             '[{"task_id":"remember-task","title":"Record launcher constraint","dependencies":[]}],'
-            '"acceptance_criteria":["memory request is rejected"]}'
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
         )
 
     def fake_text(prompt, **kwargs):
@@ -212,7 +212,7 @@ def test_autonomous_remember_uses_real_router_without_interactive_confirmation(t
         lambda prompt, **kwargs: (
             '{"goal":"store project note","tasks":'
             '[{"task_id":"memory-router-task","title":"Store project note","dependencies":[]}],'
-            '"acceptance_criteria":["memory is stored"]}'
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
         ),
     )
     monkeypatch.setattr(
