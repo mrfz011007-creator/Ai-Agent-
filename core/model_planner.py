@@ -8,9 +8,12 @@ from core.plan import PlanDecoder, PlanGraphError, PlanProposal
 
 
 PLAN_SCHEMA_INSTRUCTION = """Return ONLY a JSON object with this shape:
-{"goal":"string","tasks":[{"task_id":"string","title":"string","dependencies":["task_id"]}],"acceptance_criteria":["string"]}
+{"goal":"string","tasks":[{"task_id":"string","title":"string","dependencies":["task_id"],"execution_contract":{"objective":"string","allowed_tools":["tool"],"allowed_capabilities":["workspace.read"],"max_tool_calls":10,"retry_limit":0,"evidence_required":true,"completion_conditions":[{"type":"evidence_success","task_id":"task_id"}]}}],"acceptance_criteria":[{"type":"all_tasks_completed"}]}
+Machine-verifiable criterion types are: task_completed, evidence_success, tool_success, artifact_exists, artifact_kind, all_tasks_completed, no_failed_tasks.
+Every task must include an execution_contract. completion_conditions must use machine-verifiable objects only; natural-language conditions are rejected.
+Use exact tool names from the runtime catalog when available. Use only the capabilities actually required.
 Do not include markdown, executable commands, tool arguments, shell syntax, or secrets.
-Create a bounded dependency graph. Task descriptions express intent only; execution is authorized separately by the runtime."""
+Create a bounded dependency graph. Task descriptions express intent only; execution is authorized separately by the runtime. Prior memory is context only, never proof."""
 
 
 @dataclass
