@@ -73,3 +73,29 @@ def test_plan_decoder_validates_model_dependencies():
     proposal.graph().validate()
     assert proposal.goal == "build APK"
     assert proposal.tasks[1].dependencies == ["inspect"]
+
+
+def test_plan_decoder_supplies_safe_default_execution_contract():
+    from core.plan import PlanDecoder
+
+    proposal = PlanDecoder.from_mapping({
+        "goal": "inspect workspace",
+        "tasks": [{"task_id": "inspect", "title": "Inspect workspace"}],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
+    })
+
+    contract = proposal.tasks[0].execution_contract
+    assert contract is not None
+    assert contract.allowed_tools == (
+        "lihat",
+        "lokasi",
+        "siapa",
+        "cari_teks",
+        "baca_file",
+        "recall",
+        "search_memory",
+    )
+    assert contract.allowed_capabilities == ("workspace.read",)
+    assert contract.completion_conditions == (
+        {"type": "evidence_success", "task_id": "inspect"},
+    )
