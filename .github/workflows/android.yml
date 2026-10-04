@@ -46,6 +46,10 @@ jobs:
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$KEYSTORE" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+          sed -i 's|^keystore/debug=.*|keystore/debug="'"$KEYSTORE"'"|' godot/export_presets.cfg
+          sed -i 's|^keystore/debug_user=.*|keystore/debug_user="androiddebugkey"|' godot/export_presets.cfg
+          sed -i 's|^keystore/debug_password=.*|keystore/debug_password="android"|' godot/export_presets.cfg
+          grep -E '^keystore/debug(_user|_password)?=' godot/export_presets.cfg
 
       - name: Validate Godot project
         run: |
