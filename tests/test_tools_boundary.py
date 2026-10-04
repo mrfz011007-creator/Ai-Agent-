@@ -444,6 +444,10 @@ def test_patch_file_rejects_oversized_result(monkeypatch, tmp_path):
 def test_router_bounds_command_timeout_to_remaining_runtime(tmp_path, monkeypatch):
     from core.runtime import AgentRuntime
 
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("AI_AGENT_ALLOW_HOST_EXECUTION", "1")
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
     runtime.budget_manager.budget.max_runtime_seconds = 5.0
     runtime.budget_manager.started_at = 0.0
@@ -470,7 +474,7 @@ def test_router_bounds_command_timeout_to_remaining_runtime(tmp_path, monkeypatc
             ToolRequest(
                 tool="run_command",
                 action="execute",
-                arguments={"command": "echo ok", "timeout": 900},
+                arguments={"command": "echo ok", "cwd": str(workspace), "timeout": 900},
             )
         )
     finally:
