@@ -412,3 +412,16 @@ def test_command_output_bounding_does_not_use_unbounded_temp_files(monkeypatch, 
     assert result["success"] is True
     assert result["output_truncated"] is True
     assert len(result["stdout"]) == 100
+
+ 
+def test_baca_file_rejects_oversized_file(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("AI_AGENT_MAX_FILE_BYTES", "8")
+    (workspace / "large.txt").write_text("0123456789", encoding="utf-8")
+
+    result = tools.baca_file("large.txt")
+
+    assert result["success"] is False
+    assert result["code"] == "FILE_TOO_LARGE"
