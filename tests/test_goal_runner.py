@@ -10,7 +10,7 @@ def test_runtime_run_goal_completes_through_execution_and_acceptance(tmp_path, m
             return (
                 '{"goal":"inspect workspace","tasks":'
                 '[{"task_id":"inspect","title":"Inspect workspace","dependencies":[]}],'
-                '"acceptance_criteria":["inspection succeeds"]}'
+                '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
             )
         return '{"tool":"lokasi","action":"execute","arguments":{}}'
 
@@ -115,7 +115,7 @@ def test_goal_runner_passes_prior_tool_result_to_dependent_task(tmp_path, monkey
             '{"goal":"inspect then validate","tasks":'
             '[{"task_id":"inspect","title":"Inspect source","dependencies":[]},'
             '{"task_id":"validate","title":"Validate inspected source","dependencies":["inspect"]}],'
-            '"acceptance_criteria":["both steps succeed"]}'
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
         )
 
     def fake_text(prompt, **kwargs):
