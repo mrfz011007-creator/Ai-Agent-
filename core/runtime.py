@@ -179,7 +179,7 @@ class AgentRuntime:
         if not goal.strip():
             raise ValueError("Goal cannot be empty")
         from memory_context import build_memory_context
-        proposer = ModelPlanService(self.model_gateway.generate_text)
+        proposer = ModelPlanService(self.model_gateway.generate_text, tool_catalog=self.tool_catalog())
         proposal = proposer.propose(
             goal,
             memory_context=build_memory_context(goal, project_id=project_id),
