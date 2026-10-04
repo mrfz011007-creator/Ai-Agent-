@@ -152,7 +152,7 @@ class ToolRouter:
         request_id = request.request_id or f"req-{uuid.uuid4().hex}"
         arguments_hash = hashlib.sha256(
             json.dumps(
-                dict(request.arguments),
+                dict(arguments),
                 sort_keys=True,
                 separators=(",", ":"),
                 default=str,
