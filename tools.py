@@ -272,6 +272,13 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
         }
 
     updated_text = text.replace(old, new)
+    if len(updated_text.encode("utf-8")) > max_bytes:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "Hasil patch melebihi batas ukuran file.",
+        }
     _atomic_write_text(path, updated_text)
     return {
         "status": "success",
@@ -338,6 +345,13 @@ def tulis_file(nama, isi, expected_sha256=None):
                     "success": False,
                     "code": "FILE_CHANGED",
                     "pesan": "Penulisan ditolak: file yang diharapkan tidak ada.",
+                }
+            if path.stat().st_size > _max_file_bytes():
+                return {
+                    "status": "error",
+                    "success": False,
+                    "code": "FILE_TOO_LARGE",
+                    "pesan": "File saat ini melebihi batas ukuran snapshot.",
                 }
             current = path.read_text(encoding="utf-8")
             current_sha256 = _sha256_text(current)
