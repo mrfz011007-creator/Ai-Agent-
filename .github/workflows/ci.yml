@@ -3,9 +3,11 @@ name: Godot CI
 on:
   workflow_dispatch:
   pull_request:
+  push:
+    branches: ["experiment/echoes-bug-hunt-fix"]
 
 concurrency:
-  group: echoes-bug-hunt-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: echoes-bug-hunt-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
