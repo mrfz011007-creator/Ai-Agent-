@@ -158,7 +158,8 @@ class Planner:
 
 class PlanDecoder:
     """Convert untrusted model output into a validated PlanProposal."""
-\n    _SAFE_READ_ONLY_TOOLS = (
+
+    _SAFE_READ_ONLY_TOOLS = (
         "lihat",
         "lokasi",
         "siapa",
@@ -168,8 +169,8 @@ class PlanDecoder:
         "search_memory",
     )
 
-    @staticmethod
-    def from_mapping(payload: Mapping[str, Any]) -> PlanProposal:
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, Any]) -> PlanProposal:
         goal = payload.get("goal")
         raw_tasks = payload.get("tasks")
         criteria = payload.get("acceptance_criteria", ())
