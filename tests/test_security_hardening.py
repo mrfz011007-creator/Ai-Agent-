@@ -152,7 +152,8 @@ def test_router_default_guard_cannot_be_omitted_to_bypass_interpreter_block(tmp_
     assert called == []
 
 
-def test_task_contract_blocks_combined_tool_escalation(tmp_path):
+def test_task_contract_blocks_combined_tool_escalation(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     store = StateStore(tmp_path / "state.sqlite3")
     manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
     task = manager.create(Task(
