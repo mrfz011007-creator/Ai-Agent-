@@ -76,9 +76,11 @@ Use `exit` to stop the process.
 
 Android/Termux is detected before the Linux namespace/chroot sandbox path is attempted. The agent therefore uses its hardened execution fallback on Termux.
 
-The fallback keeps command execution inside the configured workspace, does not invoke a shell, strips credential-like environment variables, and applies process resource limits where the platform exposes them. Network isolation is not guaranteed in the fallback mode.
+The fallback starts commands with the configured workspace as the current directory, does not invoke a shell, removes credential-like environment variables, and restricts executable lookup to the Termux prefix and Android system binary directories. It also enforces a wall-clock timeout, caps combined captured stdout/stderr in memory, stops the process group on timeout/output overflow, and applies available CPU, open-file, process, core-dump, and per-file-size resource limits.
 
-For that reason, treat Termux execution as a controlled local environment, not as a full security sandbox.
+Android/Termux does **not** receive a separate filesystem or network namespace from this fallback. A command can still access files and network resources allowed to the Termux app; RLIMIT_AS is deliberately skipped because it can prevent Android processes from starting. Treat this as defense-in-depth for a controlled local workspace, not as isolation for hostile code.
+
+Default process limits are 100,000 output bytes, 128 MiB per created file, and 1,024 MiB address space on non-Android POSIX systems. Configure AI_AGENT_PROCESS_FILE_MB or AI_AGENT_PROCESS_MEMORY_MB only when needed; the memory setting is not applied on Android.
 
 ## Recommended first smoke test
 

@@ -298,11 +298,12 @@ def test_recovery_controller_handles_model_exhaustion(tmp_path):
 class FailingTaskStore:
     def __init__(self, store):
         self.store = store
-        self.fail_next = False
+        self.fail_on_call = None
+        self.calls = 0
 
     def save_task(self, *args, **kwargs):
-        if self.fail_next:
-            self.fail_next = False
+        self.calls += 1
+        if self.fail_on_call == self.calls:
             raise OSError("task persistence unavailable")
         return self.store.save_task(*args, **kwargs)
 
@@ -319,7 +320,7 @@ def test_retry_persistence_failure_rolls_back_attempt_and_recovery_budget(tmp_pa
     budget = BudgetManager(Budget(max_recovery_cycles=1), state_store=store)
     recovery = RecoveryManager(manager, EvidenceStore(store), budget)
 
-    failing_store.fail_next = True
+    failing_store.fail_on_call = failing_store.calls + 2
     try:
         recovery.retry_after_failure(
             "R13", status="timeout", error="connection timed out", idempotent=True
@@ -339,3 +340,24 @@ def test_retry_persistence_failure_rolls_back_attempt_and_recovery_budget(tmp_pa
 
     restored_budget = StateStore(tmp_path / "state.sqlite3").load_budget()
     assert restored_budget["recovery_cycles"] == 0
+
+
+
+def test_recover_task_persistence_failure_restores_in_memory_state(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    failing_store = FailingTaskStore(store)
+    manager = TaskManager(store=failing_store, checkpoints=CheckpointManager(store))
+    manager.create(Task("R14", "recovery persist failure", status=TaskStatus.READY))
+    manager.start("R14")
+    recovery = RecoveryManager(manager, EvidenceStore(store))
+
+    failing_store.fail_on_call = failing_store.calls + 1
+    try:
+        recovery.recover_task("R14")
+        assert False, "recovery persistence failure should propagate"
+    except OSError:
+        pass
+
+    assert manager.get("R14").status == TaskStatus.RUNNING
+    restored = StateStore(tmp_path / "state.sqlite3").load_task("R14")
+    assert restored["status"] == "RUNNING"

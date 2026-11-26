@@ -182,3 +182,45 @@ def test_sandbox_cleanup_ignores_malformed_root_name(tmp_path):
 
     assert not root.exists()
     assert launcher.exists()
+
+
+
+def test_command_enforces_combined_output_limit(tmp_path):
+    script = "import sys; sys.stdout.write('x' * 20000000); sys.stdout.flush()"
+    result = run_command(
+        command=f"python3 -c {shlex.quote(script)}",
+        cwd=str(tmp_path),
+        timeout=10,
+        output_limit=8192,
+    )
+
+    assert result["status"] == "OUTPUT_LIMIT_EXCEEDED"
+    assert result["output_truncated"] is True
+    assert len(result["stdout"].encode("utf-8")) + len(result["stderr"].encode("utf-8")) <= 8192
+
+
+def test_command_rejects_invalid_timeout_and_output_limit(tmp_path):
+    invalid_timeout = run_command(command="true", cwd=str(tmp_path), timeout=float("nan"))
+    invalid_output = run_command(command="true", cwd=str(tmp_path), output_limit=0)
+
+    assert invalid_timeout["status"] == "INVALID_TIMEOUT"
+    assert invalid_output["status"] == "INVALID_OUTPUT_LIMIT"
+
+
+def test_command_enforces_per_file_size_limit(tmp_path, monkeypatch):
+    import resource
+
+    if not hasattr(resource, "RLIMIT_FSIZE"):
+        pytest.skip("RLIMIT_FSIZE is unavailable")
+
+    monkeypatch.setenv("AI_AGENT_PROCESS_FILE_MB", "1")
+    target = tmp_path / "large.bin"
+    script = "from pathlib import Path; Path('large.bin').write_bytes(b'x' * (2 * 1024 * 1024))"
+    result = run_command(
+        command=f"python3 -c {shlex.quote(script)}",
+        cwd=str(tmp_path),
+        timeout=10,
+    )
+
+    assert result["success"] is False
+    assert target.stat().st_size <= 1024 * 1024
