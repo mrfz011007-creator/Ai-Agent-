@@ -9,6 +9,7 @@ from typing import Any, Callable
 from core.budget import BudgetManager
 from core.model_config import ModelConfig
 from core.providers.gemini import GeminiProvider
+from core.providers.openrouter import OpenRouterProvider
 
 
 class CredentialState(str, Enum):
@@ -76,14 +77,38 @@ class ModelGateway:
 
     @staticmethod
     def classify_error(error: Exception) -> ProviderErrorKind:
-        message = str(error).lower()
-        if any(x in message for x in ("401", "403", "invalid api key", "unauthorized")):
+        messages = []
+        status_codes: list[int] = []
+        current: BaseException | None = error
+        seen: set[int] = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            messages.append(str(current).lower())
+            status_code = getattr(current, "status_code", None)
+            if isinstance(status_code, str) and status_code.isdigit():
+                status_code = int(status_code)
+            if isinstance(status_code, int):
+                status_codes.append(status_code)
+            current = current.__cause__ or current.__context__
+        message = " ".join(messages)
+        if any(code in {401, 403} for code in status_codes) or any(
+            x in message for x in ("401", "403", "invalid api key", "unauthorized")
+        ):
             return ProviderErrorKind.AUTH
+        if any(code in {402, 429} for code in status_codes) or any(
+            x in message for x in ("429", "resource_exhausted", "rate limit", "quota")
+        ):
+            return ProviderErrorKind.RATE_LIMIT
+        if any(code in {404, 408, 409, 425, 500, 502, 503, 504} for code in status_codes):
+            return ProviderErrorKind.UNAVAILABLE
         if any(x in message for x in ("400", "invalid argument", "malformed")):
             return ProviderErrorKind.BAD_REQUEST
-        if any(x in message for x in ("429", "resource_exhausted", "rate limit", "quota")):
-            return ProviderErrorKind.RATE_LIMIT
-        if any(x in message for x in ("503", "unavailable", "high demand", "timeout")):
+        if any(x in message for x in (
+            "503", "502", "504", "unavailable", "high demand", "timeout",
+            "timed out", "connection aborted", "connection reset", "connection",
+            "network", "url error", "no_model_credential_available",
+            "model_credentials_exhausted",
+        )):
             return ProviderErrorKind.UNAVAILABLE
         return ProviderErrorKind.UNKNOWN
 
@@ -97,7 +122,8 @@ class ModelGateway:
                 continue
             if credential.state == CredentialState.COOLDOWN:
                 credential.state = CredentialState.HEALTHY
-            if os.getenv(credential.secret_env):
+            secret = os.getenv(credential.secret_env, "")
+            if secret.strip():
                 available.append(credential)
         return available
 
@@ -221,7 +247,11 @@ def create_gemini_gateway(
     budget: BudgetManager | None = None,
     config: ModelConfig | None = None,
 ) -> ModelGateway:
-    config = config or ModelConfig.from_environment()
+    if config is None:
+        config = ModelConfig(
+            provider="gemini",
+            model=os.environ.get("AI_AGENT_GEMINI_MODEL", "gemini-3.8-flash").strip(),
+        )
     if config.provider != "gemini":
         raise ValueError(f"Unsupported model provider: {config.provider}")
     return ModelGateway(
@@ -230,3 +260,113 @@ def create_gemini_gateway(
         budget=budget,
         config=config,
     )
+
+
+def create_openrouter_gateway(
+    *,
+    budget: BudgetManager | None = None,
+    config: ModelConfig | None = None,
+) -> ModelGateway:
+    config = config or ModelConfig.from_environment()
+    if config.provider not in {"openrouter", "auto"}:
+        raise ValueError(f"Unsupported model provider: {config.provider}")
+    timeout = float(os.environ.get("AI_AGENT_MODEL_TIMEOUT_SECONDS", "45"))
+    return ModelGateway(
+        credentials=[Credential("OPENROUTER_API_KEY", "OPENROUTER_API_KEY")],
+        provider=OpenRouterProvider(timeout_seconds=timeout),
+        budget=budget,
+        config=ModelConfig(provider="openrouter", model=config.model),
+        max_attempts=1,
+    )
+
+
+class FallbackModelGateway:
+    """Bounded provider chain; model outputs remain untrusted tool proposals."""
+
+    def __init__(self, routes: list[ModelGateway]):
+        if not routes:
+            raise ValueError("At least one model route is required")
+        self.routes = routes
+
+    def _invoke(self, method: str, **kwargs):
+        last_error: Exception | None = None
+        for route in self.routes:
+            try:
+                return getattr(route, method)(**kwargs)
+            except Exception as error:
+                last_error = error
+                kind = ModelGateway.classify_error(error)
+                if kind not in {
+                    ProviderErrorKind.AUTH,
+                    ProviderErrorKind.RATE_LIMIT,
+                    ProviderErrorKind.UNAVAILABLE,
+                }:
+                    raise
+        if last_error is not None:
+            raise RuntimeError("MODEL_PROVIDERS_EXHAUSTED") from last_error
+        raise RuntimeError("NO_MODEL_PROVIDER_AVAILABLE")
+
+    def generate_text(
+        self,
+        prompt: str,
+        *,
+        system_instruction: str = "",
+        response_mime_type: str | None = None,
+    ) -> str:
+        return self._invoke(
+            "generate_text",
+            prompt=prompt,
+            system_instruction=system_instruction,
+            response_mime_type=response_mime_type,
+        )
+
+    def text(
+        self,
+        prompt: str,
+        *,
+        system_instruction: str = "",
+        response_mime_type: str | None = None,
+    ) -> str:
+        return self.generate_text(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            response_mime_type=response_mime_type,
+        )
+
+    def generate(self, *, contents: Any, config: Any) -> Any:
+        return self._invoke("generate", contents=contents, config=config)
+
+
+def create_model_gateway(
+    *,
+    budget: BudgetManager | None = None,
+    config: ModelConfig | None = None,
+):
+    """OpenRouter primary → one model backup → Gemini final fallback."""
+    config = config or ModelConfig.from_environment()
+    if config.provider == "gemini":
+        return create_gemini_gateway(budget=budget, config=config)
+    if config.provider not in {"openrouter", "auto"}:
+        raise ValueError(f"Unsupported model provider: {config.provider}")
+
+    routes = [create_openrouter_gateway(budget=budget, config=config)]
+    backup_model = os.environ.get(
+        "AI_AGENT_OPENROUTER_BACKUP_MODEL",
+        "nvidia/nemotron-3.5-super-vl:free",
+    ).strip()
+    if backup_model and backup_model != config.model:
+        routes.append(create_openrouter_gateway(
+            budget=budget,
+            config=ModelConfig(provider="openrouter", model=backup_model),
+        ))
+
+    gemini_model = os.environ.get(
+        "AI_AGENT_FALLBACK_GEMINI_MODEL",
+        "gemini-3.8-flash",
+    ).strip()
+    if gemini_model:
+        routes.append(create_gemini_gateway(
+            budget=budget,
+            config=ModelConfig(provider="gemini", model=gemini_model),
+        ))
+    return FallbackModelGateway(routes)

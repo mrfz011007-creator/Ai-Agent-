@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.budget import BudgetManager
-from core.model_gateway import ModelGateway, create_gemini_gateway
+from core.model_gateway import ModelGateway, create_model_gateway
 from core.model_planner import ModelPlanService
 from core.model_execution import ExecutionProposal
 from core.memory_service import MemoryService
@@ -62,7 +62,7 @@ class AgentRuntime:
         budget_manager = BudgetManager(Budget(), state_store=state_store)
         recovery_manager = RecoveryManager(task_manager, evidence_store, budget_manager)
         recovery_controller = RecoveryController(recovery_manager, task_manager)
-        model_gateway = create_gemini_gateway(
+        model_gateway = create_model_gateway(
             budget=budget_manager,
         )
 

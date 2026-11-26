@@ -46,17 +46,22 @@ python -m pytest -q
 
 A clean environment should report the repository test suite as passing.
 
-## 6. Configure Gemini keys
+## 6. Configure model providers
 
-Use environment variables; do not put API keys into source files:
+OpenRouter is the primary provider. Gemini remains the final fallback. Keep keys in Termux environment variables; never put them in source files or share them in chat.
 
 ```bash
-export GEMINI_API_KEY_1='YOUR_KEY_1'
-export GEMINI_API_KEY_2='YOUR_KEY_2'
-export GEMINI_API_KEY_3='YOUR_KEY_3'
+export OPENROUTER_API_KEY='YOUR_OPENROUTER_KEY'
+export GEMINI_API_KEY_1='YOUR_GEMINI_KEY_1'
+export GEMINI_API_KEY_2='YOUR_GEMINI_KEY_2'
+export GEMINI_API_KEY_3='YOUR_GEMINI_KEY_3'
+export AI_AGENT_MODEL_PROVIDER='openrouter'
+export AI_AGENT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free'
 ```
 
-At least one key is required for model execution. The gateway can rotate among the three configured credentials when a provider failure is classified as retryable or credential-related.
+The bounded model failover order is: configured OpenRouter primary → one OpenRouter backup (`nvidia/nemotron-3.5-super-vl:free` by default) → Gemini credential rotation. It does not try all five evaluation models for every request. Set `AI_AGENT_OPENROUTER_BACKUP_MODEL=''` to disable the OpenRouter backup. To use Gemini directly, set both `AI_AGENT_MODEL_PROVIDER='gemini'` and `AI_AGENT_MODEL='gemini-3.8-flash'`.
+
+Only retryable authentication, rate-limit, service-unavailable, and network failures trigger provider failover. Invalid request/configuration errors stop immediately. Every actual provider request consumes the existing model-call budget.
 
 ## 7. Start the agent
 
@@ -81,6 +86,16 @@ The fallback starts commands with the configured workspace as the current direct
 Android/Termux does **not** receive a separate filesystem or network namespace from this fallback. A command can still access files and network resources allowed to the Termux app; RLIMIT_AS is deliberately skipped because it can prevent Android processes from starting. Treat this as defense-in-depth for a controlled local workspace, not as isolation for hostile code.
 
 Default process limits are 100,000 output bytes, 128 MiB per created file, and 1,024 MiB address space on non-Android POSIX systems. Configure AI_AGENT_PROCESS_FILE_MB or AI_AGENT_PROCESS_MEMORY_MB only when needed; the memory setting is not applied on Android.
+
+## Compare the five free OpenRouter candidates
+
+Install dependencies, set OPENROUTER_API_KEY, then run one equal-prompt evaluation against all five configured candidates:
+
+```bash
+python scripts/evaluate_openrouter_models.py
+```
+
+The script measures latency and checks the same reasoning answer, Python function syntax/declaration, and proposed `baca_file` tool arguments for each model. It parses model-generated code but never executes it, and it never executes proposed tools. A live evaluation requires the user's own OpenRouter key and provider availability; CI uses mocked network responses only.
 
 ## Recommended first smoke test
 
