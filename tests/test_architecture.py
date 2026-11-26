@@ -342,7 +342,7 @@ def test_workspace_guard_denies_command_outside_workspace(tmp_path):
 
 
 def test_command_runner_redacts_secrets_and_caps_output(tmp_path):
-    from execution.command import run_command
+    from execution.command import _run_command_unchecked as run_command
 
     result = run_command(
         command="python -c \"print('api_key=TOPSECRET ' + 'x'*200)\"",

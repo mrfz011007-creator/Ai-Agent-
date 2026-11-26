@@ -103,8 +103,8 @@ def test_file_and_search_limits_are_bounded(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_AGENT_MAX_SEARCH_BYTES", "32")
 
     (root / "large.txt").write_text("0123456789", encoding="utf-8")
-    (root / "a.py").write_text("needle-a\n", encoding="utf-8")
-    (root / "b.py").write_text("needle-b\n", encoding="utf-8")
+    (root / "a.py").write_text("needle\n", encoding="utf-8")
+    (root / "b.py").write_text("needle\n", encoding="utf-8")
 
     assert tools.baca_file("large.txt")["code"] == "FILE_TOO_LARGE"
     found = tools.cari_teks("needle", "*.py")
