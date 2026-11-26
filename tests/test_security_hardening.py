@@ -27,7 +27,7 @@ def test_guard_denies_interpreters_shells_and_launch_wrappers(tmp_path):
     commands = [
         f"{sys.executable} -c 'print(1)'",
         "python3 -c 'print(1)'",
-        "python3.14 -c 'print(1)',
+        "python3.14 -c 'print(1)'",
         "node -e 'process.exit(0)'",
         "bash -c 'echo unsafe'",
         "env python -c 'print(1)'",
