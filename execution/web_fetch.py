@@ -4,6 +4,7 @@ import http.client
 import ipaddress
 import socket
 import ssl
+import time
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 MAX_URL_CHARS = 2048
@@ -101,18 +102,55 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
             raise
 
 
+def _read_bounded(response, connection, deadline: float) -> bytes:
+    chunks = []
+    total = 0
+    reader = getattr(response, "read1", None)
+    if reader is None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise WebFetchError("REQUEST_TIMEOUT")
+        sock = getattr(connection, "sock", None)
+        if sock is not None:
+            sock.settimeout(remaining)
+        body = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise WebFetchError("RESPONSE_TOO_LARGE")
+        return body
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise WebFetchError("REQUEST_TIMEOUT")
+        sock = getattr(connection, "sock", None)
+        if sock is not None:
+            sock.settimeout(remaining)
+        chunk = reader(min(65_536, MAX_RESPONSE_BYTES + 1 - total))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > MAX_RESPONSE_BYTES:
+            raise WebFetchError("RESPONSE_TOO_LARGE")
+    return b"".join(chunks)
+
+
 def fetch_url(url: str) -> dict:
     """Fetch one public HTTPS text page without credentials, cookies or writes."""
     current = url
     for redirect_count in range(MAX_REDIRECTS + 1):
+        deadline = time.monotonic() + REQUEST_TIMEOUT_SECONDS
         normalized, host, target = _parse_https_url(current)
         addresses = _public_addresses(host)
+        if time.monotonic() >= deadline:
+            raise WebFetchError("REQUEST_TIMEOUT")
         connection = None
         response = None
         last_error = None
         for address in addresses:
             try:
                 connection = _PinnedHTTPSConnection(host, address)
+                connection.timeout = max(0.1, deadline - time.monotonic())
                 connection.request(
                     "GET",
                     target,
@@ -138,7 +176,7 @@ def fetch_url(url: str) -> dict:
             status = response.status
             if status in {301, 302, 303, 307, 308}:
                 location = response.getheader("Location")
-                response.read(4096)
+                _read_bounded(response, connection, deadline)
                 if redirect_count >= MAX_REDIRECTS or not location:
                     raise WebFetchError("REDIRECT_LIMIT_OR_LOCATION_INVALID")
                 current = urljoin(normalized, location)
@@ -157,9 +195,7 @@ def fetch_url(url: str) -> dict:
                 except ValueError as error:
                     raise WebFetchError("CONTENT_LENGTH_INVALID") from error
 
-            body = response.read(MAX_RESPONSE_BYTES + 1)
-            if len(body) > MAX_RESPONSE_BYTES:
-                raise WebFetchError("RESPONSE_TOO_LARGE")
+            body = _read_bounded(response, connection, deadline)
             charset = "utf-8"
             content_type_header = response.getheader("Content-Type", "")
             for parameter in content_type_header.split(";")[1:]:
