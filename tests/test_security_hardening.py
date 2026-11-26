@@ -431,6 +431,7 @@ def test_sandbox_policy_error_is_not_misclassified_as_value_error(tmp_path, monk
     def policy_failure(*args, **kwargs):
         raise command.SandboxPolicyError("unsafe executable")
 
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setattr(command, "prepare_sandbox", unavailable)
     monkeypatch.setattr(command, "prepare_hardened", policy_failure)
 
