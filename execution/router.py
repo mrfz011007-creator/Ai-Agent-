@@ -36,8 +36,9 @@ class ToolRouter:
         self._budget = budget
         self._evidence = evidence
         self._confirmation = confirmation
-        workspace_root = os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
-        self._guard = guard or GuardEngine(workspace_root)
+        workspace_root = os.environ.get("AI_AGENT_WORKSPACE_ROOT")
+        self._workspace_configured = bool(workspace_root and workspace_root.strip()) or guard is not None
+        self._guard = guard or GuardEngine(workspace_root or "/__ai_agent_workspace_not_configured__")
         self._task_getter = task_getter
         self._capability_policy = capability_policy
         self._task_tool_call_consumer = task_tool_call_consumer
@@ -46,6 +47,13 @@ class ToolRouter:
         metadata = self._registry_getter(request.tool)
         if metadata is None:
             return ToolResult(False, "denied", request.tool, error="Unknown tool")
+        if request.tool == "run_command" and not self._workspace_configured:
+            return ToolResult(
+                False,
+                "guard_denied",
+                request.tool,
+                error="WORKSPACE_NOT_CONFIGURED",
+            )
 
         contract = None
         if self._task_getter is not None and request.task_id is not None:
