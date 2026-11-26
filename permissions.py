@@ -19,7 +19,8 @@ def minta_konfirmasi(nama_tool, args):
     )
     rendered = json.dumps(redact_value(args), ensure_ascii=False, sort_keys=True)
     if len(rendered) > 2000:
-        rendered = rendered[:2000] + "...[ARGUMEN DIPOTONG]"
+        print("Persetujuan ditolak: argumen terlalu panjang untuk ditampilkan secara utuh.")
+        return False
     print("Argumen:", rendered)
     expected = f"SETUJU {nama_tool}"
     jawaban = input(f"Ketik persis '{expected}' untuk melanjutkan: ").strip()

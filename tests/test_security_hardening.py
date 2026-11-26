@@ -436,3 +436,27 @@ def test_sandbox_policy_error_is_not_misclassified_as_value_error(tmp_path, monk
 
     result = command.run_command(command="ls", cwd=str(tmp_path))
     assert result["status"] == "SANDBOX_POLICY_ERROR"
+
+
+def test_confirmation_rejects_arguments_that_would_be_truncated(monkeypatch):
+    import permissions
+
+    def unexpected_input(_prompt):
+        raise AssertionError("confirmation must not be requested for hidden arguments")
+
+    monkeypatch.setattr("builtins.input", unexpected_input)
+    result = permissions.minta_konfirmasi(
+        "tulis_file",
+        {"nama": "large.txt", "isi": "x" * 3000},
+    )
+    assert result is False
+
+
+def test_schema_rejects_invalid_unicode_before_execution():
+    schema = {
+        "type": "object",
+        "properties": {"value": {"type": "string"}},
+        "required": ["value"],
+    }
+    with pytest.raises(SchemaValidationError, match="INVALID_UNICODE"):
+        validate_tool_arguments(schema, {"value": "\ud800"})
