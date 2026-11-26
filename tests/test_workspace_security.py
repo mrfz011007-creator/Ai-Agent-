@@ -183,8 +183,8 @@ def test_atomic_replace_detaches_hardlink_before_write(monkeypatch, tmp_path):
     real_write_all = workspace_io._write_all
 
     def create_racing_hardlink(fd, payload):
-        # Simulate an attacker linking the old inode while the replacement
-        # content is being prepared. The old inode must never be written.
+        # Link the old inode after inspection but before atomic replacement.
+        os.link(target, outside_link)
         real_write_all(fd, payload)
 
     monkeypatch.setattr(workspace_io, "_write_all", create_racing_hardlink)
