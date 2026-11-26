@@ -29,6 +29,10 @@ DEFAULT_MEMORY_LIMIT_MB = 1024
 MIN_MEMORY_LIMIT_MB = 128
 DEFAULT_FILE_LIMIT_MB = 128
 MIN_FILE_LIMIT_MB = 1
+ANDROID_MAX_WALL_SECONDS = 120.0
+ANDROID_MAX_CPU_SECONDS = 30
+ANDROID_MAX_FILE_MB = 16
+ANDROID_MAX_OUTPUT_BYTES = 64 * 1024
 
 
 def _terminate_process(process: subprocess.Popen) -> None:
@@ -115,6 +119,8 @@ def _apply_resource_limits(timeout: float) -> None:
         os.environ.get("PREFIX", "").startswith("/data/")
         or Path("/system/bin").exists()
     )
+    if is_android:
+        cpu_seconds = min(cpu_seconds, ANDROID_MAX_CPU_SECONDS)
     memory_mb = None
     if not is_android:
         memory_mb = _read_limit_env(
@@ -123,6 +129,8 @@ def _apply_resource_limits(timeout: float) -> None:
     file_mb = _read_limit_env(
         "AI_AGENT_PROCESS_FILE_MB", DEFAULT_FILE_LIMIT_MB, MIN_FILE_LIMIT_MB
     )
+    if is_android:
+        file_mb = min(file_mb, ANDROID_MAX_FILE_MB)
 
     def set_capped(limit_name: str, desired: int) -> None:
         if not hasattr(resource, limit_name):
@@ -134,8 +142,8 @@ def _apply_resource_limits(timeout: float) -> None:
         resource.setrlimit(limit, (desired, desired))
 
     set_capped("RLIMIT_CPU", cpu_seconds)
-    set_capped("RLIMIT_NOFILE", 128)
-    set_capped("RLIMIT_NPROC", 128)
+    set_capped("RLIMIT_NOFILE", 64 if is_android else 128)
+    set_capped("RLIMIT_NPROC", 32 if is_android else 128)
     set_capped("RLIMIT_CORE", 0)
     set_capped("RLIMIT_FSIZE", file_mb * 1024 * 1024)
 
@@ -177,6 +185,16 @@ def run_command(
             "stdout": "",
             "stderr": "timeout must be a finite positive number",
         }
+
+    is_android = (
+        os.environ.get("PREFIX", "").startswith("/data/")
+        or Path("/system/bin").exists()
+    )
+    if is_android:
+        # Conservative hard caps for shared Termux devices. These limits are
+        # applied even when callers request a larger timeout or output buffer.
+        timeout = min(float(timeout), ANDROID_MAX_WALL_SECONDS)
+        output_limit = min(output_limit, ANDROID_MAX_OUTPUT_BYTES)
 
     try:
         argv = shlex.split(command)
@@ -319,19 +337,19 @@ def run_command(
             "output_truncated": limited,
             "sandbox_mode": sandbox_mode,
         }
-    except ValueError as error:
+    except SandboxPolicyError as error:
         return {
             "success": False,
-            "status": "INVALID_RESOURCE_LIMIT",
+            "status": "SANDBOX_POLICY_ERROR",
             "exit_code": None,
             "stdout": "",
             "stderr": str(error),
             "sandbox_mode": sandbox_mode,
         }
-    except SandboxPolicyError as error:
+    except ValueError as error:
         return {
             "success": False,
-            "status": "SANDBOX_POLICY_ERROR",
+            "status": "INVALID_RESOURCE_LIMIT",
             "exit_code": None,
             "stdout": "",
             "stderr": str(error),

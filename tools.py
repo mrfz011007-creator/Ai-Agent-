@@ -6,6 +6,7 @@ import shlex
 from pathlib import Path
 
 from execution.command import run_command
+from security.guard import GuardEngine
 
 DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_SEARCH_RESULTS = 5000
@@ -40,10 +41,21 @@ def path_aman(nama: str) -> Path:
 
 def jalankan(command):
     """Run a command through the bounded command executor."""
-    result = run_command(
-        command=shlex.join(command) if not isinstance(command, str) else command,
-        cwd=str(workspace_root()),
+    command_text = shlex.join(command) if not isinstance(command, str) else command
+    cwd = str(workspace_root())
+    decision = GuardEngine(workspace_root()).check(
+        tool="run_command",
+        arguments={"command": command_text, "cwd": cwd},
     )
+    if not decision.allowed:
+        return {
+            "success": False,
+            "status": "GUARD_DENIED",
+            "stdout": "",
+            "stderr": decision.reason,
+            "returncode": None,
+        }
+    result = run_command(command=command_text, cwd=cwd)
     return {
         "success": result["success"],
         "status": result["status"],
@@ -322,14 +334,12 @@ def tulis_file(nama, isi, expected_sha256=None):
 
 
 def jalankan_python(nama):
-    try:
-        path = path_aman(nama)
-        if path.suffix.lower() != ".py":
-            raise ValueError("Hanya file Python (.py) yang boleh dijalankan.")
-        return jalankan(["python", str(path)])
-    except Exception as error:
-        return {
-            "status": "error",
-            "success": False,
-            "pesan": str(error),
-        }
+    """Refuse direct script execution; Termux does not isolate hostile code."""
+    return {
+        "status": "error",
+        "success": False,
+        "pesan": (
+            "Eksekusi file Python dinonaktifkan melalui agent karena Termux "
+            "tidak menyediakan isolasi filesystem dan jaringan yang memadai."
+        ),
+    }

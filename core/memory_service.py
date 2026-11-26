@@ -100,44 +100,52 @@ class MemoryService:
         committed = []
         rejected = []
         for candidate in candidates:
-            # High-risk proposals never receive autonomous persistence authority.
-            if candidate.risk == "high":
-                item = reflection_queue.enqueue({"key": candidate.key, "value": candidate.value,
-                    "memory_type": candidate.memory_type, "summary": candidate.summary,
-                    "confidence": candidate.confidence, "importance": candidate.importance,
-                    "retention": candidate.retention, "evidence_refs": list(candidate.evidence_refs),
-                    "tags": list(candidate.tags), "scope": candidate.scope, "risk": candidate.risk,
-                    "project_id": project_id if project_id is not None else self.project_id,
-                    "task_id": task_id, "context": context or {}, "source": source},
-                    reason="REFLECTION_HIGH_RISK_REQUIRES_REVIEW")
-                rejected.append({"key": candidate.key, "status": "pending_review", "review_id": item["id"]})
+            existing = search_memory(
+                candidate.key,
+                memory_type=candidate.memory_type,
+                project_id=project_id if project_id is not None else self.project_id,
+                task_id=task_id,
+                limit=5,
+            )
+            if any(
+                item["record"].get("value") == candidate.value
+                for item in existing.get("results", [])
+            ):
+                rejected.append({
+                    "key": candidate.key,
+                    "status": "duplicate",
+                    "reason": "REFLECTION_DUPLICATE",
+                })
                 continue
-            existing = search_memory(candidate.key, memory_type=candidate.memory_type,
-                project_id=project_id if project_id is not None else self.project_id, task_id=task_id, limit=5)
-            if any(item["record"].get("value") == candidate.value for item in existing.get("results", [])):
-                rejected.append({"key": candidate.key, "status": "duplicate", "reason": "REFLECTION_DUPLICATE"})
-                continue
-            result = self.commit_proposal({
-                "key": candidate.key,
-                "value": candidate.value,
-                "memory_type": candidate.memory_type,
-                "project_id": project_id if project_id is not None else self.project_id,
-                "task_id": task_id,
-                "context": context or {},
-                "source": source,
-                "provenance": {
-                    "reason": "bounded_reflection",
+
+            # Model-generated memory is never committed automatically. Evidence
+            # references prove provenance, not that the model's interpretation
+            # is true or safe. Every candidate requires explicit review.
+            item = reflection_queue.enqueue(
+                {
+                    "key": candidate.key,
+                    "value": candidate.value,
+                    "memory_type": candidate.memory_type,
+                    "summary": candidate.summary,
+                    "confidence": candidate.confidence,
+                    "importance": candidate.importance,
+                    "retention": candidate.retention,
+                    "evidence_refs": list(candidate.evidence_refs),
+                    "tags": list(candidate.tags),
                     "scope": candidate.scope,
                     "risk": candidate.risk,
-                    "reflection_evidence_refs": list(candidate.evidence_refs),
+                    "project_id": project_id if project_id is not None else self.project_id,
+                    "task_id": task_id,
+                    "context": context or {},
+                    "source": source,
                 },
-                "importance": candidate.importance,
-                "confidence": candidate.confidence,
-                "retention": candidate.retention,
-                "summary": candidate.summary,
-                "evidence_refs": list(candidate.evidence_refs),
+                reason="REFLECTION_REQUIRES_HUMAN_REVIEW",
+            )
+            rejected.append({
+                "key": candidate.key,
+                "status": "pending_review",
+                "review_id": item["id"],
             })
-            (committed if result.get("success") else rejected).append(result)
         return {"status": "success", "success": True, "committed": committed, "rejected": rejected}
 
     def review_reflection(self, review_id: str, *, approve: bool, reviewer: str = "human") -> dict[str, Any]:
@@ -191,6 +199,7 @@ def memory_prompt_context(result: Mapping[str, Any]) -> list[dict[str, Any]]:
             }
         rows.append({
             "type": record.get("type"),
+            "trust_boundary": "untrusted_reference_only",
             "key": record.get("key"),
             "value": value,
             "summary": record.get("summary"),

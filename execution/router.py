@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import uuid
 from typing import Callable
 
@@ -35,7 +36,8 @@ class ToolRouter:
         self._budget = budget
         self._evidence = evidence
         self._confirmation = confirmation
-        self._guard = guard
+        workspace_root = os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
+        self._guard = guard or GuardEngine(workspace_root)
         self._task_getter = task_getter
         self._capability_policy = capability_policy
         self._task_tool_call_consumer = task_tool_call_consumer
@@ -138,6 +140,17 @@ class ToolRouter:
                     error=str(error),
                 )
 
+        # Run security inspection before asking for approval so a disallowed
+        # process request can never be approved accidentally.
+        guard = self._guard.check(tool=request.tool, arguments=arguments)
+        if not guard.allowed:
+            return ToolResult(
+                False,
+                "guard_denied",
+                request.tool,
+                error=guard.reason,
+            )
+
         policy = self._policy.decide(
             PolicyContext(
                 tool=request.tool,
@@ -160,19 +173,6 @@ class ToolRouter:
                     "cancelled",
                     request.tool,
                     error="User denied tool execution",
-                )
-
-        if self._guard is not None:
-            guard = self._guard.check(
-                tool=request.tool,
-                arguments=arguments,
-            )
-            if not guard.allowed:
-                return ToolResult(
-                    False,
-                    "guard_denied",
-                    request.tool,
-                    error=guard.reason,
                 )
 
         # Check the task-local quota without mutating it. Mutation is deferred

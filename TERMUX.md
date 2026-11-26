@@ -169,3 +169,14 @@ export AI_AGENT_REFLECT_ON_SUCCESS=1
 ```
 
 The default keeps the existing experience → reflection → memory-candidate pipeline for failures while preserving a low-quota path for successful execution.
+
+
+## Security posture after command hardening
+
+The agent command tool on Android/Termux is **not a full sandbox**. Termux fallback does not create independent filesystem or network namespaces, so arbitrary programs must not be run as if they were isolated.
+
+The agent-facing `run_command` route is restricted to a small allowlist of non-interpreting utilities (`pwd`, `ls`, `whoami`, `true`, `false`, `echo`, and `printf`). Shells, interpreters (including Python and Node), executable wrappers, unknown binaries, non-trusted executable paths, and workspace-escaping `ls` paths are denied. `jalankan_python` is disabled. The lower-level process runner remains an internal implementation detail; it is not permission to expose arbitrary command execution through a tool.
+
+Termux applies conservative upper bounds to process wall time, CPU time, captured output, file size, open descriptors, and process count. Android memory address-space limits remain disabled for compatibility with Bionic. These controls are defense-in-depth and do not provide a total disk quota or network isolation.
+
+Tools requiring confirmation demand the exact phrase `SETUJU <nama_tool>`. Approval does not create a sandbox and does not grant extra Android permissions.

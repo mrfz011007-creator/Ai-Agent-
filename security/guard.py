@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+import re
 import shlex
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,75 +14,150 @@ class GuardResult:
     reason: str
 
 
-_SHELL_EXECUTABLES = {"sh", "bash", "dash", "zsh", "fish", "ksh", "csh", "tcsh"}
-
-
-_DESTRUCTIVE_EXECUTABLES = {
-    "rm",
-    "rmdir",
-    "dd",
-    "mkfs",
-    "mkfs.ext4",
-    "shutdown",
-    "reboot",
-    "poweroff",
-    "halt",
-    "kill",
-    "killall",
-    "pkill",
+# Termux is not a hostile-code sandbox. Only small, non-interpreting utilities
+# are permitted through the agent command tool until a real isolation backend
+# is available.
+_SAFE_EXECUTABLES = {"pwd", "ls", "whoami", "true", "false", "echo", "printf"}
+_INTERPRETERS = {
+    "python", "python2", "python3", "pypy", "pypy3", "node", "nodejs",
+    "npm", "npx", "pnpm", "yarn", "ruby", "perl", "php", "lua",
+    "luajit", "java", "javac", "jshell", "r", "rscript",
 }
+_SHELLS = {"sh", "bash", "dash", "zsh", "fish", "ksh", "csh", "tcsh"}
+_LAUNCHERS = {"env", "busybox", "xargs", "nohup", "setsid", "timeout", "exec"}
+_LS_FLAGS = {"-a", "-l", "-la", "-al", "-h", "-lah", "-alh", "--color=never"}
 
 
 class GuardEngine:
-    """Concrete safety checks after permission and before execution."""
+    """Fail-closed command policy shared by all agent execution entry points."""
 
     def __init__(self, workspace_root: str | Path):
         self.workspace_root = Path(workspace_root).resolve()
 
+    @staticmethod
+    def _is_android() -> bool:
+        return (
+            os.environ.get("PREFIX", "").startswith("/data/")
+            or Path("/system/bin").exists()
+        )
+
+    @classmethod
+    def _trusted_binary_roots(cls) -> tuple[Path, ...]:
+        if cls._is_android():
+            prefix = Path(os.environ.get("PREFIX", ""))
+            roots = (prefix / "bin", Path("/system/bin"), Path("/system/xbin"))
+        else:
+            roots = (Path("/usr/bin"), Path("/bin"), Path("/usr/local/bin"))
+        return tuple(root.resolve() for root in roots if root.is_dir())
+
+    def _resolve_executable(self, token: str) -> tuple[str | None, str]:
+        basename = Path(token).name.lower()
+        if basename in _SHELLS:
+            return None, "SHELL_EXECUTION_DENIED"
+        if basename in _INTERPRETERS or re.fullmatch(r"python\d*(?:\.\d+)*", basename):
+            return None, "INTERPRETER_EXECUTION_DENIED"
+        if basename in _LAUNCHERS:
+            return None, "EXECUTION_WRAPPER_DENIED"
+        if basename not in _SAFE_EXECUTABLES:
+            return None, "EXECUTABLE_NOT_ALLOWLISTED"
+
+        roots = self._trusted_binary_roots()
+        if "/" in token or "\\" in token:
+            candidate = Path(token)
+            if not candidate.is_absolute():
+                return None, "RELATIVE_EXECUTABLE_PATH_DENIED"
+        else:
+            search_path = os.pathsep.join(str(root) for root in roots)
+            located = shutil.which(token, path=search_path)
+            if located is None:
+                return None, "EXECUTABLE_NOT_FOUND_IN_TRUSTED_PATH"
+            candidate = Path(located)
+
+        # Check both the entry point and its resolved target. This blocks a
+        # workspace symlink named "ls" that actually points to Python.
+        try:
+            candidate_absolute = Path(os.path.abspath(candidate))
+            candidate_parent = candidate_absolute.parent.resolve(strict=True)
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return None, "EXECUTABLE_PATH_INVALID"
+        if not any(candidate_parent == root or root in candidate_parent.parents for root in roots):
+            return None, "EXECUTABLE_ENTRY_OUTSIDE_TRUSTED_PATH"
+        if not any(resolved == root or root in resolved.parents for root in roots):
+            return None, "EXECUTABLE_OUTSIDE_TRUSTED_PATH"
+
+        target_name = resolved.name.lower()
+        android_multicall = self._is_android() and (
+            target_name == "coreutils"
+            and candidate_parent == (Path(os.environ.get("PREFIX", "")) / "bin").resolve()
+            or target_name == "toybox"
+            and candidate_parent == Path("/system/bin").resolve()
+        )
+        if target_name != basename and not android_multicall:
+            return None, "EXECUTABLE_TARGET_MISMATCH"
+        if not resolved.is_file() or not os.access(resolved, os.X_OK):
+            return None, "EXECUTABLE_NOT_RUNNABLE"
+
+        # Keep the original symlink entry point; Termux coreutils dispatches by
+        # the invoked name (for example, .../bin/ls -> coreutils).
+        return str(candidate), "GUARD_ALLOWED"
+
     def check(self, *, tool: str, arguments: dict) -> GuardResult:
+        if tool == "jalankan_python":
+            return GuardResult(False, "INTERPRETER_EXECUTION_DENIED")
+        if tool != "run_command":
+            return GuardResult(True, "GUARD_NOT_APPLICABLE")
+
         cwd = arguments.get("cwd")
-        if tool == "run_command":
-            if not cwd:
-                return GuardResult(False, "WORKSPACE_CWD_REQUIRED")
-            try:
-                resolved = Path(cwd).resolve()
-            except OSError as error:
-                return GuardResult(False, f"WORKSPACE_CWD_INVALID: {error}")
-            if not self._inside_workspace(resolved):
-                return GuardResult(False, "WORKSPACE_BOUNDARY_VIOLATION")
+        if not isinstance(cwd, str) or not cwd.strip():
+            return GuardResult(False, "WORKSPACE_CWD_REQUIRED")
+        try:
+            resolved_cwd = Path(cwd).resolve(strict=True)
+        except (OSError, RuntimeError):
+            return GuardResult(False, "WORKSPACE_CWD_INVALID")
+        if not resolved_cwd.is_dir() or not self._inside_workspace(resolved_cwd):
+            return GuardResult(False, "WORKSPACE_BOUNDARY_VIOLATION")
 
-            command = arguments.get("command")
-            if not isinstance(command, str) or not command.strip():
-                return GuardResult(False, "COMMAND_REQUIRED")
-            try:
-                argv = shlex.split(command)
-            except ValueError as error:
-                return GuardResult(False, f"COMMAND_PARSE_ERROR: {error}")
-            if not argv:
-                return GuardResult(False, "COMMAND_EMPTY")
+        command = arguments.get("command")
+        if not isinstance(command, str) or not command.strip():
+            return GuardResult(False, "COMMAND_REQUIRED")
+        try:
+            argv = shlex.split(command)
+        except (TypeError, ValueError):
+            return GuardResult(False, "COMMAND_PARSE_ERROR")
+        if not argv:
+            return GuardResult(False, "COMMAND_EMPTY")
 
-            executable = Path(argv[0]).name.lower()
-            if executable in _SHELL_EXECUTABLES:
-                return GuardResult(False, "SHELL_EXECUTION_DENIED")
-            if executable in _DESTRUCTIVE_EXECUTABLES:
-                return GuardResult(False, "DESTRUCTIVE_COMMAND_DENIED")
+        executable, reason = self._resolve_executable(argv[0])
+        if executable is None:
+            return GuardResult(False, reason)
 
-            if executable == "git" and self._destructive_git(argv[1:]):
-                return GuardResult(False, "DESTRUCTIVE_GIT_COMMAND_DENIED")
+        name = Path(argv[0]).name.lower()
+        args = argv[1:]
+        if name in {"pwd", "whoami", "true", "false"} and args:
+            return GuardResult(False, "COMMAND_ARGUMENTS_NOT_ALLOWED")
+        if name == "ls":
+            for item in args:
+                if item.startswith("-"):
+                    if item not in _LS_FLAGS:
+                        return GuardResult(False, "LS_OPTION_NOT_ALLOWLISTED")
+                    continue
+                target = Path(item)
+                if not target.is_absolute():
+                    target = resolved_cwd / target
+                try:
+                    resolved_target = target.resolve(strict=True)
+                except (OSError, RuntimeError):
+                    return GuardResult(False, "LS_PATH_INVALID")
+                if not self._inside_workspace(resolved_target):
+                    return GuardResult(False, "WORKSPACE_BOUNDARY_VIOLATION")
+        if name in {"echo", "printf"} and any(
+            token in {";", "&&", "||", "|", ">", "<", "`"}
+            for token in args
+        ):
+            return GuardResult(False, "COMMAND_CONTROL_TOKEN_DENIED")
 
         return GuardResult(True, "GUARD_ALLOWED")
-
-    @staticmethod
-    def _destructive_git(args: list[str]) -> bool:
-        if not args:
-            return False
-        if args[0] == "reset" and "--hard" in args:
-            return True
-        if args[0] == "clean" and any(flag.startswith("-") and "f" in flag for flag in args):
-            return True
-        if args[0] == "checkout" and "--" in args:
-            return True
-        return False
 
     def _inside_workspace(self, path: Path) -> bool:
         try:

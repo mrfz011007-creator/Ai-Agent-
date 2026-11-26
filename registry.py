@@ -12,6 +12,9 @@ from tools import (
 )
 
 from execution.command import run_command
+from security.guard import GuardEngine
+from security.schema import SchemaValidationError, validate_tool_arguments
+import os
 
 from memory import (
     remember,
@@ -21,6 +24,39 @@ from memory_context import (
     recall_memory,
     search_memory_tool,
 )
+
+
+def _guarded_run_command(*, command, cwd, timeout=120.0):
+    """Re-check process requests at the registered handler boundary."""
+    workspace = os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
+    try:
+        validate_tool_arguments(
+            TOOL_REGISTRY["run_command"]["parameters"],
+            {"command": command, "cwd": cwd, "timeout": timeout},
+        )
+    except SchemaValidationError as error:
+        return {
+            "success": False,
+            "status": "SCHEMA_INVALID",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": str(error),
+            "sandbox_mode": "not_started",
+        }
+    decision = GuardEngine(workspace).check(
+        tool="run_command",
+        arguments={"command": command, "cwd": cwd},
+    )
+    if not decision.allowed:
+        return {
+            "success": False,
+            "status": "GUARD_DENIED",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": decision.reason,
+            "sandbox_mode": "not_started",
+        }
+    return run_command(command=command, cwd=cwd, timeout=timeout)
 
 
 TOOL_REGISTRY = {
@@ -169,16 +205,16 @@ TOOL_REGISTRY = {
 
     "run_command": {
         "capabilities": ["process.execute"],
-        "func": run_command,
+        "func": _guarded_run_command,
         "permission": "confirm",
         "description": "Menjalankan satu command proyek melalui execution boundary yang dibatasi.",
         "parameters": {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "command": {"type": "string"},
-                "cwd": {"type": "string"},
-                "timeout": {"type": "number"},
+                "command": {"type": "string", "maxLength": 4096},
+                "cwd": {"type": "string", "maxLength": 2048},
+                "timeout": {"type": "number", "minimum": 0.1, "maximum": 120},
             },
             "required": ["command", "cwd"],
         },
@@ -187,8 +223,8 @@ TOOL_REGISTRY = {
     "jalankan_python": {
         "capabilities": ["process.execute"],
         "func": jalankan_python,
-        "permission": "confirm",
-        "description": "Menjalankan file Python.",
+        "permission": "blocked",
+        "description": "Dinonaktifkan: eksekusi interpreter tidak aman pada fallback Termux.",
         "parameters": {
             "type": "object",
             "properties": {

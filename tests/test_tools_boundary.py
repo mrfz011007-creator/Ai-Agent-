@@ -313,18 +313,24 @@ def test_guard_rejects_shell_execution_bypass(tmp_path):
     assert result.reason == "SHELL_EXECUTION_DENIED"
 
 
-def test_guard_still_allows_non_shell_executables(tmp_path):
+def test_guard_denies_interpreter_execution_and_allows_basic_utilities(tmp_path):
     from security.guard import GuardEngine
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     guard = GuardEngine(workspace)
 
-    result = guard.check(
+    blocked = guard.check(
         tool="run_command",
         arguments={"cwd": str(workspace), "command": "python -c 'print(1)'"},
     )
-    assert result.allowed is True
+    allowed = guard.check(
+        tool="run_command",
+        arguments={"cwd": str(workspace), "command": "ls -la"},
+    )
+    assert blocked.allowed is False
+    assert blocked.reason == "INTERPRETER_EXECUTION_DENIED"
+    assert allowed.allowed is True
 
 
 def test_router_rejects_task_tool_call_bound_to_stale_attempt(tmp_path):
