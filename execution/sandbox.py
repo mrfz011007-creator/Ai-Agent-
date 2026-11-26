@@ -272,7 +272,7 @@ def prepare_sandbox(
         f"WORK={work_q}",
         'mount -t tmpfs -o size=128m,nr_inodes=8192 tmpfs "$ROOT"',
         'mkdir -p "$ROOT/usr" "$ROOT/etc" "$ROOT/dev" "$ROOT/proc" "$ROOT/tmp"',
-        'for device in null zero random urandom; do : > "$ROOT/dev/$device"; mount --bind "/dev/$device" "$ROOT/dev/$device"; mount -o remount,ro,bind "$ROOT/dev/$device"; done',
+        'for device in null zero random urandom; do : > "$ROOT/dev/$device"; mount --bind "/dev/$device" "$ROOT/dev/$device"; done',
         'ln -s usr/bin "$ROOT/bin"',
         'ln -s usr/lib "$ROOT/lib"',
         'if [ -d "$ROOT/usr/lib64" ]; then ln -s usr/lib64 "$ROOT/lib64"; fi',

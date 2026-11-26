@@ -84,12 +84,13 @@ def test_guard_allows_only_simple_workspace_commands(tmp_path):
         assert result.allowed is True, (command, result.reason)
 
 
-def test_registry_blocks_python_tool_and_its_direct_handler(tmp_path, monkeypatch):
+def test_registry_exposes_confirm_gated_python_runner_and_keeps_legacy_helper_blocked(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     from registry import TOOL_REGISTRY, get_tool_permission
     from tools import jalankan_python
 
-    assert get_tool_permission("jalankan_python") == "blocked"
+    assert get_tool_permission("jalankan_python") == "confirm"
+    assert TOOL_REGISTRY["jalankan_python"]["permission"] == "confirm"
     direct = jalankan_python("payload.py")
     handler = TOOL_REGISTRY["jalankan_python"]["func"]("payload.py")
     assert direct["success"] is False

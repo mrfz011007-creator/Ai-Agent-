@@ -111,7 +111,7 @@ def test_python_runner_rejects_large_and_non_utf8_source(tmp_path, monkeypatch):
                         lambda **_kwargs: pytest.fail("invalid source must not run"))
     (workspace / "large.py").write_bytes(b"x" * (python_runner.MAX_PYTHON_SOURCE_BYTES + 1))
     assert python_runner.run_python_file("large.py")["status"] == "CODE_TOO_LARGE"
-    (workspace / "invalid.py").write_bytes(b"print('\\xff')")
+    (workspace / "invalid.py").write_bytes(bytes([0x70, 0x72, 0x69, 0x6e, 0x74, 0x28, 0x27, 0xff, 0x27, 0x29]))
     assert python_runner.run_python_file("invalid.py")["status"] == "SCRIPT_ENCODING_INVALID"
 
 

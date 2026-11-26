@@ -95,7 +95,7 @@ def run_python_file(
         f"sys.path.insert(0, {script_directory!r})\n"
         f"script_path = {script_path!r}\n"
         "sys.argv = [script_path]\n"
-        "source = sys.stdin.read()\n"
+        "source = sys.stdin.buffer.read().decode('utf-8')\n"
         "namespace = {'__name__': '__main__', '__file__': script_path, '__package__': None}\n"
         "exec(compile(source, script_path, 'exec', dont_inherit=True), namespace, namespace)\n"
     )

@@ -172,7 +172,7 @@ def _apply_python_resource_limits(timeout: float) -> None:
         _soft, hard = resource.getrlimit(limit)
         if hard != resource.RLIM_INFINITY:
             desired = min(desired, hard)
-        if desired <= 0:
+        if desired < 0:
             raise OSError(f"Unable to apply required resource limit: {name}")
         resource.setrlimit(limit, (desired, desired))
 
