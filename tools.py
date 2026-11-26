@@ -27,9 +27,10 @@ DEFAULT_MAX_SEARCH_RESULTS = 500
 
 def workspace_root() -> Path:
     """Return the configured workspace root; filesystem operations use dirfds."""
-    return Path(
-        os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
-    ).resolve()
+    configured = os.environ.get("AI_AGENT_WORKSPACE_ROOT")
+    if not configured or not configured.strip():
+        raise RuntimeError("AI_AGENT_WORKSPACE_ROOT wajib dikonfigurasi; cwd pemanggil tidak dipercaya.")
+    return Path(configured).resolve(strict=True)
 
 
 def path_aman(nama: str) -> Path:
@@ -177,6 +178,14 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
         raise ValueError("expected_count harus berupa integer >= 1.")
 
     limit = _max_file_bytes()
+    # Bound attacker-controlled patch strings before count/replace allocations.
+    if len(old) > limit or len(new) > limit:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "PATCH_INPUT_TOO_LARGE",
+            "pesan": "Input patch melebihi batas karakter yang diizinkan.",
+        }
     root = workspace_root()
     try:
         raw = read_file_secure(root, nama, limit)
@@ -229,6 +238,15 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
             "pesan": f"Patch ditolak: ditemukan {count} kecocokan, diharapkan {expected_count}.",
         }
 
+    # Estimate the resulting character count before allocating the replacement.
+    projected_chars = len(text) - count * len(old) + count * len(new)
+    if projected_chars > limit:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "Hasil patch diperkirakan melebihi batas ukuran file.",
+        }
     updated_text = text.replace(old, new)
     updated_bytes = updated_text.encode("utf-8")
     if len(updated_bytes) > limit:
@@ -322,12 +340,18 @@ def tulis_file(nama, isi, expected_sha256=None):
     try:
         if not isinstance(isi, str):
             raise TypeError("Isi file harus berupa string.")
+        limit = _max_file_bytes()
+        # Check character count before allocating the UTF-8 byte representation.
+        if len(isi) > limit:
+            raise FileTooLargeError("Workspace write exceeds the maximum size")
         payload = isi.encode("utf-8")
+        if len(payload) > limit:
+            raise FileTooLargeError("Workspace write exceeds the maximum size")
         write_file_secure(
             workspace_root(),
             nama,
             payload,
-            _max_file_bytes(),
+            limit,
             expected_sha256=expected_sha256,
         )
         return {
