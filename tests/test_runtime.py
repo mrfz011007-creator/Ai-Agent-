@@ -130,8 +130,10 @@ def test_get_runtime_resolves_relative_state_database_inside_workspace(monkeypat
 
 
 def test_router_clamps_default_command_timeout_to_registry_maximum(tmp_path):
+    from core.budget import BudgetManager
     from core.contracts import Budget, ToolRequest
     from execution.router import ToolRouter
+    from security.guard import GuardEngine
     from security.policy import PolicyEngine
     from verification.evidence import EvidenceStore
 
@@ -160,7 +162,7 @@ def test_router_clamps_default_command_timeout_to_registry_maximum(tmp_path):
         policy=PolicyEngine(registry.get),
         budget=BudgetManager(Budget(max_runtime_seconds=3600)),
         evidence=EvidenceStore(),
-        guard=__import__("security.guard", fromlist=["GuardEngine"]).GuardEngine(tmp_path),
+        guard=GuardEngine(tmp_path),
     )
 
     result = router.execute(ToolRequest(
