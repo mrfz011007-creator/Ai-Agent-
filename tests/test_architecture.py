@@ -356,7 +356,7 @@ def test_command_runner_redacts_secrets_and_caps_output(tmp_path):
 
 
 def test_command_runner_reports_timeout(tmp_path):
-    from execution.command import run_command
+    from execution.command import _run_command_unchecked as run_command
 
     result = run_command(
         command="python -c \"import time; time.sleep(2)\"",
