@@ -17,7 +17,13 @@ class GuardResult:
 # Termux is not a hostile-code sandbox. Only small, non-interpreting utilities
 # are permitted through the agent command tool until a real isolation backend
 # is available.
-_SAFE_EXECUTABLES = {"pwd", "ls", "whoami", "true", "false", "echo", "printf"}
+_SAFE_EXECUTABLES = {"pwd", "ls", "whoami", "true", "false", "echo", "printf", "sleep"}
+_DESTRUCTIVE_EXECUTABLES = {
+    "rm", "rmdir", "dd", "mkfs", "fdisk", "parted", "wipefs", "shred",
+    "chmod", "chown", "kill", "killall", "pkill", "reboot", "shutdown",
+    "poweroff", "halt", "su", "sudo",
+}
+_MULTICALL_BINARIES = {"coreutils", "busybox", "toybox"}
 _INTERPRETERS = {
     "python", "python2", "python3", "pypy", "pypy3", "node", "nodejs",
     "npm", "npx", "pnpm", "yarn", "ruby", "perl", "php", "lua",
@@ -52,6 +58,8 @@ class GuardEngine:
 
     def _resolve_executable(self, token: str) -> tuple[str | None, str]:
         basename = Path(token).name.lower()
+        if basename in _DESTRUCTIVE_EXECUTABLES:
+            return None, "DESTRUCTIVE_COMMAND_DENIED"
         if basename in _SHELLS:
             return None, "SHELL_EXECUTION_DENIED"
         if basename in _INTERPRETERS or re.fullmatch(r"python\d*(?:\.\d+)*", basename):
@@ -83,17 +91,11 @@ class GuardEngine:
             return None, "EXECUTABLE_PATH_INVALID"
         if not any(candidate_parent == root or root in candidate_parent.parents for root in roots):
             return None, "EXECUTABLE_ENTRY_OUTSIDE_TRUSTED_PATH"
-        if not any(resolved == root or root in resolved.parents for root in roots):
-            return None, "EXECUTABLE_OUTSIDE_TRUSTED_PATH"
-
         target_name = resolved.name.lower()
-        android_multicall = self._is_android() and (
-            target_name == "coreutils"
-            and candidate_parent == (Path(os.environ.get("PREFIX", "")) / "bin").resolve()
-            or target_name == "toybox"
-            and candidate_parent == Path("/system/bin").resolve()
-        )
-        if target_name != basename and not android_multicall:
+        # The directory entry must be in a trusted executable directory. Its
+        # resolved target may live elsewhere when the OS uses a standard
+        # symlink or multicall utility layout.
+        if target_name != basename and target_name not in _MULTICALL_BINARIES:
             return None, "EXECUTABLE_TARGET_MISMATCH"
         if not resolved.is_file() or not os.access(resolved, os.X_OK):
             return None, "EXECUTABLE_NOT_RUNNABLE"
@@ -134,6 +136,13 @@ class GuardEngine:
 
         name = Path(argv[0]).name.lower()
         args = argv[1:]
+        if name == "sleep":
+            if (
+                len(args) != 1
+                or not re.fullmatch(r"(?:\d+(?:\.\d*)?|\.\d+)", args[0])
+                or not 0 < float(args[0]) <= 60
+            ):
+                return GuardResult(False, "SLEEP_ARGUMENT_INVALID")
         if name in {"pwd", "whoami", "true", "false"} and args:
             return GuardResult(False, "COMMAND_ARGUMENTS_NOT_ALLOWED")
         if name == "ls":

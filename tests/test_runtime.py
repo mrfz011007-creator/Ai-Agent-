@@ -51,7 +51,7 @@ def test_router_bounds_omitted_command_timeout_to_remaining_runtime(tmp_path, mo
             tool="run_command",
             action="execute",
             arguments={
-                "command": 'python3 -c "import time; time.sleep(10)"',
+                "command": "sleep 10",
                 "cwd": str(tmp_path),
             },
             source="test",

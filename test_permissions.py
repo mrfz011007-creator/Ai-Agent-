@@ -13,7 +13,7 @@ from permissions import get_permission
         ("buat_folder", "confirm"),
         ("buat_file", "confirm"),
         ("tulis_file", "confirm"),
-        ("jalankan_python", "confirm"),
+        ("jalankan_python", "blocked"),
         ("tool_tidak_dikenal", "blocked"),
     ],
 )

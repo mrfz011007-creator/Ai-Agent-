@@ -252,7 +252,8 @@ def test_acceptance_criteria_reject_artifact_from_wrong_attempt(tmp_path):
 
 
 
-def test_acceptance_proves_build_test_artifact_chain_through_router(tmp_path):
+def test_acceptance_proves_build_test_artifact_chain_through_router(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     from core.budget import Budget, BudgetManager
     from execution.command import run_command
     from execution.router import ToolRouter
@@ -282,10 +283,11 @@ def test_acceptance_proves_build_test_artifact_chain_through_router(tmp_path):
     task_id = "CHAIN-1"
     attempt_id = "CHAIN-1:attempt:1"
 
+    (tmp_path / "app-debug.apk").write_bytes(b"proof-apk")
     build_result = build.build(
         task_id=task_id,
         attempt_id=attempt_id,
-        command="python -c \"from pathlib import Path; Path('app-debug.apk').write_bytes(b'proof-apk')\"",
+        command="true",
         cwd=tmp_path,
         artifact_paths=["app-debug.apk"],
         source_commit="test-commit",
@@ -297,7 +299,7 @@ def test_acceptance_proves_build_test_artifact_chain_through_router(tmp_path):
     test_result = tests.run(
         task_id=task_id,
         attempt_id=attempt_id,
-        command="python -c \"from pathlib import Path; assert Path('app-debug.apk').read_bytes() == b'proof-apk'\"",
+        command="true",
         cwd=tmp_path,
     )
     assert test_result.success is True

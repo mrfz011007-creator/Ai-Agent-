@@ -128,6 +128,7 @@ def test_router_default_guard_cannot_be_omitted_to_bypass_interpreter_block(tmp_
                 "properties": {
                     "command": {"type": "string"},
                     "cwd": {"type": "string"},
+                    "timeout": {"type": "number"},
                 },
                 "required": ["command", "cwd"],
             },
