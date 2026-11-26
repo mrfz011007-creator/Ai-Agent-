@@ -39,6 +39,9 @@ class RecoveryDecision:
     reason: str
 
 
+_UNCHANGED = object()
+
+
 class RecoveryManager:
     """Reconciles interrupted state without assuming an old process is gone safely."""
 
@@ -48,6 +51,22 @@ class RecoveryManager:
         self.task_manager = task_manager
         self.evidence_store = evidence_store
         self.budget = budget
+
+    def _persist_transition(self, task, *, status=None, result=_UNCHANGED):
+        """Keep RAM and SQLite aligned when a recovery transition cannot be saved."""
+        previous_status = task.status
+        previous_result = task.result
+        if status is not None:
+            task.status = status
+        if result is not _UNCHANGED:
+            task.result = result
+        try:
+            self.task_manager.persist(task.task_id)
+        except Exception:
+            task.status = previous_status
+            task.result = previous_result
+            raise
+        return task
 
     def recover_task(self, task_id: str) -> RecoveryDecision | None:
         task = self.task_manager.get(task_id)
@@ -66,8 +85,7 @@ class RecoveryManager:
                 reason="Task is not interrupted.",
             )
 
-        task.status = TaskStatus.WAITING
-        self.task_manager.persist(task.task_id)
+        self._persist_transition(task, status=TaskStatus.WAITING)
         self.task_manager.checkpoint(
             task.task_id,
             event="recovery_required",
@@ -106,21 +124,28 @@ class RecoveryManager:
         except RuntimeError as exc:
             self.task_manager.fail(task_id, str(exc))
             return RecoveryDecision(task_id, TaskStatus.RUNNING, TaskStatus.FAILED, "BLOCK", str(exc))
-        previous_status = task.status
-        task.status = TaskStatus.WAITING
         try:
-            self.task_manager.persist(task_id)
+            self._persist_transition(task, status=TaskStatus.WAITING)
         except Exception:
-            task.status = previous_status
             if hasattr(self.budget, "release_recovery_cycle"):
-                self.budget.release_recovery_cycle()
+                try:
+                    self.budget.release_recovery_cycle()
+                except Exception as rollback_error:
+                    raise RuntimeError(
+                        "Recovery reservation rollback failed; budget remains reserved."
+                    ) from rollback_error
             raise
         try:
             self.task_manager.checkpoint(task_id, event="recovery_retry", reason=error or status)
             task = self.task_manager.retry(task_id)
         except Exception:
             if hasattr(self.budget, "release_recovery_cycle"):
-                self.budget.release_recovery_cycle()
+                try:
+                    self.budget.release_recovery_cycle()
+                except Exception as rollback_error:
+                    raise RuntimeError(
+                        "Recovery reservation rollback failed; budget remains reserved."
+                    ) from rollback_error
             raise
         return RecoveryDecision(task_id, TaskStatus.WAITING, task.status, "RETRY", error or status)
 
@@ -177,7 +202,8 @@ class RecoveryManager:
                     raise
                 action = "RETRY"
             else:
-                task = self.task_manager.resume(task_id)
+                self._persist_transition(task, status=TaskStatus.RUNNING)
+                self.task_manager.checkpoint(task_id, event="resumed")
                 action = "RESUME"
             return RecoveryDecision(
                 task_id=task_id,
@@ -187,7 +213,12 @@ class RecoveryManager:
                 reason=reason,
             )
 
-        task = self.task_manager.block(task_id, reason)
+        self._persist_transition(
+            task,
+            status=TaskStatus.BLOCKED,
+            result={"reason": reason},
+        )
+        self.task_manager.checkpoint(task_id, event="blocked", reason=reason)
         action = "BLOCK" if outcome == ReconcileOutcome.UNKNOWN else "HUMAN_REQUIRED"
         return RecoveryDecision(
             task_id=task_id,
@@ -251,17 +282,28 @@ class RecoveryController:
         previous = task.status
         if failure_class == FailureClass.HUMAN_REQUIRED:
             if task.status in (TaskStatus.RUNNING, TaskStatus.VERIFYING):
-                task.status = TaskStatus.WAITING
-                self.task_manager.persist(task_id)
+                self.recovery_manager._persist_transition(task, status=TaskStatus.WAITING)
                 self.task_manager.checkpoint(
                     task_id, event="recovery_human_required", reason=reason
                 )
-            task = self.task_manager.block(task_id, reason)
+            if task.status != TaskStatus.WAITING:
+                raise ValueError(
+                    f"Human intervention requires WAITING task, got {task.status}"
+                )
+            self.recovery_manager._persist_transition(
+                task, status=TaskStatus.BLOCKED, result={"reason": reason}
+            )
+            self.task_manager.checkpoint(task_id, event="blocked", reason=reason)
             return RecoveryDecision(
                 task_id, previous, task.status, "HUMAN_REQUIRED", reason
             )
 
-        task = self.task_manager.fail(task_id, reason)
+        if task.status not in (TaskStatus.RUNNING, TaskStatus.VERIFYING):
+            raise ValueError(f"Cannot fail task from status {task.status}")
+        self.recovery_manager._persist_transition(
+            task, status=TaskStatus.FAILED, result={"reason": reason}
+        )
+        self.task_manager.checkpoint(task_id, event="failed", reason=reason)
         return RecoveryDecision(
             task_id, previous, task.status, "FAIL", reason
         )
@@ -287,12 +329,14 @@ class RecoveryController:
                 raise KeyError(f"Unknown task: {task_id}")
             previous = task.status
             if task.status == TaskStatus.RUNNING:
-                task.status = TaskStatus.WAITING
-                task.result = {
-                    "reason": message,
-                    "recovery_action": "WAIT_FOR_MODEL",
-                }
-                self.task_manager.persist(task_id)
+                self.recovery_manager._persist_transition(
+                    task,
+                    status=TaskStatus.WAITING,
+                    result={
+                        "reason": message,
+                        "recovery_action": "WAIT_FOR_MODEL",
+                    },
+                )
                 self.task_manager.checkpoint(
                     task_id, event="model_waiting", reason=message
                 )
@@ -306,7 +350,10 @@ class RecoveryController:
                 raise KeyError(f"Unknown task: {task_id}")
             previous = task.status
             if task.status in (TaskStatus.RUNNING, TaskStatus.VERIFYING):
-                task = self.task_manager.fail(task_id, message)
+                self.recovery_manager._persist_transition(
+                    task, status=TaskStatus.FAILED, result={"reason": message}
+                )
+                self.task_manager.checkpoint(task_id, event="failed", reason=message)
             return RecoveryDecision(
                 task_id, previous, task.status, "FAIL", message
             )

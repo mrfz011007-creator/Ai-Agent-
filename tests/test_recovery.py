@@ -340,3 +340,24 @@ def test_retry_persistence_failure_rolls_back_attempt_and_recovery_budget(tmp_pa
 
     restored_budget = StateStore(tmp_path / "state.sqlite3").load_budget()
     assert restored_budget["recovery_cycles"] == 0
+
+
+
+def test_recover_task_persistence_failure_restores_in_memory_state(tmp_path):
+    store = StateStore(tmp_path / "state.sqlite3")
+    failing_store = FailingTaskStore(store)
+    manager = TaskManager(store=failing_store, checkpoints=CheckpointManager(store))
+    manager.create(Task("R14", "recovery persist failure", status=TaskStatus.READY))
+    manager.start("R14")
+    recovery = RecoveryManager(manager, EvidenceStore(store))
+
+    failing_store.fail_on_call = failing_store.calls + 1
+    try:
+        recovery.recover_task("R14")
+        assert False, "recovery persistence failure should propagate"
+    except OSError:
+        pass
+
+    assert manager.get("R14").status == TaskStatus.RUNNING
+    restored = StateStore(tmp_path / "state.sqlite3").load_task("R14")
+    assert restored["status"] == "RUNNING"

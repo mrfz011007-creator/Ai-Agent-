@@ -49,6 +49,20 @@ def _safe_env(source: dict[str, str], workspace: Path) -> dict[str, str]:
         if key in keep:
             result[key] = value
 
+    is_android = (
+        source.get("PREFIX", "").startswith("/data/")
+        or Path("/system/bin").exists()
+    )
+    if is_android:
+        trusted_path = [
+            Path(source.get("PREFIX", "")) / "bin",
+            Path("/system/bin"),
+            Path("/system/xbin"),
+        ]
+        result["PATH"] = os.pathsep.join(
+            str(path) for path in trusted_path if path.is_dir()
+        )
+
     result["HOME"] = str(workspace / ".sandbox-home")
     result["TMPDIR"] = str(workspace / ".sandbox-tmp")
     result["GRADLE_USER_HOME"] = str(workspace / ".gradle")
@@ -69,9 +83,16 @@ def _resolve_executable(argv: list[str]) -> str:
         # Preserve Termux symlink entry points even when the caller supplies
         # an explicit executable path (for example .../bin/pwd).
         return str(Path(executable)) if is_android else str(resolved)
-    resolved = shutil.which(executable)
+    search_path = os.environ.get("PATH", "")
+    if is_android:
+        prefix = Path(os.environ.get("PREFIX", ""))
+        trusted = [prefix / "bin", Path("/system/bin"), Path("/system/xbin")]
+        search_path = os.pathsep.join(
+            str(path) for path in trusted if path.is_dir()
+        )
+    resolved = shutil.which(executable, path=search_path)
     if resolved is None:
-        raise SandboxPolicyError(f"Executable not found: {executable}")
+        raise SandboxPolicyError(f"Executable not found in trusted PATH: {executable}")
 
     # Termux exposes several coreutils commands (for example pwd and ls)
     # through symlinks to the multi-call `coreutils` binary. Resolving those
@@ -130,6 +151,14 @@ def prepare_hardened(
         raise SandboxPolicyError("Sandbox workspace must be an existing directory")
     if any(token in argv[0] for token in (";", "|", "&", ">", "<", "$", "`")):
         raise SandboxPolicyError("Shell control syntax is not allowed")
+    for name in (".sandbox-home", ".sandbox-tmp", ".gradle"):
+        directory = workspace / name
+        if directory.is_symlink():
+            raise SandboxPolicyError(f"Sandbox directory must not be a symlink: {name}")
+        directory.mkdir(mode=0o700, exist_ok=True)
+        if not directory.resolve().is_relative_to(workspace):
+            raise SandboxPolicyError(f"Sandbox directory escapes workspace: {name}")
+
     executable = _resolve_executable(argv)
     env = _safe_env(dict(source_env or os.environ), workspace)
     return [executable, *argv[1:]], env
