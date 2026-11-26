@@ -103,8 +103,8 @@ def test_file_and_search_limits_are_bounded(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_AGENT_MAX_SEARCH_BYTES", "32")
 
     (root / "large.txt").write_text("0123456789", encoding="utf-8")
-    (root / "a.py").write_text("needle\n", encoding="utf-8")
-    (root / "b.py").write_text("needle\n", encoding="utf-8")
+    (root / "a.py").write_text("needle\\n", encoding="utf-8")
+    (root / "b.py").write_text("needle\\n", encoding="utf-8")
 
     assert tools.baca_file("large.txt")["code"] == "FILE_TOO_LARGE"
     found = tools.cari_teks("needle", "*.py")
@@ -175,6 +175,10 @@ def test_leaf_symlink_swap_race_never_writes_outside_workspace(monkeypatch, tmp_
 def test_atomic_replace_detaches_hardlink_before_write(monkeypatch, tmp_path):
     import security.workspace as workspace_io
 
+    link_function = getattr(os, "link", None)
+    if not callable(link_function):
+        pytest.skip("os.link is unavailable on this platform")
+
     root = _workspace(monkeypatch, tmp_path)
     target = root / "victim.txt"
     outside_link = tmp_path / "outside-hardlink.txt"
@@ -183,7 +187,7 @@ def test_atomic_replace_detaches_hardlink_before_write(monkeypatch, tmp_path):
 
     def create_racing_hardlink(fd, payload):
         # Link the old inode after inspection but before atomic replacement.
-        os.link(target, outside_link)
+        link_function(target, outside_link)
         real_write_all(fd, payload)
 
     monkeypatch.setattr(workspace_io, "_write_all", create_racing_hardlink)
