@@ -90,7 +90,10 @@ def test_fetch_revalidates_redirect_and_rejects_private_destination(monkeypatch)
         def close(self):
             pass
 
-    monkeypatch.setattr(web_fetch, "_public_addresses", lambda host: ["93.184.216.34"])
+    monkeypatch.setattr(
+        socket, "getaddrinfo",
+        lambda *_a, **_k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+    )
     monkeypatch.setattr(web_fetch, "_PinnedHTTPSConnection", FakeConnection)
     with pytest.raises(web_fetch.WebFetchError, match="NON_PUBLIC_ADDRESS_DENIED"):
         web_fetch.fetch_url("https://example.com/redirect")
