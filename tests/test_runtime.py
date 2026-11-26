@@ -126,3 +126,48 @@ def test_get_runtime_resolves_relative_state_database_inside_workspace(monkeypat
     expected = workspace / "state" / "agent.sqlite3"
     assert runtime.state_store.path == expected
     assert expected.is_file()
+
+
+
+def test_router_clamps_default_command_timeout_to_registry_maximum(tmp_path):
+    from core.contracts import Budget, ToolRequest
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+    from verification.evidence import EvidenceStore
+
+    seen = {}
+    registry = {
+        "run_command": {
+            "permission": "safe",
+            "parameters": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "command": {"type": "string", "maxLength": 4096},
+                    "cwd": {"type": "string", "maxLength": 2048},
+                    "timeout": {"type": "number", "minimum": 0.1, "maximum": 120},
+                },
+                "required": ["command", "cwd"],
+            },
+            "func": lambda **kwargs: seen.update(kwargs) or {
+                "success": True,
+                "status": "SUCCESS",
+            },
+        }
+    }
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget(max_runtime_seconds=3600)),
+        evidence=EvidenceStore(),
+        guard=__import__("security.guard", fromlist=["GuardEngine"]).GuardEngine(tmp_path),
+    )
+
+    result = router.execute(ToolRequest(
+        "run_command",
+        "execute",
+        {"command": "true", "cwd": str(tmp_path)},
+    ))
+
+    assert result.success is True
+    assert seen["timeout"] == 120.0

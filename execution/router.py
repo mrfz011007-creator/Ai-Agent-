@@ -149,7 +149,9 @@ class ToolRouter:
                     request.tool,
                     error="INVALID_TIMEOUT",
                 )
-            arguments["timeout"] = min(float(timeout), remaining_runtime)
+            # Keep direct and model-originated requests inside the registry's
+            # hard timeout schema bound, even when the global runtime budget is larger.
+            arguments["timeout"] = min(float(timeout), remaining_runtime, 120.0)
 
         schema = metadata.get("parameters")
         if schema is not None:
