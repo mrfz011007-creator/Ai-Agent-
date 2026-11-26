@@ -253,6 +253,8 @@ def test_redaction_uses_sensitive_dictionary_keys_without_hiding_usage_counts():
         "nested": {
             "client_secret": "another-secret",
             "access_token": "access-secret",
+            "github_token": "github-secret",
+            "oauth_token": "oauth-secret",
             "max_tokens": 4096,
             "token_count": 3,
         },
@@ -263,5 +265,7 @@ def test_redaction_uses_sensitive_dictionary_keys_without_hiding_usage_counts():
     assert result["OPENROUTER_API_KEY"] == "[REDACTED_SECRET]"
     assert result["nested"]["client_secret"] == "[REDACTED_SECRET]"
     assert result["nested"]["access_token"] == "[REDACTED_SECRET]"
+    assert result["nested"]["github_token"] == "[REDACTED_SECRET]"
+    assert result["nested"]["oauth_token"] == "[REDACTED_SECRET]"
     assert result["nested"]["max_tokens"] == 4096
     assert result["nested"]["token_count"] == 3

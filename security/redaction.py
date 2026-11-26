@@ -34,8 +34,8 @@ def redact_value(value: Any) -> Any:
                 or "PRIVATE_KEY" in normalized_key
                 or "CREDENTIAL" in normalized_key
                 or "AUTHORIZATION" in normalized_key
-                or normalized_key in {"TOKEN", "ACCESS_TOKEN", "REFRESH_TOKEN", "AUTH_TOKEN"}
-                or normalized_key.endswith(("_ACCESS_TOKEN", "_REFRESH_TOKEN", "_AUTH_TOKEN"))
+                or normalized_key == "TOKEN"
+                or normalized_key.endswith("_TOKEN")
             )
             redacted[key] = (
                 "[REDACTED_SECRET]"
