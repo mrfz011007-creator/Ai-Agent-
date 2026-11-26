@@ -275,3 +275,51 @@ def test_workspace_root_never_falls_back_to_caller_cwd(monkeypatch, tmp_path):
     result = run_command(command="pwd", cwd=str(tmp_path))
     assert result["success"] is False
     assert result["status"] == "WORKSPACE_NOT_CONFIGURED"
+
+
+def test_registered_command_handler_fails_closed_without_workspace(monkeypatch, tmp_path):
+    import registry
+
+    monkeypatch.delenv("AI_AGENT_WORKSPACE_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    result = registry.get_tool_function("run_command")(
+        command="pwd", cwd=str(tmp_path)
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "WORKSPACE_NOT_CONFIGURED"
+
+
+def test_tool_router_fails_closed_without_workspace_or_explicit_guard(monkeypatch, tmp_path):
+    from core.budget import Budget, BudgetManager
+    from core.contracts import ToolRequest
+    from execution.router import ToolRouter
+    from security.policy import PolicyEngine
+    from verification.evidence import EvidenceStore
+
+    monkeypatch.delenv("AI_AGENT_WORKSPACE_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    called = []
+    registry = {
+        "run_command": {
+            "func": lambda **kwargs: called.append(kwargs) or {"success": True},
+            "permission": "safe",
+        }
+    }
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=EvidenceStore(),
+    )
+
+    result = router.execute(ToolRequest(
+        tool="run_command", action="execute",
+        arguments={"command": "pwd", "cwd": str(tmp_path)},
+    ))
+
+    assert result.success is False
+    assert result.status == "guard_denied"
+    assert result.error == "WORKSPACE_NOT_CONFIGURED"
+    assert called == []
