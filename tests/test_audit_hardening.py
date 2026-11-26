@@ -107,7 +107,8 @@ def test_router_redacts_long_string_output():
     assert "REDACTED" in str(result.data)
 
 
-def test_router_clamps_run_command_timeout_to_remaining_runtime():
+def test_router_clamps_run_command_timeout_to_remaining_runtime(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     seen = {}
     registry = {
         "run_command": {
