@@ -161,3 +161,24 @@ def test_router_schema_denial_is_persisted_as_security_evidence(tmp_path):
     record = evidence.get(result.evidence_id)
     assert record is not None
     assert record.result_status == "schema_invalid"
+
+
+def test_fetch_rejects_response_body_over_hard_limit(monkeypatch):
+    class FakeConnection:
+        def __init__(self, host, address):
+            pass
+        def request(self, *_args, **_kwargs):
+            pass
+        def getresponse(self):
+            return FakeResponse(
+                200,
+                {"Content-Type": "text/plain"},
+                b"x" * (web_fetch.MAX_RESPONSE_BYTES + 1),
+            )
+        def close(self):
+            pass
+
+    monkeypatch.setattr(web_fetch, "_public_addresses", lambda _host: ["93.184.216.34"])
+    monkeypatch.setattr(web_fetch, "_PinnedHTTPSConnection", FakeConnection)
+    with pytest.raises(web_fetch.WebFetchError, match="RESPONSE_TOO_LARGE"):
+        web_fetch.fetch_url("https://example.com/large")
