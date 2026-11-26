@@ -29,6 +29,47 @@ from security.guard import GuardEngine
 from security.capabilities import CapabilityPolicy
 
 
+def _configured_workspace_root() -> Path:
+    """Resolve and validate the workspace before starting the interactive agent."""
+    configured = os.environ.get("AI_AGENT_WORKSPACE_ROOT")
+    if configured is None or not configured.strip():
+        raise RuntimeError(
+            "AI_AGENT_WORKSPACE_ROOT wajib dikonfigurasi sebelum agent dijalankan. "
+            "Atur variabel tersebut ke direktori workspace yang sudah ada."
+        )
+    try:
+        root = Path(configured).expanduser().resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise RuntimeError(
+            "AI_AGENT_WORKSPACE_ROOT harus menunjuk ke direktori yang sudah ada dan dapat diakses."
+        ) from error
+    if not root.is_dir():
+        raise RuntimeError("AI_AGENT_WORKSPACE_ROOT harus menunjuk ke direktori, bukan file.")
+    if not os.access(root, os.R_OK | os.W_OK | os.X_OK):
+        raise RuntimeError("AI_AGENT_WORKSPACE_ROOT harus dapat dibaca dan ditulis oleh agent.")
+    return root
+
+
+def _resolve_state_path(
+    state_path: str | Path | None,
+    workspace_root: Path,
+) -> str | Path:
+    """Resolve relative state database paths inside the configured workspace."""
+    configured: str | Path | None = state_path
+    if configured is None:
+        configured = os.environ.get("AI_AGENT_STATE_DB")
+        if configured is not None and not configured.strip():
+            raise RuntimeError("AI_AGENT_STATE_DB tidak boleh kosong.")
+    if configured is None:
+        return workspace_root / "agent_state.sqlite3"
+    if str(configured) == ":memory:":
+        return ":memory:"
+    resolved = Path(configured).expanduser()
+    if not resolved.is_absolute():
+        resolved = workspace_root / resolved
+    return resolved
+
+
 @dataclass
 class AgentRuntime:
     state_store: StateStore
@@ -50,7 +91,10 @@ class AgentRuntime:
 
     @classmethod
     def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":
-        path = state_path or os.environ.get("AI_AGENT_STATE_DB", "agent_state.sqlite3")
+        workspace_root = Path(
+            os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
+        ).expanduser().resolve()
+        path = _resolve_state_path(state_path, workspace_root)
         state_store = StateStore(path)
         checkpoint_manager = CheckpointManager(state_store)
         task_manager = TaskManager(
@@ -71,9 +115,6 @@ class AgentRuntime:
         registry_getter = runtime_registry.get
         policy_engine = PolicyEngine(registry_getter)
         capability_policy = CapabilityPolicy(registry_getter)
-        workspace_root = Path(
-            os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
-        ).resolve()
         guard = GuardEngine(workspace_root)
         tool_router = ToolRouter(
             registry_getter=registry_getter,
@@ -330,7 +371,9 @@ _default_runtime: AgentRuntime | None = None
 def get_runtime() -> AgentRuntime:
     global _default_runtime
     if _default_runtime is None:
-        _default_runtime = AgentRuntime.create()
+        workspace_root = _configured_workspace_root()
+        state_path = _resolve_state_path(None, workspace_root)
+        _default_runtime = AgentRuntime.create(state_path=state_path)
     return _default_runtime
 
 
