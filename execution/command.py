@@ -85,6 +85,7 @@ def _read_pipe_bounded(
                     state[0] += len(retained)
                 if len(chunk) > remaining:
                     limit_event.set()
+                    break
     except (OSError, ValueError):
         pass
     finally:
@@ -110,9 +111,15 @@ def _apply_resource_limits(timeout: float) -> None:
         return
 
     cpu_seconds = max(1, math.ceil(timeout))
-    memory_mb = _read_limit_env(
-        "AI_AGENT_PROCESS_MEMORY_MB", DEFAULT_MEMORY_LIMIT_MB, MIN_MEMORY_LIMIT_MB
+    is_android = (
+        os.environ.get("PREFIX", "").startswith("/data/")
+        or Path("/system/bin").exists()
     )
+    memory_mb = None
+    if not is_android:
+        memory_mb = _read_limit_env(
+            "AI_AGENT_PROCESS_MEMORY_MB", DEFAULT_MEMORY_LIMIT_MB, MIN_MEMORY_LIMIT_MB
+        )
     file_mb = _read_limit_env(
         "AI_AGENT_PROCESS_FILE_MB", DEFAULT_FILE_LIMIT_MB, MIN_FILE_LIMIT_MB
     )
@@ -134,11 +141,7 @@ def _apply_resource_limits(timeout: float) -> None:
 
     # Android/Bionic can fail during process startup when RLIMIT_AS is applied.
     # Termux still receives CPU, file, descriptor, process, output and wall limits.
-    is_android = (
-        os.environ.get("PREFIX", "").startswith("/data/")
-        or Path("/system/bin").exists()
-    )
-    if hasattr(resource, "RLIMIT_AS") and not is_android:
+    if hasattr(resource, "RLIMIT_AS") and memory_mb is not None:
         set_capped("RLIMIT_AS", memory_mb * 1024 * 1024)
 
 
@@ -205,6 +208,7 @@ def run_command(
     output_lock = threading.Lock()
     output_limit_hit = threading.Event()
     timed_out = False
+    output_limit_killed = False
 
     try:
         workspace = str(Path(cwd).resolve())
@@ -255,7 +259,13 @@ def run_command(
         deadline = time.monotonic() + float(timeout)
         while process.poll() is None:
             if output_limit_hit.is_set():
-                _terminate_process(process)
+                # Let a short command finish if it already wrote a bounded
+                # one-shot result. A continuing writer is stopped promptly.
+                try:
+                    process.wait(timeout=0.05)
+                except subprocess.TimeoutExpired:
+                    output_limit_killed = True
+                    _terminate_process(process)
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -289,7 +299,7 @@ def run_command(
                 "output_truncated": limited,
                 "sandbox_mode": sandbox_mode,
             }
-        if limited:
+        if limited and (output_limit_killed or process.returncode != 0):
             return {
                 "success": False,
                 "status": "OUTPUT_LIMIT_EXCEEDED",
@@ -306,7 +316,7 @@ def run_command(
             "exit_code": process.returncode,
             "stdout": stdout,
             "stderr": stderr,
-            "output_truncated": False,
+            "output_truncated": limited,
             "sandbox_mode": sandbox_mode,
         }
     except ValueError as error:
