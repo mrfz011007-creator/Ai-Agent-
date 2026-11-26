@@ -242,3 +242,26 @@ def test_task_start_cannot_bypass_uncompleted_dependencies(tmp_path):
     assert manager.get("CHILD").status == TaskStatus.PENDING
     assert manager.get("CHILD").attempts == 0
 
+
+
+
+def test_redaction_uses_sensitive_dictionary_keys_without_hiding_usage_counts():
+    from security.redaction import redact_value
+
+    payload = {
+        "OPENROUTER_API_KEY": "custom-format-secret",
+        "nested": {
+            "client_secret": "another-secret",
+            "access_token": "access-secret",
+            "max_tokens": 4096,
+            "token_count": 3,
+        },
+    }
+
+    result = redact_value(payload)
+
+    assert result["OPENROUTER_API_KEY"] == "[REDACTED_SECRET]"
+    assert result["nested"]["client_secret"] == "[REDACTED_SECRET]"
+    assert result["nested"]["access_token"] == "[REDACTED_SECRET]"
+    assert result["nested"]["max_tokens"] == 4096
+    assert result["nested"]["token_count"] == 3
