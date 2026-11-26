@@ -53,7 +53,8 @@ def _parse_https_url(url: str):
     target = path + (("?" + parsed.query) if parsed.query else "")
     if len(target) > MAX_URL_CHARS:
         raise WebFetchError("URL_TOO_LONG")
-    normalized = urlunsplit(("https", host, path, parsed.query, ""))
+    netloc = f"[{host}]" if ":" in host else host
+    normalized = urlunsplit(("https", netloc, path, parsed.query, ""))
     return normalized, host, target
 
 
@@ -116,7 +117,7 @@ def fetch_url(url: str) -> dict:
                     "GET",
                     target,
                     headers={
-                        "Host": host,
+                        "Host": f"[{host}]" if ":" in host else host,
                         "User-Agent": "Fariz-AI-Agent/1.0 (read-only)",
                         "Accept": "text/html,text/plain,application/json,application/xml;q=0.9,*/*;q=0.1",
                         "Accept-Encoding": "identity",
@@ -176,6 +177,7 @@ def fetch_url(url: str) -> dict:
                 "url": normalized,
                 "http_status": status,
                 "content_type": content_type,
+                "content_is_untrusted": True,
                 "bytes_read": len(body),
                 "text": text,
             }
