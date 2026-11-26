@@ -268,6 +268,7 @@ def prepare_sandbox(
     lines = [
         "#!/bin/sh",
         "set -eu",
+        'mount --make-rprivate /',
         f"ROOT={root_q}",
         f"WORK={work_q}",
         'mount -t tmpfs -o size=128m,nr_inodes=8192 tmpfs "$ROOT"',

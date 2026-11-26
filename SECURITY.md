@@ -12,7 +12,7 @@ AI Agent is designed to keep model output untrusted and route tool requests thro
 - The agent command allowlist is intentionally small and excludes shells, interpreters, launch wrappers, destructive commands, and unknown executables.
 - `run_command` rejects interpreters, shells, and execution wrappers.
 - `jalankan_python` is a separate, confirmation-gated tool. It runs one bounded UTF-8 workspace file only after user, mount, network, and PID namespaces pass a live probe; unsupported hosts fail closed and never fall back to the hardened command mode.
-- Python execution uses isolated mode (`-I -S -B`), caps source at 32 KiB, wall time at 30 seconds, output at 64 KiB, address space at 512 MiB, per-file writes at 16 MiB, process count at 32, and open descriptors at 64. The workspace is the only persistent writable host mount; system roots are read-only and `/tmp` is a capped private tmpfs.
+- Python execution uses isolated mode (`-I -S -B`), caps source at 32 KiB, wall time at 30 seconds, output at 64 KiB, address space at 512 MiB, per-file writes at 16 MiB, process count at 32, and open descriptors at 64. The mount tree is made private before sandbox mounts are created; the workspace is the only persistent writable host mount, system/runtime roots are read-only, and `/tmp` is a capped private tmpfs.
 - Generic, non-interpreter process commands may still use the hardened fallback when namespaces are unavailable. That fallback is not an OS sandbox and does not provide network isolation.
 
 ## Workspace filesystem

@@ -145,6 +145,27 @@ def test_python_resource_profile_uses_fixed_limits(monkeypatch):
     assert fake.values[FakeResource.RLIMIT_AS] == (512 * 1024 * 1024, 512 * 1024 * 1024)
 
 
+def test_namespace_launcher_makes_mount_propagation_private(tmp_path, monkeypatch):
+    import shutil
+
+    if not shutil.which("unshare") or not shutil.which("chroot"):
+        pytest.skip("Namespace tools are unavailable")
+    monkeypatch.setattr(sandbox, "namespace_sandbox_status", lambda: (True, "available"))
+    monkeypatch.setattr(sandbox, "_resolve_executable", lambda _argv: "/usr/bin/true")
+
+    command, _env, root = sandbox.prepare_sandbox(["true"], cwd=str(tmp_path))
+    launcher = Path(command[-1])
+    try:
+        lines = launcher.read_text(encoding="utf-8").splitlines()
+        private_index = lines.index("mount --make-rprivate /")
+        root_mount_index = lines.index('mount -t tmpfs -o size=128m,nr_inodes=8192 tmpfs "$ROOT"')
+        first_bind_index = next(i for i, line in enumerate(lines) if "mount --bind" in line)
+        assert private_index < root_mount_index < first_bind_index
+    finally:
+        sandbox.cleanup_sandbox(root)
+    assert not launcher.exists()
+
+
 def test_python_guard_denies_proot(monkeypatch, tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
