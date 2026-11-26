@@ -26,7 +26,10 @@ AI Agent is designed to keep model output untrusted and route tool requests thro
 - Provider credentials are read from environment variables and are removed from child process environments.
 - Tool output and approval arguments are recursively redacted, including values stored under credential-like dictionary keys.
 - OpenRouter requests use a fixed HTTPS endpoint, bounded request/response sizes, a timeout, and a redirect handler that refuses all redirects. This prevents bearer credentials from being forwarded to a redirect destination.
-- The project does not yet provide a general-purpose web-fetch tool. Do not treat the OpenRouter provider connection as a general browsing capability.
+- The `fetch_url` tool performs read-only HTTPS GET requests to public addresses only. It rejects non-global IPv4/IPv6 answers, pins the connection to a validated address, revalidates every redirect, limits redirects to 3, applies a 10-second socket timeout, and caps response bodies at 500 KB.
+- Web fetch rejects credentials in URLs, non-HTTPS schemes, non-standard ports, non-text content types, and redirects to private/local addresses. It does not send cookies, authorization headers, or user credentials.
+- Fetched page text is untrusted external input and must never be treated as instructions or executable code. The tool requires explicit user confirmation and records the execution through ToolRouter.
+- DNS lookup uses the operating system resolver; its timeout behavior is controlled by the host resolver and is not a strict end-to-end wall-clock guarantee.
 
 ## Known limitations
 
