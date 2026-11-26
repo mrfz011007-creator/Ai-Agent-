@@ -70,12 +70,16 @@ def test_memory_is_scoped_to_workspace(monkeypatch, tmp_path):
     assert recall("scope")["value"] == "workspace-only"
 
 
-def test_command_output_is_redacted():
+def test_command_output_is_redacted(tmp_path, monkeypatch):
     from execution.command import run_command
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
 
     result = run_command(
         command="echo AIzaSyA12345678901234567890",
-        cwd=".",
+        cwd=str(workspace),
     )
 
     assert result["success"] is True
