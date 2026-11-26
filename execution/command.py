@@ -184,7 +184,16 @@ def run_command(
     try:
         from security.guard import GuardEngine
 
-        workspace = os.environ.get("AI_AGENT_WORKSPACE_ROOT", cwd)
+        workspace = os.environ.get("AI_AGENT_WORKSPACE_ROOT")
+        if not workspace:
+            return {
+                "success": False,
+                "status": "WORKSPACE_NOT_CONFIGURED",
+                "exit_code": None,
+                "stdout": "",
+                "stderr": "AI_AGENT_WORKSPACE_ROOT must be configured; caller cwd is not trusted",
+                "sandbox_mode": "not_started",
+            }
         decision = GuardEngine(workspace).check(
             tool="run_command",
             arguments={"command": command, "cwd": cwd},
