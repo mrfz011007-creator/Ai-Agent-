@@ -91,12 +91,14 @@ class GuardEngine:
             return None, "EXECUTABLE_PATH_INVALID"
         if not any(candidate_parent == root or root in candidate_parent.parents for root in roots):
             return None, "EXECUTABLE_ENTRY_OUTSIDE_TRUSTED_PATH"
+        # The visible entry point's parent is already verified against the
+        # trusted binary roots above. OS packages legitimately use symlinks
+        # whose targets have implementation-specific names and locations.
+        # Workspace-originated links remain denied because their parent is
+        # outside the trusted roots.
         target_name = resolved.name.lower()
-        # The directory entry must be in a trusted executable directory. Its
-        # resolved target may live elsewhere when the OS uses a standard
-        # symlink or multicall utility layout.
         if target_name != basename and target_name not in _MULTICALL_BINARIES:
-            return None, "EXECUTABLE_TARGET_MISMATCH"
+            return None, f"EXECUTABLE_TARGET_MISMATCH:{basename}->{target_name}"
         if not resolved.is_file() or not os.access(resolved, os.X_OK):
             return None, "EXECUTABLE_NOT_RUNNABLE"
 
