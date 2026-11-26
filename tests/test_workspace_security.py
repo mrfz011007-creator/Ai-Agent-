@@ -179,7 +179,6 @@ def test_atomic_replace_detaches_hardlink_before_write(monkeypatch, tmp_path):
     target = root / "victim.txt"
     outside_link = tmp_path / "outside-hardlink.txt"
     target.write_text("original-secret", encoding="utf-8")
-    os.link(target, outside_link)
     real_write_all = workspace_io._write_all
 
     def create_racing_hardlink(fd, payload):
