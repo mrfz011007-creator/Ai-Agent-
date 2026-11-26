@@ -170,3 +170,109 @@ def test_leaf_symlink_swap_race_never_writes_outside_workspace(monkeypatch, tmp_
         worker.join(timeout=2)
 
     assert outside.read_text(encoding="utf-8") == "outside-secret"
+
+
+def test_atomic_replace_detaches_hardlink_before_write(monkeypatch, tmp_path):
+    import security.workspace as workspace_io
+
+    root = _workspace(monkeypatch, tmp_path)
+    target = root / "victim.txt"
+    outside_link = tmp_path / "outside-hardlink.txt"
+    target.write_text("original-secret", encoding="utf-8")
+    os.link(target, outside_link)
+    real_write_all = workspace_io._write_all
+
+    def create_racing_hardlink(fd, payload):
+        # Simulate an attacker linking the old inode while the replacement
+        # content is being prepared. The old inode must never be written.
+        real_write_all(fd, payload)
+
+    monkeypatch.setattr(workspace_io, "_write_all", create_racing_hardlink)
+    result = tools.tulis_file("victim.txt", "new-content")
+
+    assert result["success"] is True
+    assert target.read_text(encoding="utf-8") == "new-content"
+    assert outside_link.read_text(encoding="utf-8") == "original-secret"
+    assert target.stat().st_ino != outside_link.stat().st_ino
+
+
+def test_atomic_replace_is_safe_when_target_is_renamed_mid_write(monkeypatch, tmp_path):
+    import security.workspace as workspace_io
+
+    root = _workspace(monkeypatch, tmp_path)
+    target = root / "victim.txt"
+    moved = tmp_path / "renamed-outside.txt"
+    target.write_text("original-secret", encoding="utf-8")
+    real_write_all = workspace_io._write_all
+    moved_once = False
+
+    def rename_during_write(fd, payload):
+        nonlocal moved_once
+        if not moved_once:
+            moved_once = True
+            os.replace(target, moved)
+        real_write_all(fd, payload)
+
+    monkeypatch.setattr(workspace_io, "_write_all", rename_during_write)
+    result = tools.tulis_file("victim.txt", "replacement")
+
+    assert result["success"] is True
+    assert target.read_text(encoding="utf-8") == "replacement"
+    assert moved.read_text(encoding="utf-8") == "original-secret"
+
+
+def test_atomic_replace_detects_concurrent_modification(monkeypatch, tmp_path):
+    import hashlib
+    import security.workspace as workspace_io
+
+    root = _workspace(monkeypatch, tmp_path)
+    target = root / "victim.txt"
+    target.write_text("snapshot", encoding="utf-8")
+    snapshot = hashlib.sha256(b"snapshot").hexdigest()
+    real_write_all = workspace_io._write_all
+    changed_once = False
+
+    def concurrent_writer(fd, payload):
+        nonlocal changed_once
+        real_write_all(fd, payload)
+        if not changed_once:
+            changed_once = True
+            target.write_text("concurrent-update", encoding="utf-8")
+
+    monkeypatch.setattr(workspace_io, "_write_all", concurrent_writer)
+    result = tools.tulis_file("victim.txt", "agent-update", expected_sha256=snapshot)
+
+    assert result["success"] is False
+    assert result["code"] == "FILE_CHANGED"
+    assert target.read_text(encoding="utf-8") == "concurrent-update"
+
+
+def test_file_and_patch_inputs_are_bounded_before_expensive_processing(monkeypatch, tmp_path):
+    root = _workspace(monkeypatch, tmp_path)
+    monkeypatch.setenv("AI_AGENT_MAX_FILE_BYTES", "8")
+    (root / "small.txt").write_text("abc", encoding="utf-8")
+
+    oversized_write = tools.tulis_file("new.txt", "x" * 9)
+    oversized_old = tools.patch_file("small.txt", "x" * 9, "y")
+    oversized_new = tools.patch_file("small.txt", "a", "y" * 9)
+
+    assert oversized_write["success"] is False
+    assert oversized_write["code"] == "FILE_TOO_LARGE"
+    assert oversized_old["success"] is False
+    assert oversized_old["code"] == "PATCH_INPUT_TOO_LARGE"
+    assert oversized_new["success"] is False
+    assert oversized_new["code"] == "PATCH_INPUT_TOO_LARGE"
+    assert (root / "small.txt").read_text(encoding="utf-8") == "abc"
+
+
+def test_workspace_root_never_falls_back_to_caller_cwd(monkeypatch, tmp_path):
+    monkeypatch.delenv("AI_AGENT_WORKSPACE_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(RuntimeError, match="AI_AGENT_WORKSPACE_ROOT"):
+        tools.workspace_root()
+
+    from execution.command import run_command
+    result = run_command(command="pwd", cwd=str(tmp_path))
+    assert result["success"] is False
+    assert result["status"] == "WORKSPACE_NOT_CONFIGURED"
