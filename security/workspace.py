@@ -234,62 +234,91 @@ def write_file_secure(
     limit: int,
     expected_sha256: str | None = None,
 ) -> None:
+    """Atomically replace a workspace entry without writing through its inode.
+
+    The temporary file is created in the pinned parent directory. os.replace
+    changes the directory entry, so a concurrent hard-link or rename of the
+    old inode cannot redirect writes into that inode or an external path.
+    """
     if not isinstance(payload, bytes):
         raise TypeError("Workspace payload must be bytes")
     if len(payload) > limit:
         raise FileTooLargeError("Workspace write exceeds the maximum size")
 
     parent_fd, leaf = _open_parent(root, name)
-    fd = None
-    created = False
+    temp_leaf = f".ai-agent-tmp-{os.getpid()}-{os.urandom(12).hex()}"
+    temp_fd = None
+    temp_created = False
     try:
+        # Inspect only the current directory entry. Never open it for writing.
+        current_sha256 = None
         try:
-            fd = _open_regular_file(parent_fd, leaf, os.O_RDWR)
+            source_fd = _open_regular_file(parent_fd, leaf, os.O_RDONLY)
         except FileNotFoundError:
             if expected_sha256 is not None:
                 raise FileChangedError(None)
-            fd = os.open(
-                leaf,
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | _nofollow_flag()
-                | getattr(os, "O_CLOEXEC", 0),
-                0o600,
-                dir_fd=parent_fd,
-            )
-            created = True
+        else:
+            try:
+                info = os.fstat(source_fd)
+                if info.st_size > limit:
+                    raise FileTooLargeError("Existing workspace file exceeds the maximum size")
+                current = _read_fd(source_fd, limit)
+                current_sha256 = hashlib.sha256(current).hexdigest()
+            finally:
+                os.close(source_fd)
 
-        info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-            raise WorkspaceSecurityError("Only unlinked regular files may be updated")
-        if not created and info.st_size > limit:
-            raise FileTooLargeError("Existing workspace file exceeds the maximum size")
+        if expected_sha256 is not None and current_sha256 != expected_sha256:
+            raise FileChangedError(current_sha256)
 
-        if not created and fcntl is not None:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        temp_fd = os.open(
+            temp_leaf,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | _nofollow_flag()
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=parent_fd,
+        )
+        temp_created = True
+        _write_all(temp_fd, payload)
+        os.fsync(temp_fd)
+        os.close(temp_fd)
+        temp_fd = None
 
+        # Recheck the optimistic snapshot immediately before replacement.
+        # Replacing the name itself is safe even if it is swapped to a symlink
+        # or hard-linked inode after this check: rename does not follow links
+        # and never modifies the displaced inode.
         if expected_sha256 is not None:
-            os.lseek(fd, 0, os.SEEK_SET)
-            current = _read_fd(fd, limit)
-            current_sha256 = hashlib.sha256(current).hexdigest()
-            if current_sha256 != expected_sha256:
-                raise FileChangedError(current_sha256)
+            try:
+                verify_fd = _open_regular_file(parent_fd, leaf, os.O_RDONLY)
+            except FileNotFoundError:
+                raise FileChangedError(None)
+            try:
+                verify_info = os.fstat(verify_fd)
+                if verify_info.st_size > limit:
+                    raise FileTooLargeError("Existing workspace file exceeds the maximum size")
+                verify_bytes = _read_fd(verify_fd, limit)
+                verify_sha = hashlib.sha256(verify_bytes).hexdigest()
+            finally:
+                os.close(verify_fd)
+            if verify_sha != expected_sha256:
+                raise FileChangedError(verify_sha)
 
-        os.ftruncate(fd, 0)
-        os.lseek(fd, 0, os.SEEK_SET)
-        _write_all(fd, payload)
-        os.fsync(fd)
+        os.replace(
+            temp_leaf, leaf,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+        )
+        temp_created = False
         os.fsync(parent_fd)
-    except FileExistsError:
-        # A concurrent creator won the O_EXCL race. Do not retry through a
-        # pathname lookup, because the new entry may be a symlink.
-        raise
     finally:
-        if fd is not None:
-            os.close(fd)
+        if temp_fd is not None:
+            os.close(temp_fd)
+        if temp_created:
+            try:
+                os.unlink(temp_leaf, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
         os.close(parent_fd)
-
 
 def search_text_secure(
     root: str | Path,
