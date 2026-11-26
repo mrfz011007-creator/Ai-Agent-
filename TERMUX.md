@@ -86,6 +86,8 @@ Android/Termux is detected before the Linux namespace/chroot sandbox path is att
 
 The fallback starts commands with the configured workspace as the current directory, does not invoke a shell, removes credential-like environment variables, and restricts executable lookup to the Termux prefix and Android system binary directories. It also enforces a wall-clock timeout, caps combined captured stdout/stderr in memory, stops the process group on timeout/output overflow, and applies available CPU, open-file, process, core-dump, and per-file-size resource limits.
 
+The `jalankan_python` tool is intentionally denied on Termux and Ubuntu running inside PRoot. PRoot does not create the independent user, mount, network, and PID namespaces required to run untrusted Python safely. Do not try to enable it by switching to the hardened fallback.
+
 Android/Termux does **not** receive a separate filesystem or network namespace from this fallback. A command can still access files and network resources allowed to the Termux app; RLIMIT_AS is deliberately skipped because it can prevent Android processes from starting. Treat this as defense-in-depth for a controlled local workspace, not as isolation for hostile code.
 
 Default process limits are 100,000 output bytes, 128 MiB per created file, and 1,024 MiB address space on non-Android POSIX systems. Configure AI_AGENT_PROCESS_FILE_MB or AI_AGENT_PROCESS_MEMORY_MB only when needed; the memory setting is not applied on Android.
@@ -197,7 +199,7 @@ The default keeps the existing experience → reflection → memory-candidate pi
 
 The agent command tool on Android/Termux is **not a full sandbox**. Termux fallback does not create independent filesystem or network namespaces, so arbitrary programs must not be run as if they were isolated.
 
-The agent-facing `run_command` route is restricted to a small allowlist of non-interpreting utilities (`pwd`, `ls`, `whoami`, `true`, `false`, `echo`, `printf`, and a single numeric `sleep` argument capped at 60 seconds). Shells, interpreters (including Python and Node), executable wrappers, unknown binaries, non-trusted executable paths, and workspace-escaping `ls` paths are denied. `jalankan_python` is disabled. The lower-level process runner remains an internal implementation detail; it is not permission to expose arbitrary command execution through a tool.
+The agent-facing `run_command` route is restricted to a small allowlist of non-interpreting utilities (`pwd`, `ls`, `whoami`, `true`, `false`, `echo`, `printf`, and a single numeric `sleep` argument capped at 60 seconds). Shells, interpreters (including Python and Node), executable wrappers, unknown binaries, non-trusted executable paths, and workspace-escaping `ls` paths are denied. `jalankan_python` remains disabled on Termux/PRoot and is available only on native Linux hosts that pass the strict namespace probe. The lower-level process runner remains an internal implementation detail; it is not permission to expose arbitrary command execution through a tool.
 
 Termux applies conservative upper bounds to process wall time, CPU time, captured output, file size, open descriptors, and process count. Android memory address-space limits remain disabled for compatibility with Bionic. These controls are defense-in-depth and do not provide a total disk quota or network isolation.
 

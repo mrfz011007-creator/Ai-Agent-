@@ -8,11 +8,11 @@ from tools import (
     tulis_file,
     cari_teks,
     patch_file,
-    jalankan_python,
 )
 
 from execution.command import _run_command_unchecked
 from execution.web_fetch import fetch_url
+from execution.python_runner import run_python_file
 from security.guard import GuardEngine
 from security.schema import SchemaValidationError, validate_tool_arguments
 import os
@@ -247,16 +247,19 @@ TOOL_REGISTRY = {
 
     "jalankan_python": {
         "capabilities": ["process.execute"],
-        "func": jalankan_python,
-        "permission": "blocked",
-        "description": "Dinonaktifkan: eksekusi interpreter tidak aman pada fallback Termux.",
+        "func": run_python_file,
+        "permission": "confirm",
+        "description": "Menjalankan satu file Python workspace hanya di Linux namespace sandbox yang terisolasi. Ditolak pada Android, Termux, PRoot, atau host tanpa isolasi penuh.",
         "parameters": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 "nama": {
                     "type": "string",
-                    "description": "Nama atau path file Python yang ingin dijalankan.",
+                    "maxLength": 1024,
+                    "description": "Path relatif file Python di dalam workspace.",
                 },
+                "timeout": {"type": "number", "minimum": 0.1, "maximum": 30},
             },
             "required": ["nama"],
         },

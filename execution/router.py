@@ -127,11 +127,16 @@ class ToolRouter:
                 return self._deny(request, "capability_denied", capability.reason)
 
         arguments = dict(request.arguments)
-        if request.tool == "run_command":
+        if request.tool in {"run_command", "jalankan_python"}:
             remaining_runtime = self._budget.remaining_runtime_seconds
             if remaining_runtime <= 0:
                 return self._deny(request, "budget_exceeded", "RUNTIME_BUDGET_EXCEEDED")
-            timeout = arguments.get("timeout", remaining_runtime)
+            max_timeout = 120.0 if request.tool == "run_command" else 30.0
+            default_timeout = (
+                remaining_runtime if request.tool == "run_command"
+                else min(15.0, remaining_runtime)
+            )
+            timeout = arguments.get("timeout", default_timeout)
             if (
                 isinstance(timeout, bool)
                 or not isinstance(timeout, (int, float))
@@ -139,9 +144,7 @@ class ToolRouter:
                 or timeout <= 0
             ):
                 return self._deny(request, "schema_invalid", "INVALID_TIMEOUT")
-            # Keep direct and model-originated requests inside the registry's
-            # hard timeout schema bound, even when the global runtime budget is larger.
-            arguments["timeout"] = min(float(timeout), remaining_runtime, 120.0)
+            arguments["timeout"] = min(float(timeout), remaining_runtime, max_timeout)
 
         schema = metadata.get("parameters")
         if schema is not None:

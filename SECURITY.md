@@ -10,8 +10,10 @@ AI Agent is designed to keep model output untrusted and route tool requests thro
 - Unknown-tool, workspace, task-contract, capability, guard, policy, and user-cancellation denials are persisted as redacted execution evidence when the state store is available. Raw tool arguments are not included in these denial records.
 - The public `run_command` entry point and the registered command handler both re-check the command guard.
 - The agent command allowlist is intentionally small and excludes shells, interpreters, launch wrappers, destructive commands, and unknown executables.
-- `jalankan_python` is disabled. Do not enable arbitrary Python or shell execution on Termux/PRoot.
-- Linux namespace execution is used only when user, mount, and network namespaces are successfully probed. Otherwise the process uses a restricted hardened fallback; that fallback is not an OS sandbox and does not provide network isolation.
+- `run_command` rejects interpreters, shells, and execution wrappers.
+- `jalankan_python` is a separate, confirmation-gated tool. It runs one bounded UTF-8 workspace file only after user, mount, network, and PID namespaces pass a live probe; unsupported hosts fail closed and never fall back to the hardened command mode.
+- Python execution uses isolated mode (`-I -S -B`), caps source at 32 KiB, wall time at 30 seconds, output at 64 KiB, address space at 512 MiB, per-file writes at 16 MiB, process count at 32, and open descriptors at 64. The workspace is the only persistent writable host mount; system roots are read-only and `/tmp` is a capped private tmpfs.
+- Generic, non-interpreter process commands may still use the hardened fallback when namespaces are unavailable. That fallback is not an OS sandbox and does not provide network isolation.
 
 ## Workspace filesystem
 
@@ -33,7 +35,8 @@ AI Agent is designed to keep model output untrusted and route tool requests thro
 
 ## Known limitations
 
-- Android Termux and Ubuntu running inside PRoot do not provide the Linux namespace isolation required for the strict sandbox. The hardened fallback is defense in depth only.
+- Android Termux and Ubuntu running inside PRoot do not provide the Linux namespace isolation required for the strict Python runner; `jalankan_python` is denied there. The hardened fallback is defense in depth only.
+- The Python runner enforces a per-file size limit, not an aggregate workspace disk quota. Approved code can still modify or delete files in the workspace; run only code you intend to execute.
 - Same-user processes and a compromised Android/Termux account are outside the protection boundary of the application-level workspace checks.
 - Resource limits and application guards reduce risk but do not guarantee protection from every kernel, runtime, dependency, or device vulnerability.
 - Do not store API keys in workspace files, prompts, model output, screenshots, or issue reports.

@@ -7,6 +7,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from execution.sandbox import namespace_sandbox_status
+
 
 @dataclass(frozen=True)
 class GuardResult:
@@ -109,7 +111,12 @@ class GuardEngine:
 
     def check(self, *, tool: str, arguments: dict) -> GuardResult:
         if tool == "jalankan_python":
-            return GuardResult(False, "INTERPRETER_EXECUTION_DENIED")
+            if not isinstance(arguments.get("nama"), str) or not arguments["nama"].strip():
+                return GuardResult(False, "PYTHON_SCRIPT_REQUIRED")
+            available, reason = namespace_sandbox_status()
+            if not available:
+                return GuardResult(False, f"PYTHON_SANDBOX_UNAVAILABLE:{reason}")
+            return GuardResult(True, "PYTHON_SANDBOX_AVAILABLE")
         if tool != "run_command":
             return GuardResult(True, "GUARD_NOT_APPLICABLE")
 
