@@ -141,7 +141,7 @@ def test_router_clamps_run_command_timeout_to_remaining_runtime(monkeypatch, tmp
         ToolRequest(
             "run_command",
             "execute",
-            {"command": "true", "cwd": ".", "timeout": 999999},
+            {"command": "true", "cwd": str(tmp_path), "timeout": 999999},
         )
     )
     assert result.success
