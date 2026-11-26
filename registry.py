@@ -11,7 +11,7 @@ from tools import (
     jalankan_python,
 )
 
-from execution.command import run_command
+from execution.command import _run_command_unchecked
 from security.guard import GuardEngine
 from security.schema import SchemaValidationError, validate_tool_arguments
 import os
@@ -56,7 +56,7 @@ def _guarded_run_command(*, command, cwd, timeout=120.0):
             "stderr": decision.reason,
             "sandbox_mode": "not_started",
         }
-    return run_command(command=command, cwd=cwd, timeout=timeout)
+    return _run_command_unchecked(command=command, cwd=cwd, timeout=timeout)
 
 
 TOOL_REGISTRY = {

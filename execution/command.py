@@ -161,6 +161,73 @@ def run_command(
     output_limit: int = DEFAULT_OUTPUT_LIMIT,
     max_output_chars: int | None = None,
 ) -> dict:
+    """Public process entry point; every caller must pass the command guard."""
+    if not isinstance(command, str) or len(command) > 4096:
+        return {
+            "success": False,
+            "status": "COMMAND_INVALID",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "command must be a string no longer than 4096 characters",
+            "sandbox_mode": "not_started",
+        }
+    if not isinstance(cwd, str) or not cwd.strip():
+        return {
+            "success": False,
+            "status": "WORKSPACE_CWD_REQUIRED",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "cwd must be a non-empty workspace path",
+            "sandbox_mode": "not_started",
+        }
+
+    try:
+        from security.guard import GuardEngine
+
+        workspace = os.environ.get("AI_AGENT_WORKSPACE_ROOT", cwd)
+        decision = GuardEngine(workspace).check(
+            tool="run_command",
+            arguments={"command": command, "cwd": cwd},
+        )
+    except Exception as error:
+        return {
+            "success": False,
+            "status": "GUARD_ERROR",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": str(error),
+            "sandbox_mode": "not_started",
+        }
+
+    if not decision.allowed:
+        return {
+            "success": False,
+            "status": "GUARD_DENIED",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": decision.reason,
+            "sandbox_mode": "not_started",
+        }
+
+    return _run_command_unchecked(
+        command=command,
+        cwd=cwd,
+        timeout=timeout,
+        output_limit=output_limit,
+        max_output_chars=max_output_chars,
+    )
+
+
+def _run_command_unchecked(
+    *,
+    command: str,
+    cwd: str,
+    timeout: float = 900.0,
+    output_limit: int = DEFAULT_OUTPUT_LIMIT,
+    max_output_chars: int | None = None,
+) -> dict:
+    """Internal executor. Call only after a GuardEngine decision."""
+
     """Execute without a shell and enforce wall, output, and OS resource limits."""
     if max_output_chars is not None:
         output_limit = max_output_chars

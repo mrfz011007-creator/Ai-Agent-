@@ -460,3 +460,37 @@ def test_schema_rejects_invalid_unicode_before_execution():
     }
     with pytest.raises(SchemaValidationError, match="INVALID_UNICODE"):
         validate_tool_arguments(schema, {"value": "\ud800"})
+
+
+
+def test_public_process_runner_cannot_bypass_command_guard(tmp_path, monkeypatch):
+    import sys
+    from execution.command import run_command
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    result = run_command(
+        command=f"{sys.executable} -c 'print(1)'",
+        cwd=str(workspace),
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "GUARD_DENIED"
+    assert result["stderr"] == "INTERPRETER_EXECUTION_DENIED"
+
+
+def test_legacy_command_helper_rechecks_guard(tmp_path, monkeypatch):
+    import sys
+    from tools import jalankan
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    result = jalankan([sys.executable, "-c", "print(1)"])
+
+    assert result["success"] is False
+    assert result["status"] == "GUARD_DENIED"
+    assert result["stderr"] == "INTERPRETER_EXECUTION_DENIED"

@@ -74,7 +74,7 @@ def test_command_output_is_redacted():
     from execution.command import run_command
 
     result = run_command(
-        command="python -c \"print('AIzaSyA12345678901234567890')\"",
+        command="echo AIzaSyA12345678901234567890",
         cwd=".",
     )
 
