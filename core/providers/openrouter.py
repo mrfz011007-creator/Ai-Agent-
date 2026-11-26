@@ -20,6 +20,13 @@ class OpenRouterError(RuntimeError):
         self.status_code = status_code
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never forward authenticated provider requests to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class OpenRouterProvider:
     """OpenRouter Chat Completions adapter using only the Python standard library."""
 
@@ -133,8 +140,10 @@ class OpenRouterProvider:
         )
 
         try:
-            # Fixed HTTPS endpoint; URL is not derived from model or user input.
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:  # nosec B310
+            # The endpoint is fixed, and redirects are disabled so the bearer
+            # credential can never be forwarded to a different host or scheme.
+            opener = urllib.request.build_opener(_NoRedirectHandler())
+            with opener.open(request, timeout=self.timeout_seconds) as response:
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as error:
             try:

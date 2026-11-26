@@ -8,6 +8,21 @@ from core.providers.openrouter import OpenRouterError, OpenRouterProvider
 from core.model_gateway import FallbackModelGateway, ModelGateway, ProviderErrorKind
 
 
+@pytest.fixture(autouse=True)
+def _mock_opener_delegates_to_urlopen(monkeypatch):
+    """Keep existing HTTP mocks while exercising the provider's custom opener."""
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            return urllib.request.urlopen(request, timeout=timeout)
+
+    monkeypatch.setattr(
+        urllib.request,
+        "build_opener",
+        lambda *_handlers: FakeOpener(),
+    )
+
+
 class FakeResponse:
     def __init__(self, payload):
         self.payload = payload
@@ -250,3 +265,55 @@ def test_openrouter_request_never_leaks_key_in_error(monkeypatch):
     with pytest.raises(OpenRouterError) as caught:
         OpenRouterProvider().text(key, prompt="hello", model="nvidia/example:free")
     assert key not in str(caught.value)
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_openrouter_redirect_handler_refuses_all_redirect_statuses(status):
+    from core.providers.openrouter import _NoRedirectHandler
+
+    request = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={"Authorization": "Bearer do-not-forward"},
+        method="POST",
+    )
+    handler = _NoRedirectHandler()
+
+    redirected = handler.redirect_request(
+        request,
+        object(),
+        status,
+        "redirect",
+        {},
+        "https://attacker.example/collect",
+    )
+
+    assert redirected is None
+
+
+def test_openrouter_builds_opener_with_redirects_disabled(monkeypatch):
+    from core.providers.openrouter import _NoRedirectHandler
+
+    captured = {}
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return FakeResponse(b'{"choices":[{"message":{"content":"safe"}}]}')
+
+    def fake_build_opener(*handlers):
+        captured["handlers"] = handlers
+        return FakeOpener()
+
+    monkeypatch.setattr(urllib.request, "build_opener", fake_build_opener)
+
+    result = OpenRouterProvider(timeout_seconds=7).text(
+        "private-api-key",
+        prompt="hello",
+        model="nvidia/example:free",
+    )
+
+    assert result == "safe"
+    assert captured["timeout"] == 7
+    assert any(isinstance(handler, _NoRedirectHandler) for handler in captured["handlers"])
+    assert captured["request"].get_header("Authorization") == "Bearer private-api-key"
