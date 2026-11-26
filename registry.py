@@ -28,7 +28,16 @@ from memory_context import (
 
 def _guarded_run_command(*, command, cwd, timeout=120.0):
     """Re-check process requests at the registered handler boundary."""
-    workspace = os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
+    workspace = os.environ.get("AI_AGENT_WORKSPACE_ROOT")
+    if not workspace or not workspace.strip():
+        return {
+            "success": False,
+            "status": "WORKSPACE_NOT_CONFIGURED",
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "AI_AGENT_WORKSPACE_ROOT must be configured; caller cwd is not trusted",
+            "sandbox_mode": "not_started",
+        }
     try:
         validate_tool_arguments(
             TOOL_REGISTRY["run_command"]["parameters"],
