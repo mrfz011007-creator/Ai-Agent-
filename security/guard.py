@@ -97,7 +97,8 @@ class GuardEngine:
         # Workspace-originated links remain denied because their parent is
         # outside the trusted roots.
         target_name = resolved.name.lower()
-        if target_name != basename and target_name not in _MULTICALL_BINARIES:
+        expected_aliases = {basename, f"gnu{basename}", *_MULTICALL_BINARIES}
+        if target_name not in expected_aliases:
             return None, f"EXECUTABLE_TARGET_MISMATCH:{basename}->{target_name}"
         if not resolved.is_file() or not os.access(resolved, os.X_OK):
             return None, "EXECUTABLE_NOT_RUNNABLE"
