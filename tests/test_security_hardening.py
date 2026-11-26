@@ -496,3 +496,60 @@ def test_legacy_command_helper_rechecks_guard(tmp_path, monkeypatch):
     assert result["success"] is False
     assert result["status"] == "GUARD_DENIED"
     assert result["stderr"] == "INTERPRETER_EXECUTION_DENIED"
+
+
+
+def test_guard_denial_is_persisted_as_redacted_security_evidence(tmp_path):
+    from core.contracts import ToolRequest
+    from execution.router import ToolRouter
+    from security.guard import GuardEngine
+    from security.policy import PolicyEngine
+    from core.budget import Budget, BudgetManager
+    from core.state_store import StateStore
+    from verification.evidence import EvidenceStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.write_text("private", encoding="utf-8")
+    registry = {
+        "run_command": {
+            "permission": "confirm",
+            "parameters": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "command": {"type": "string"},
+                    "cwd": {"type": "string"},
+                    "timeout": {"type": "number"},
+                },
+                "required": ["command", "cwd"],
+            },
+            "func": lambda **kwargs: pytest.fail("denied command must not execute"),
+        }
+    }
+    store = StateStore(tmp_path / "audit.sqlite3")
+    evidence = EvidenceStore(store)
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=evidence,
+        confirmation=lambda *_: True,
+        guard=GuardEngine(workspace),
+    )
+
+    result = router.execute(ToolRequest(
+        "run_command",
+        "execute",
+        {"command": f"ls {outside}", "cwd": str(workspace)},
+    ))
+
+    assert result.success is False
+    assert result.status == "guard_denied"
+    assert result.evidence_id
+    record = evidence.get(result.evidence_id)
+    assert record is not None
+    assert record.success is False
+    assert record.result_status == "guard_denied"
+    assert record.authority == "execution_router"

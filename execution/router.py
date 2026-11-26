@@ -43,17 +43,36 @@ class ToolRouter:
         self._capability_policy = capability_policy
         self._task_tool_call_consumer = task_tool_call_consumer
 
+    def _deny(self, request: ToolRequest, status: str, error: str) -> ToolResult:
+        """Persist a redacted audit record for security-relevant denials."""
+        result = ToolResult(
+            False,
+            status,
+            request.tool,
+            error=redact_text(str(error)),
+        )
+        evidence_id = f"ev-{uuid.uuid4().hex[:12]}"
+        try:
+            self._evidence.record(
+                evidence_id=evidence_id,
+                task_id=request.task_id,
+                attempt_id=request.attempt_id,
+                tool=request.tool,
+                action=request.action,
+                result=result,
+            )
+        except Exception:
+            # A logging failure must never turn a denied request into execution.
+            return result
+        result.evidence_id = evidence_id
+        return result
+
     def execute(self, request: ToolRequest) -> ToolResult:
         metadata = self._registry_getter(request.tool)
         if metadata is None:
-            return ToolResult(False, "denied", request.tool, error="Unknown tool")
+            return self._deny(request, "denied", "Unknown tool")
         if request.tool == "run_command" and not self._workspace_configured:
-            return ToolResult(
-                False,
-                "guard_denied",
-                request.tool,
-                error="WORKSPACE_NOT_CONFIGURED",
-            )
+            return self._deny(request, "guard_denied", "WORKSPACE_NOT_CONFIGURED")
 
         contract = None
         if self._task_getter is not None and request.task_id is not None:
@@ -91,25 +110,21 @@ class ToolRouter:
                 )
             contract = getattr(task, "execution_contract", None)
             if contract is not None and not contract.allows_tool(request.tool):
-                return ToolResult(
-                    False,
-                    "contract_denied",
-                    request.tool,
-                    error=f"Tool not allowed by execution contract: {request.tool}",
+                return self._deny(
+                    request, "contract_denied",
+                    f"Tool not allowed by execution contract: {request.tool}",
                 )
 
         if contract is not None and not contract.allows_capabilities(capabilities_for_tool(metadata)):
-            return ToolResult(False, "contract_capability_denied", request.tool, error=f"Tool capabilities exceed execution contract: {request.tool}")
+            return self._deny(
+                request, "contract_capability_denied",
+                f"Tool capabilities exceed execution contract: {request.tool}",
+            )
 
         if self._capability_policy is not None:
             capability = self._capability_policy.decide(request.tool, metadata)
             if not capability.allowed:
-                return ToolResult(
-                    False,
-                    "capability_denied",
-                    request.tool,
-                    error=capability.reason,
-                )
+                return self._deny(request, "capability_denied", capability.reason)
 
         arguments = dict(request.arguments)
         if request.tool == "run_command":
@@ -152,12 +167,7 @@ class ToolRouter:
         # process request can never be approved accidentally.
         guard = self._guard.check(tool=request.tool, arguments=arguments)
         if not guard.allowed:
-            return ToolResult(
-                False,
-                "guard_denied",
-                request.tool,
-                error=guard.reason,
-            )
+            return self._deny(request, "guard_denied", guard.reason)
 
         policy = self._policy.decide(
             PolicyContext(
@@ -170,18 +180,13 @@ class ToolRouter:
         )
 
         if policy.decision == Decision.DENY:
-            return ToolResult(False, "denied", request.tool, error=policy.reason)
+            return self._deny(request, "denied", policy.reason)
 
         if policy.decision == Decision.ASK:
             if self._confirmation is None or not self._confirmation(
                 request.tool, arguments
             ):
-                return ToolResult(
-                    False,
-                    "cancelled",
-                    request.tool,
-                    error="User denied tool execution",
-                )
+                return self._deny(request, "cancelled", "User denied tool execution")
 
         # Check the task-local quota without mutating it. Mutation is deferred
         # until the handler exists and the global budget has been reserved.
