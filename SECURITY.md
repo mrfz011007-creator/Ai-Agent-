@@ -7,6 +7,7 @@ AI Agent is designed to keep model output untrusted and route tool requests thro
 ## Execution boundaries
 
 - Model-generated tool proposals are data, not executable code. They must pass the registered tool schema, task execution contract, capability policy, GuardEngine, permission policy, and ToolRouter.
+- Unknown-tool, workspace, task-contract, capability, guard, policy, and user-cancellation denials are persisted as redacted execution evidence when the state store is available. Raw tool arguments are not included in these denial records.
 - The public `run_command` entry point and the registered command handler both re-check the command guard.
 - The agent command allowlist is intentionally small and excludes shells, interpreters, launch wrappers, destructive commands, and unknown executables.
 - `jalankan_python` is disabled. Do not enable arbitrary Python or shell execution on Termux/PRoot.
