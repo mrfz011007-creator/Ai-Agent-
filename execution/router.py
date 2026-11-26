@@ -78,7 +78,12 @@ class ToolRouter:
         if self._task_getter is not None and request.task_id is not None:
             task = self._task_getter(request.task_id)
             if task is None:
-                return self._deny(request, "task_not_found", "Unknown task")
+                return ToolResult(
+                    False,
+                    "task_not_found",
+                    request.tool,
+                    error=f"Unknown task: {request.task_id}",
+                )
             # A task-scoped tool call is executable only while the task owns
             # the execution phase. This prevents callers from performing new
             # side effects after completion, during verification, or while
@@ -89,10 +94,20 @@ class ToolRouter:
             # binding; this preserves the stable task_not_executable result
             # for terminal/waiting/verification states.
             if getattr(task_status, "value", task_status) != "RUNNING":
-                return self._deny(request, "task_not_executable", f"Task is not executable in status: {task_status}")
+                return ToolResult(
+                    False,
+                    "task_not_executable",
+                    request.tool,
+                    error=f"Task is not executable in status: {task_status}",
+                )
             expected_attempt_id = f"{request.task_id}:attempt:{getattr(task, 'attempts', 0)}"
             if request.attempt_id != expected_attempt_id:
-                return self._deny(request, "attempt_mismatch", "Tool request is not bound to current task attempt")
+                return ToolResult(
+                    False,
+                    "attempt_mismatch",
+                    request.tool,
+                    error=f"Tool request is not bound to current task attempt: {expected_attempt_id}",
+                )
             contract = getattr(task, "execution_contract", None)
             if contract is not None and not contract.allows_tool(request.tool):
                 return self._deny(
@@ -172,7 +187,7 @@ class ToolRouter:
 
         function = metadata.get("func")
         if function is None:
-            return self._deny(request, "handler_missing", "Tool has no handler")
+            return self._deny(request, "error", "Tool has no handler")
 
         try:
             self._budget.reserve_tool_call()
