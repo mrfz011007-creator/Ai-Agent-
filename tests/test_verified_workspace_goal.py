@@ -130,8 +130,8 @@ def test_runtime_rejects_invalid_verified_content_before_approval(
     assert not (workspace / "uji_agent_invalid.txt").exists()
     execution = runtime.last_goal_execution["create_file"]
     assert execution["success"] is False
-    assert execution["status"] == "schema_invalid"
-    assert expected_error in execution["error"]
+    assert execution["status"] == "instruction_mismatch"
+    assert "TRUSTED_INSTRUCTION_CONSTRAINT_MISSING" in execution["error"]
 
 
 
@@ -205,3 +205,53 @@ def test_runtime_rejects_model_arguments_that_change_the_exact_user_request(
     assert execution["status"] == "instruction_mismatch"
     assert "TRUSTED_INSTRUCTION_MISMATCH" in execution["error"]
     assert execution["evidence_id"] is not None
+
+
+
+def test_unrecognized_exact_file_format_fails_closed_before_approval(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    approvals = []
+    monkeypatch.setattr(
+        runtime.tool_router,
+        "_confirmation",
+        lambda tool, args: approvals.append((tool, args)) or True,
+    )
+    plan_payload = {
+        "goal": "Create a file",
+        "tasks": [{
+            "task_id": "create_file",
+            "title": "Create requested file",
+            "dependencies": [],
+            "execution_contract": {
+                "objective": "Create requested file",
+                "allowed_tools": ["buat_file_terverifikasi"],
+                "allowed_capabilities": ["workspace.write", "workspace.read"],
+                "max_tool_calls": 1,
+                "retry_limit": 0,
+                "evidence_required": True,
+                "completion_conditions": [{"type": "evidence_success", "task_id": "create_file"}],
+            },
+        }],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
+    }
+    proposal = {
+        "tool": "buat_file_terverifikasi",
+        "action": "execute",
+        "arguments": {"nama": "catatan.txt", "isi": "Isi yang diminta"},
+    }
+    monkeypatch.setattr(runtime.model_gateway, "generate_text", lambda *_a, **_k: json.dumps(plan_payload))
+    monkeypatch.setattr(runtime.model_gateway, "text", lambda *_a, **_k: json.dumps(proposal))
+
+    plan, graph = runtime.run_goal(
+        "Buat file catatan.txt dengan isi tepat seperti berikut\\nIsi yang diminta",
+        plan_id="plan-unrecognized-exact-file-format",
+    )
+
+    assert plan.status.value == "FAILED"
+    assert graph.tasks["create_file"].status == TaskStatus.FAILED
+    assert approvals == []
+    assert not (workspace / "catatan.txt").exists()
+    assert runtime.last_goal_execution["create_file"]["status"] == "instruction_mismatch"

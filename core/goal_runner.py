@@ -10,7 +10,7 @@ from core.plan import Plan, PlanStatus, TaskGraph
 from core.memory_service import memory_prompt_context
 from core.conversation import MAX_CONVERSATION_MESSAGES
 from security.redaction import redact_value
-from core.trusted_intent import extract_trusted_file_intent
+from core.trusted_intent import extract_trusted_file_intent, is_file_creation_request
 
 
 class GoalRunner:
@@ -57,10 +57,15 @@ class GoalRunner:
         steps = 0
         execution_context = {"goal": plan.goal, "project_id": project_id, "context": dict(context or {})}
         trusted_file_intent = extract_trusted_file_intent(plan.goal)
+        trusted_file_required = is_file_creation_request(plan.goal)
 
         def execute_with_context(proposal, *, task_id, attempt_id=None):
             trusted_kwargs = {}
-            if trusted_file_intent is not None:
+            # A verified-file proposal always requires constraints extracted
+            # from the original user goal. If extraction was ambiguous or the
+            # format is unsupported, pass a missing constraint so ToolRouter
+            # fails closed before approval rather than silently skipping it.
+            if trusted_file_required or proposal.tool == "buat_file_terverifikasi" or trusted_file_intent is not None:
                 trusted_kwargs = {
                     "trusted_tool": "buat_file_terverifikasi",
                     "trusted_arguments": trusted_file_intent,
@@ -328,17 +333,20 @@ class GoalRunner:
                 # Interrupted tool execution still requires explicit
                 # reconciliation to avoid duplicating external side effects.
                 plan = self._persist(plan, PlanStatus.WAITING)
+                self._record_conversation_outcome(plan.goal, plan, graph)
                 return plan, graph
 
         # Project/context metadata is not persisted with Plan yet. Resume
         # therefore uses explicit runtime defaults instead of undefined names.
-        return self._run_graph(
+        result = self._run_graph(
             plan,
             graph,
             max_steps=max_steps,
             project_id=plan.project_id,
             context=plan.context,
         )
+        self._record_conversation_outcome(plan.goal, *result)
+        return result
 
     @staticmethod
     def _new_plan_id() -> str:

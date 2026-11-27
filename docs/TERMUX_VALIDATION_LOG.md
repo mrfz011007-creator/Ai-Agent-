@@ -511,3 +511,17 @@ Implementation branches added after the earlier checkpoint:
 ### Termux validation gate
 
 Run the commands and interactive cases in `TERMUX.md` section “Roadmap regression and device validation”. Record actual output and exact tested commit SHA here only after the device run. The gate includes exact file content, mismatched model proposal rejection (covered deterministically by regression tests), explicit approval and denial, refusal to overwrite, context after restart, and graceful exit.
+
+
+
+## 19. Audit follow-up — fail-closed intent, multiline content, resume continuity
+
+- Audit base: PR #23 head `67fdb147243f23fde9729bae7201b96d2171147d`.
+- Follow-up branch: `agent/audit-hardening-followups`.
+- Verified-file tool proposals now require extracted constraints from the original goal. If the request format is unsupported or ambiguous, the proposal is denied before approval rather than running without trusted constraints.
+- Exact-content extraction preserves interior blank lines. A blank line terminates the payload only when it is followed by a recognized follow-up instruction (for example, “Baca kembali” or “Verifikasi”).
+- Resumed plans now persist their final or waiting outcome into conversation history, including the early return for interrupted work that still needs reconciliation.
+- New regression tests cover interior blank lines and unsupported exact-file formats.
+- CI code/test validation: commit `9526c226fa678e6f99d47ad8f6a18560cacb9acb`, PR workflow run `46024720194` — Python 3.11: 435 passed, 1 skipped, 1 deselected; Python 3.14: 435 passed, 1 skipped, 1 deselected; static/security and strict namespace smoke jobs succeeded. The subsequent documentation-only commit `f97c7b0adb52c0a5de390787deb109b81a6846be` was also validated by PR workflow run `46024905058`: all four jobs succeeded, with the same test counts. The strict namespace job's success is not proof of namespace isolation on Termux.
+- Termux status: NOT YET TESTED for this follow-up branch. Do not reuse older Termux results as evidence for this commit.
+- Latest verified follow-up commit and CI run must be recorded here after GitHub Actions completes. Device test results must be appended only after the user runs them on Termux.
