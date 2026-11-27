@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
+import inspect
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
@@ -143,8 +145,14 @@ class ModelGateway:
                 available.append(credential)
         return available
 
-    def call(self, invoke: Callable[[Any], Any]) -> Any:
-        """Low-level provider-neutral boundary retained for deterministic tests."""
+    def call(
+        self,
+        invoke: Callable[[Any], Any],
+        *,
+        request_id: str | None = None,
+    ) -> Any:
+        """Call providers with bounded rotation and persistent attempt evidence."""
+        request_id = request_id or uuid.uuid4().hex
         attempts = 0
         last_error: Exception | None = None
         tried: set[str] = set()
@@ -157,12 +165,25 @@ class ModelGateway:
             credential = available[0]
             tried.add(credential.name)
             attempts += 1
+            provider_name = getattr(self.provider, "name", self.config.provider)
+            event_id = None
+            started = time.monotonic()
             if self.budget is not None:
-                self.budget.reserve_model_call()
+                event_id = self.budget.reserve_model_call(
+                    request_id=request_id,
+                    provider=provider_name,
+                    model=self.config.model,
+                    credential=credential.name,
+                )
             credential.state = CredentialState.HEALTHY
             secret = os.getenv(credential.secret_env)
             if not secret:
                 credential.state = CredentialState.UNKNOWN
+                if event_id is not None:
+                    self.budget.finish_model_call(
+                        event_id, status="SKIPPED", duration_ms=0,
+                        error_kind="CREDENTIAL_DISAPPEARED",
+                    )
                 continue
 
             try:
@@ -171,12 +192,16 @@ class ModelGateway:
                 else:
                     client = self.client_factory(secret)
                     result = invoke(client)
-                credential.state = CredentialState.HEALTHY
-                credential.failures = 0
-                return result
             except Exception as error:
                 last_error = error
                 kind = self.classify_error(error)
+                if event_id is not None:
+                    self.budget.finish_model_call(
+                        event_id,
+                        status="FAILED",
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                        error_kind=kind.value,
+                    )
                 credential.failures += 1
 
                 if kind == ProviderErrorKind.RATE_LIMIT:
@@ -195,17 +220,35 @@ class ModelGateway:
                     )
                     continue
                 raise
+            else:
+                credential.state = CredentialState.HEALTHY
+                credential.failures = 0
+                if event_id is not None:
+                    self.budget.finish_model_call(
+                        event_id,
+                        status="SUCCEEDED",
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                    )
+                return result
 
         if last_error is not None:
             raise RuntimeError("MODEL_CREDENTIALS_EXHAUSTED") from last_error
         raise RuntimeError("NO_MODEL_CREDENTIAL_AVAILABLE")
 
-    def text(self, prompt: str, *, system_instruction: str = "", response_mime_type: str | None = None) -> str:
+    def text(
+        self,
+        prompt: str,
+        *,
+        system_instruction: str = "",
+        response_mime_type: str | None = None,
+        request_id: str | None = None,
+    ) -> str:
         """Compatibility adapter for planner/execution callbacks."""
         return self.generate_text(
             prompt=prompt,
             system_instruction=system_instruction,
             response_mime_type=response_mime_type,
+            request_id=request_id,
         )
 
     def generate_text_with_metadata(
@@ -214,6 +257,7 @@ class ModelGateway:
         *,
         system_instruction: str = "",
         response_mime_type: str | None = None,
+        request_id: str | None = None,
     ) -> ModelCallResult:
         """Return text and provider-reported identity without changing text APIs."""
         if self.provider is None:
@@ -241,7 +285,7 @@ class ModelGateway:
                 "request_id": None,
             }
 
-        response = self.call(invoke)
+        response = self.call(invoke, request_id=request_id)
         if not isinstance(response, dict):
             raise RuntimeError("MODEL_PROVIDER_RESPONSE_INVALID")
         text = response.get("text")
@@ -263,12 +307,14 @@ class ModelGateway:
         *,
         system_instruction: str = "",
         response_mime_type: str | None = None,
+        request_id: str | None = None,
     ) -> str:
         """Backward-compatible text-only API used by planners and execution services."""
         return self.generate_text_with_metadata(
             prompt,
             system_instruction=system_instruction,
             response_mime_type=response_mime_type,
+            request_id=request_id,
         ).text
 
     def generate(
@@ -276,6 +322,7 @@ class ModelGateway:
         *,
         contents: Any,
         config: Any,
+        request_id: str | None = None,
     ) -> Any:
         """Provider-neutral structured generation endpoint."""
         if self.provider is None:
@@ -289,7 +336,7 @@ class ModelGateway:
                 model=self.config.model,
             )
 
-        return self.call(invoke)
+        return self.call(invoke, request_id=request_id)
 
 
 def gemini_credentials() -> list[Credential]:
@@ -370,7 +417,24 @@ class FallbackModelGateway:
             current = current.__cause__ or current.__context__
         return False
 
-    def _invoke(self, method: str, **kwargs):
+    @staticmethod
+    def _call_route_method(method, kwargs: dict[str, Any], request_id: str):
+        """Pass one logical request ID through compatible provider routes."""
+        try:
+            parameters = inspect.signature(method).parameters.values()
+            supports_request_id = any(
+                parameter.name == "request_id"
+                or parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters
+            )
+        except (TypeError, ValueError):
+            supports_request_id = False
+        if supports_request_id:
+            return method(**kwargs, request_id=request_id)
+        return method(**kwargs)
+
+    def _invoke(self, method: str, *, request_id: str | None = None, **kwargs):
+        request_id = request_id or uuid.uuid4().hex
         last_error: Exception | None = None
         skipped_providers: set[str] = set()
         for route in self.routes:
@@ -378,7 +442,9 @@ class FallbackModelGateway:
             if provider_name and provider_name in skipped_providers:
                 continue
             try:
-                return getattr(route, method)(**kwargs)
+                return self._call_route_method(
+                    getattr(route, method), kwargs, request_id
+                )
             except Exception as error:
                 last_error = error
                 kind = ModelGateway.classify_error(error)
@@ -400,8 +466,10 @@ class FallbackModelGateway:
         *,
         system_instruction: str = "",
         response_mime_type: str | None = None,
+        request_id: str | None = None,
     ) -> ModelCallResult:
         """Return metadata from the exact fallback route that served the request."""
+        request_id = request_id or uuid.uuid4().hex
         last_error: Exception | None = None
         skipped_providers: set[str] = set()
         for route in self.routes:
@@ -411,18 +479,26 @@ class FallbackModelGateway:
             try:
                 method = getattr(route, "generate_text_with_metadata", None)
                 if callable(method):
-                    result = method(
-                        prompt=prompt,
-                        system_instruction=system_instruction,
-                        response_mime_type=response_mime_type,
+                    result = self._call_route_method(
+                        method,
+                        {
+                            "prompt": prompt,
+                            "system_instruction": system_instruction,
+                            "response_mime_type": response_mime_type,
+                        },
+                        request_id,
                     )
                 else:
                     # Compatibility for simple/custom routes implementing only
                     # the long-standing string-returning API.
-                    result = route.generate_text(
-                        prompt=prompt,
-                        system_instruction=system_instruction,
-                        response_mime_type=response_mime_type,
+                    result = self._call_route_method(
+                        route.generate_text,
+                        {
+                            "prompt": prompt,
+                            "system_instruction": system_instruction,
+                            "response_mime_type": response_mime_type,
+                        },
+                        request_id,
                     )
                 if isinstance(result, ModelCallResult):
                     return result
@@ -458,11 +534,13 @@ class FallbackModelGateway:
         *,
         system_instruction: str = "",
         response_mime_type: str | None = None,
+        request_id: str | None = None,
     ) -> str:
         return self.generate_text_with_metadata(
             prompt,
             system_instruction=system_instruction,
             response_mime_type=response_mime_type,
+            request_id=request_id,
         ).text
 
     def text(
@@ -471,15 +549,28 @@ class FallbackModelGateway:
         *,
         system_instruction: str = "",
         response_mime_type: str | None = None,
+        request_id: str | None = None,
     ) -> str:
         return self.generate_text(
             prompt=prompt,
             system_instruction=system_instruction,
             response_mime_type=response_mime_type,
+            request_id=request_id,
         )
 
-    def generate(self, *, contents: Any, config: Any) -> Any:
-        return self._invoke("generate", contents=contents, config=config)
+    def generate(
+        self,
+        *,
+        contents: Any,
+        config: Any,
+        request_id: str | None = None,
+    ) -> Any:
+        return self._invoke(
+            "generate",
+            request_id=request_id,
+            contents=contents,
+            config=config,
+        )
 
 
 def create_model_gateway(

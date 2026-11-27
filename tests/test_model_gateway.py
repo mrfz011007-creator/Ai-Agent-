@@ -309,3 +309,150 @@ def test_fallback_provider_exhaustion_puts_task_in_waiting(tmp_path):
     restored = runtime.task_manager.get("MODEL-F1")
     assert restored.status == TaskStatus.WAITING
     assert restored.result["recovery_action"] == "WAIT_FOR_MODEL"
+
+
+
+def test_model_attempt_ledger_groups_retry_attempts_and_survives_restart(monkeypatch, tmp_path):
+    from core.budget import BudgetManager
+    from core.contracts import Budget
+    from core.state_store import StateStore
+    from core.model_config import ModelConfig
+
+    monkeypatch.setenv("K1", "secret-1")
+    monkeypatch.setenv("K2", "secret-2")
+    store_path = tmp_path / "budget.sqlite3"
+    budget = BudgetManager(Budget(max_model_calls=3), state_store=StateStore(store_path))
+    gateway = ModelGateway(
+        credentials=[Credential("key-primary", "K1"), Credential("key-backup", "K2")],
+        client_factory=lambda secret: secret,
+        budget=budget,
+        config=ModelConfig(provider="openrouter", model="model-test"),
+    )
+
+    def invoke(client):
+        if client == "secret-1":
+            raise RuntimeError("429 quota")
+        return "ok"
+
+    assert gateway.call(invoke, request_id="logical-request-42") == "ok"
+    assert budget.budget.model_calls == 2
+    assert [event["status"] for event in budget.model_call_events] == ["FAILED", "SUCCEEDED"]
+    assert {event["request_id"] for event in budget.model_call_events} == {"logical-request-42"}
+    assert [event["credential"] for event in budget.model_call_events] == [
+        "key-primary", "key-backup"
+    ]
+    assert all(event["provider"] == "openrouter" for event in budget.model_call_events)
+    assert all(event["model"] == "model-test" for event in budget.model_call_events)
+    assert all(event["error_kind"] in {"RATE_LIMIT", None} for event in budget.model_call_events)
+
+    restarted = BudgetManager(Budget(), state_store=StateStore(store_path))
+    assert restarted.budget.model_calls == 2
+    assert [event["status"] for event in restarted.model_call_events] == [
+        "FAILED", "SUCCEEDED"
+    ]
+    assert {event["request_id"] for event in restarted.model_call_events} == {
+        "logical-request-42"
+    }
+
+
+def test_fallback_routes_share_one_logical_request_id(monkeypatch):
+    from core.budget import BudgetManager
+    from core.contracts import Budget
+    from core.model_config import ModelConfig
+    from core.model_gateway import FallbackModelGateway
+
+    monkeypatch.setenv("K1", "primary-secret")
+    monkeypatch.setenv("K2", "backup-secret")
+    budget = BudgetManager(Budget(max_model_calls=5))
+
+    class FakeProvider:
+        def __init__(self, name, should_fail=False):
+            self.name = name
+            self.should_fail = should_fail
+
+        def text_with_metadata(
+            self, secret, *, prompt, system_instruction, model, response_mime_type=None
+        ):
+            if self.should_fail:
+                raise RuntimeError("429 quota")
+            return {
+                "text": '{"tool":"baca_file","action":"execute","arguments":{"nama":"README.md"}}',
+                "actual_model": model,
+                "request_id": "provider-request-id",
+            }
+
+    primary = ModelGateway(
+        credentials=[Credential("primary-key", "K1")],
+        provider=FakeProvider("openrouter", should_fail=True),
+        budget=budget,
+        config=ModelConfig(provider="openrouter", model="primary-model"),
+    )
+    backup = ModelGateway(
+        credentials=[Credential("backup-key", "K2")],
+        provider=FakeProvider("gemini"),
+        budget=budget,
+        config=ModelConfig(provider="gemini", model="backup-model"),
+    )
+    fallback = FallbackModelGateway([primary, backup])
+
+    result = fallback.generate_text_with_metadata("return a tool proposal")
+
+    assert result.actual_model == "backup-model"
+    assert len(budget.model_call_events) == 2
+    assert [event["status"] for event in budget.model_call_events] == [
+        "FAILED", "SUCCEEDED"
+    ]
+    assert [event["provider"] for event in budget.model_call_events] == [
+        "openrouter", "gemini"
+    ]
+    assert len({event["request_id"] for event in budget.model_call_events}) == 1
+
+
+def test_structured_generation_fallbacks_share_one_request_id(monkeypatch):
+    from core.budget import BudgetManager
+    from core.contracts import Budget
+    from core.model_config import ModelConfig
+    from core.model_gateway import FallbackModelGateway
+
+    monkeypatch.setenv("K1", "primary-secret")
+    monkeypatch.setenv("K2", "backup-secret")
+    budget = BudgetManager(Budget(max_model_calls=4))
+
+    class FakeProvider:
+        def __init__(self, name, should_fail=False):
+            self.name = name
+            self.should_fail = should_fail
+
+        def generate(self, secret, *, contents, config, model):
+            if self.should_fail:
+                raise RuntimeError("429 quota")
+            return {"provider": self.name, "model": model, "contents": contents}
+
+    primary = ModelGateway(
+        credentials=[Credential("primary-key", "K1")],
+        provider=FakeProvider("openrouter", should_fail=True),
+        budget=budget,
+        config=ModelConfig(provider="openrouter", model="primary-model"),
+    )
+    backup = ModelGateway(
+        credentials=[Credential("backup-key", "K2")],
+        provider=FakeProvider("gemini"),
+        budget=budget,
+        config=ModelConfig(provider="gemini", model="backup-model"),
+    )
+    fallback = FallbackModelGateway([primary, backup])
+
+    result = fallback.generate(contents="payload", config={"mode": "json"})
+
+    assert result == {
+        "provider": "gemini",
+        "model": "backup-model",
+        "contents": "payload",
+    }
+    assert [event["status"] for event in budget.model_call_events] == [
+        "FAILED", "SUCCEEDED"
+    ]
+    assert [event["provider"] for event in budget.model_call_events] == [
+        "openrouter", "gemini"
+    ]
+    assert len({event["request_id"] for event in budget.model_call_events}) == 1
