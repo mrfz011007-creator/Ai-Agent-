@@ -156,8 +156,13 @@ class AgentRuntime:
         )
 
     def chat(self, message: str) -> str:
-        """Answer a normal user message without creating a plan or executing tools."""
-        return ConversationService(self.model_gateway).answer(message)
+        """Answer a normal user message with bounded persistent chat context."""
+        conversation_id = os.environ.get("AI_AGENT_CONVERSATION_ID", "default")
+        return ConversationService(
+            self.model_gateway,
+            self.state_store,
+            conversation_id=conversation_id,
+        ).answer(message)
 
     def tool_catalog(self) -> dict[str, dict]:
         """Return non-executable tool metadata for model context."""
