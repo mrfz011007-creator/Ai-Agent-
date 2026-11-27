@@ -6,7 +6,7 @@ import sys
 import pytest
 
 from core.budget import Budget, BudgetManager
-from core.contracts import Task, TaskStatus, ToolRequest
+from core.contracts import Task, TaskStatus, ToolRequest, ToolResult
 from core.execution_contract import ExecutionContract
 from core.model_execution import ModelExecutionService
 from core.model_planner import ModelPlanService
@@ -319,7 +319,15 @@ def test_reflection_memory_candidates_require_human_review(tmp_path, monkeypatch
     from core.memory_service import MemoryService
     import memory
 
-    service = MemoryService(project_id="demo")
+    evidence_store = EvidenceStore()
+    evidence_store.record(
+        evidence_id="ev-real",
+        task_id="task-1",
+        tool="run_command",
+        action="execute",
+        result=ToolResult(True, "SUCCESS", "run_command"),
+    )
+    service = MemoryService(project_id="demo", evidence_store=evidence_store)
 
     def model_call(**kwargs):
         return json.dumps({
