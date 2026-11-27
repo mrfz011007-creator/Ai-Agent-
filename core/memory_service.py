@@ -105,6 +105,8 @@ class MemoryService:
                 "reason": "EVIDENCE_REQUIRED",
                 "committed": [],
             }
+        verified_evidence = []
+        verified_evidence = []
         for evidence_id in evidence_refs:
             evidence = self.evidence_store.get(str(evidence_id))
             if evidence is None:
@@ -135,6 +137,7 @@ class MemoryService:
                     "reason": "EVIDENCE_TASK_MISMATCH",
                     "committed": [],
                 }
+            verified_evidence.append(evidence)
         service = ReflectionService(model_call)
         try:
             candidates = service.reflect(
@@ -187,7 +190,14 @@ class MemoryService:
                         "project_id": project_id if project_id is not None else self.project_id,
                         "task_id": task_id,
                         "context": context or {},
-                        "source": source,
+                        "source": {
+                            "kind": verified_evidence[0].kind,
+                            "ref": verified_evidence[0].evidence_id,
+                        },
+                        "provenance": {
+                            "reason": "human-reviewed reflection derived from recorded evidence",
+                            "authority": verified_evidence[0].authority,
+                        },
                     },
                     reason="REFLECTION_REQUIRES_HUMAN_REVIEW",
                 )
@@ -250,7 +260,17 @@ class MemoryService:
                     "success": False,
                     "reason": "EVIDENCE_TASK_MISMATCH",
                 }
-        result = self.commit_proposal(candidate)
+            verified_evidence.append(evidence)
+        trusted_candidate = dict(candidate)
+        trusted_candidate["source"] = {
+            "kind": verified_evidence[0].kind,
+            "ref": verified_evidence[0].evidence_id,
+        }
+        trusted_candidate["provenance"] = {
+            "reason": "human-approved reflection derived from recorded evidence",
+            "authority": verified_evidence[0].authority,
+        }
+        result = self.commit_proposal(trusted_candidate)
         if not result.get("success"):
             return {"status": "commit_rejected", "success": False, "result": result}
         resolved = reflection_queue.resolve(review_id, status="approved", resolution=reviewer)
