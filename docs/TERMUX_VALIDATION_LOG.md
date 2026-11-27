@@ -559,3 +559,14 @@ Run the commands and interactive cases in `TERMUX.md` section “Roadmap regress
 - Termux filesystem smoke script now additionally tests `extract_trusted_file_intent()` with a final newline, writes it through `buat_file_terverifikasi()`, and verifies the UTF-8 bytes exactly. This check is still NOT RUN on the user's Termux device.
 - Termux device status: NOT TESTED. Continue only with the exact final branch head after its CI completes. Record actual command outputs and the tested commit SHA after the user runs the procedure in `TERMUX.md`.
 - PR #24 remains open and unchanged. PR #25 remains a draft; no merge was performed.
+
+## 22. Latest pre-Termux CI and smoke-test review — `d5ebbe99544890f0a29bee816980fd684e5727c2`
+
+- GitHub Actions PR run #1536: all four jobs succeeded on this commit.
+- Python 3.11: 469 passed, 1 skipped, 1 deselected.
+- Python 3.14: 469 passed, 1 skipped, 1 deselected.
+- Static analysis and security scan: passed.
+- Strict Linux namespace job: job succeeded; verify its log before treating the namespace test as executed. A hosted-runner skip does not establish process isolation.
+- Reviewed `scripts/termux_filesystem_smoke.py`: added a parser-to-verified-write check for a single trailing newline and compares the exact UTF-8 bytes. This script has only been CI-reviewed; it has NOT been executed on the user's Android/Termux device.
+- Termux status: NOT TESTED. The next gate is execution of `TERMUX.md` on the phone with the exact branch head SHA. Preserve any existing local changes before switching branches.
+- PR #24 remains open and unchanged. PR #25 remains draft and unmerged.
