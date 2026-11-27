@@ -131,7 +131,10 @@ class AgentRuntime:
         test_manager = TestManager(tool_router)
         acceptance_gate = AcceptanceGate(Verifier(evidence_store), artifact_manager)
         orchestrator = Orchestrator(task_manager, Planner(), store=state_store)
-        memory = MemoryService(project_id=os.environ.get("AI_AGENT_PROJECT_ID"))
+        memory = MemoryService(
+            project_id=os.environ.get("AI_AGENT_PROJECT_ID"),
+            evidence_store=evidence_store,
+        )
         return cls(
             state_store=state_store,
             checkpoint_manager=checkpoint_manager,
