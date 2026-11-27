@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+MAX_PENDING_ITEMS = 500
+MAX_TOTAL_ITEMS = 2000
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
@@ -21,6 +24,14 @@ def _load() -> dict[str, Any]:
     value = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(value, Mapping) or value.get('schema_version') != 1 or not isinstance(value.get('items'), list):
         raise RuntimeError('REFLECTION_QUEUE_INVALID')
+    for item in value['items']:
+        if (
+            not isinstance(item, Mapping)
+            or not isinstance(item.get('id'), str)
+            or item.get('status') not in {'pending', 'approved', 'rejected'}
+            or not isinstance(item.get('candidate'), Mapping)
+        ):
+            raise RuntimeError('REFLECTION_QUEUE_ITEM_INVALID')
     return dict(value)
 
 def _save(value: Mapping[str, Any]) -> None:
@@ -40,6 +51,14 @@ def _save(value: Mapping[str, Any]) -> None:
 
 def enqueue(candidate: Mapping[str, Any], *, reason: str) -> dict[str, Any]:
     store = _load()
+    pending_count = sum(1 for entry in store['items'] if entry.get('status') == 'pending')
+    if pending_count >= MAX_PENDING_ITEMS:
+        raise RuntimeError('REFLECTION_QUEUE_FULL')
+    if len(store['items']) >= MAX_TOTAL_ITEMS:
+        pending = [entry for entry in store['items'] if entry.get('status') == 'pending']
+        resolved = [entry for entry in store['items'] if entry.get('status') != 'pending']
+        keep_resolved = max(0, MAX_TOTAL_ITEMS - len(pending) - 1)
+        store['items'] = resolved[-keep_resolved:] + pending if keep_resolved else pending
     item = {'id': 'reflection-' + uuid.uuid4().hex[:12], 'status': 'pending', 'created_at': _now(),
             'reason': reason, 'candidate': dict(candidate)}
     store['items'].append(item)
