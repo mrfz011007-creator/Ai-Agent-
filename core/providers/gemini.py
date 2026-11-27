@@ -52,7 +52,20 @@ class GeminiProvider:
                     # Cleanup failure must not mask the provider response/error.
                     pass
 
-    def text(
+    @staticmethod
+    def _response_field(response: Any, *names: str) -> Any:
+        if isinstance(response, Mapping):
+            for name in names:
+                value = response.get(name)
+                if value is not None:
+                    return value
+        for name in names:
+            value = getattr(response, name, None)
+            if value is not None:
+                return value
+        return None
+
+    def text_with_metadata(
         self,
         api_key: str,
         *,
@@ -60,7 +73,7 @@ class GeminiProvider:
         system_instruction: str,
         model: str,
         response_mime_type: str | None = None,
-    ) -> str:
+    ) -> dict[str, str | None]:
         from google.genai import types
 
         config_kwargs: Mapping[str, Any] = {
@@ -81,4 +94,29 @@ class GeminiProvider:
             config=types.GenerateContentConfig(**config_kwargs),
             model=model,
         )
-        return response.text or ""
+        text = response.text or ""
+        actual_model = self._response_field(response, "model_version", "modelVersion")
+        request_id = self._response_field(response, "response_id", "responseId")
+        return {
+            "text": text,
+            "actual_model": actual_model.strip() if isinstance(actual_model, str) and actual_model.strip() else None,
+            "request_id": request_id.strip() if isinstance(request_id, str) and request_id.strip() else None,
+        }
+
+    def text(
+        self,
+        api_key: str,
+        *,
+        prompt: str,
+        system_instruction: str,
+        model: str,
+        response_mime_type: str | None = None,
+    ) -> str:
+        """Backward-compatible text-only adapter."""
+        return self.text_with_metadata(
+            api_key,
+            prompt=prompt,
+            system_instruction=system_instruction,
+            model=model,
+            response_mime_type=response_mime_type,
+        )["text"] or ""
