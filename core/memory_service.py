@@ -21,8 +21,9 @@ from core import reflection_queue
 class MemoryService:
     """Bounded adapter between agent lifecycle and persistent structured memory."""
 
-    def __init__(self, *, project_id: str | None = None):
+    def __init__(self, *, project_id: str | None = None, evidence_store=None):
         self.project_id = project_id
+        self.evidence_store = evidence_store
         # Clean oversized legacy/runtime memory at startup without touching
         # the store when it is already below the configured threshold.
         compact_memory_if_needed()
@@ -85,7 +86,51 @@ class MemoryService:
                            related_memory: list[Mapping[str, Any]] | None = None, project_id: str | None = None,
                            task_id: str | None = None, context: Mapping[str, Any] | None = None,
                            source: Mapping[str, Any] | str | None = None) -> dict[str, Any]:
-        """Reflect on one verified experience and commit only bounded candidates."""
+        """Reflect on an evidence-backed experience; require authentic task evidence."""
+        if self.evidence_store is None:
+            return {
+                "status": "reflection_rejected",
+                "success": False,
+                "reason": "EVIDENCE_STORE_REQUIRED",
+                "committed": [],
+            }
+        if not evidence_refs:
+            return {
+                "status": "reflection_rejected",
+                "success": False,
+                "reason": "EVIDENCE_REQUIRED",
+                "committed": [],
+            }
+        for evidence_id in evidence_refs:
+            evidence = self.evidence_store.get(str(evidence_id))
+            if evidence is None:
+                return {
+                    "status": "reflection_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_NOT_FOUND",
+                    "committed": [],
+                }
+            if evidence.kind not in {"execution", "reconciliation"}:
+                return {
+                    "status": "reflection_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_KIND_INVALID",
+                    "committed": [],
+                }
+            if evidence.authority not in {"execution_router", "reconciliation_boundary"}:
+                return {
+                    "status": "reflection_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_AUTHORITY_INVALID",
+                    "committed": [],
+                }
+            if task_id is not None and evidence.task_id != task_id:
+                return {
+                    "status": "reflection_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_TASK_MISMATCH",
+                    "committed": [],
+                }
         service = ReflectionService(model_call)
         try:
             candidates = service.reflect(
