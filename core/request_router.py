@@ -17,8 +17,8 @@ _ACTION_PREFIX = re.compile(
 )
 
 _QUESTION_PREFIX = re.compile(
-    r"^(?:buat|bikin)\\s+apa\\b|"
-    r"^(?:bisa|dapat)\\s+(?:kamu\\s+)?(?:buat|bikin)\\s+apa\\b",
+    r"^(?:buat|bikin)\s+apa\b|"
+    r"^(?:bisa|dapat)\s+(?:kamu\s+)?(?:buat|bikin)\s+apa\b",
     re.IGNORECASE,
 )
 
