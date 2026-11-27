@@ -80,6 +80,20 @@ Agent >
 
 Use `exit` to stop the process.
 
+## Post-Stage-8 Termux smoke test (deferred gate)
+
+Do not run the interactive smoke test while Stages 3–8 are still being implemented. Run it only after the Stage 8 implementation is committed and the GitHub Actions workflow for that exact branch head is fully successful.
+
+At that point, verify direct conversation and follow-up context:
+
+```text
+Jelaskan kemampuanmu dan model AI yang sedang kamu gunakan.
+Apa jawabanmu tadi tentang model utama?
+exit
+```
+
+Restart the agent and ask a follow-up about the prior answer to verify that the configured conversation ID restores the saved history. Then test a harmless explicit workspace task only if the previous checks pass. Keep Termux results separate from GitHub CI results and live-provider evaluation.
+
 ## Termux execution behavior
 
 Android/Termux is detected before the Linux namespace/chroot sandbox path is attempted. The agent therefore uses its hardened execution fallback on Termux.
@@ -163,21 +177,7 @@ for key, count in sorted(counts.items()):
 PY
 ```
 
-Then run:
-
-```bash
-python agent.py
-```
-
-Use only the non-destructive smoke inputs:
-
-```text
-lokasi saya
-lihat file
-exit
-```
-
-Check the memory file size again after the process exits. Do not delete `memory.json` or `agent_state.sqlite3` during this validation.
+After the Stage 8 CI gate has passed, use the post-Stage-8 Termux smoke procedure above. Check the memory file size again after the process exits. Do not delete `memory.json` or `agent_state.sqlite3` during this validation.
 
 The current defaults are 8 MiB automatic compaction, 500 active non-durable execution experiences, and 5 retained historical revisions per memory identity. Override them only when there is a concrete storage requirement.
 
