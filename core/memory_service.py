@@ -191,7 +191,7 @@ class MemoryService:
                     },
                     reason="REFLECTION_REQUIRES_HUMAN_REVIEW",
                 )
-            except RuntimeError as error:
+            except (RuntimeError, ValueError) as error:
                 rejected.append({
                     "key": candidate.key,
                     "status": "queue_rejected",
