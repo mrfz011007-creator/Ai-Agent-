@@ -1,3 +1,6 @@
+import pytest
+
+import core.runtime as runtime_module
 from core.contracts import Task, TaskStatus
 from core.plan import Planner
 from core.runtime import AgentRuntime
@@ -81,3 +84,92 @@ def test_budget_counters_persist_across_runtime_restart(tmp_path):
     assert restarted.budget_manager.remaining_tool_calls == 2
     assert restarted.budget_manager.remaining_model_calls == 2
     assert restarted.budget_manager.remaining_recovery_cycles == 2
+
+
+
+def test_get_runtime_requires_an_existing_configured_workspace(monkeypatch, tmp_path):
+    monkeypatch.delenv("AI_AGENT_WORKSPACE_ROOT", raising=False)
+    monkeypatch.setattr(runtime_module, "_default_runtime", None)
+
+    with pytest.raises(RuntimeError, match="AI_AGENT_WORKSPACE_ROOT"):
+        runtime_module.get_runtime()
+
+    missing_workspace = tmp_path / "not-created"
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(missing_workspace))
+    with pytest.raises(RuntimeError, match="direktori yang sudah ada"):
+        runtime_module.get_runtime()
+
+
+def test_get_runtime_defaults_state_database_to_workspace(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.delenv("AI_AGENT_STATE_DB", raising=False)
+    monkeypatch.setattr(runtime_module, "_default_runtime", None)
+
+    runtime = runtime_module.get_runtime()
+
+    expected = workspace / "agent_state.sqlite3"
+    assert runtime.state_store.path == expected
+    assert expected.is_file()
+
+
+def test_get_runtime_resolves_relative_state_database_inside_workspace(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("AI_AGENT_STATE_DB", "state/agent.sqlite3")
+    monkeypatch.setattr(runtime_module, "_default_runtime", None)
+
+    runtime = runtime_module.get_runtime()
+
+    expected = workspace / "state" / "agent.sqlite3"
+    assert runtime.state_store.path == expected
+    assert expected.is_file()
+
+
+
+def test_router_clamps_default_command_timeout_to_registry_maximum(tmp_path):
+    from core.budget import BudgetManager
+    from core.contracts import Budget, ToolRequest
+    from execution.router import ToolRouter
+    from security.guard import GuardEngine
+    from security.policy import PolicyEngine
+    from verification.evidence import EvidenceStore
+
+    seen = {}
+    registry = {
+        "run_command": {
+            "permission": "safe",
+            "parameters": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "command": {"type": "string", "maxLength": 4096},
+                    "cwd": {"type": "string", "maxLength": 2048},
+                    "timeout": {"type": "number", "minimum": 0.1, "maximum": 120},
+                },
+                "required": ["command", "cwd"],
+            },
+            "func": lambda **kwargs: seen.update(kwargs) or {
+                "success": True,
+                "status": "SUCCESS",
+            },
+        }
+    }
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget(max_runtime_seconds=3600)),
+        evidence=EvidenceStore(),
+        guard=GuardEngine(tmp_path),
+    )
+
+    result = router.execute(ToolRequest(
+        "run_command",
+        "execute",
+        {"command": "true", "cwd": str(tmp_path)},
+    ))
+
+    assert result.success is True
+    assert seen["timeout"] == 120.0

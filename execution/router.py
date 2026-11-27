@@ -36,16 +36,43 @@ class ToolRouter:
         self._budget = budget
         self._evidence = evidence
         self._confirmation = confirmation
-        workspace_root = os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
-        self._guard = guard or GuardEngine(workspace_root)
+        workspace_root = os.environ.get("AI_AGENT_WORKSPACE_ROOT")
+        self._workspace_configured = bool(workspace_root and workspace_root.strip()) or guard is not None
+        self._guard = guard or GuardEngine(workspace_root or "/__ai_agent_workspace_not_configured__")
         self._task_getter = task_getter
         self._capability_policy = capability_policy
         self._task_tool_call_consumer = task_tool_call_consumer
 
+    def _deny(self, request: ToolRequest, status: str, error: str) -> ToolResult:
+        """Persist a redacted audit record for security-relevant denials."""
+        result = ToolResult(
+            False,
+            status,
+            request.tool,
+            error=redact_text(str(error)),
+        )
+        evidence_id = f"ev-{uuid.uuid4().hex[:12]}"
+        try:
+            self._evidence.record(
+                evidence_id=evidence_id,
+                task_id=request.task_id,
+                attempt_id=request.attempt_id,
+                tool=request.tool,
+                action=request.action,
+                result=result,
+            )
+        except Exception:
+            # A logging failure must never turn a denied request into execution.
+            return result
+        result.evidence_id = evidence_id
+        return result
+
     def execute(self, request: ToolRequest) -> ToolResult:
         metadata = self._registry_getter(request.tool)
         if metadata is None:
-            return ToolResult(False, "denied", request.tool, error="Unknown tool")
+            return self._deny(request, "denied", "Unknown tool")
+        if request.tool == "run_command" and not self._workspace_configured:
+            return self._deny(request, "guard_denied", "WORKSPACE_NOT_CONFIGURED")
 
         contract = None
         if self._task_getter is not None and request.task_id is not None:
@@ -83,73 +110,54 @@ class ToolRouter:
                 )
             contract = getattr(task, "execution_contract", None)
             if contract is not None and not contract.allows_tool(request.tool):
-                return ToolResult(
-                    False,
-                    "contract_denied",
-                    request.tool,
-                    error=f"Tool not allowed by execution contract: {request.tool}",
+                return self._deny(
+                    request, "contract_denied",
+                    f"Tool not allowed by execution contract: {request.tool}",
                 )
 
         if contract is not None and not contract.allows_capabilities(capabilities_for_tool(metadata)):
-            return ToolResult(False, "contract_capability_denied", request.tool, error=f"Tool capabilities exceed execution contract: {request.tool}")
+            return self._deny(
+                request, "contract_capability_denied",
+                f"Tool capabilities exceed execution contract: {request.tool}",
+            )
 
         if self._capability_policy is not None:
             capability = self._capability_policy.decide(request.tool, metadata)
             if not capability.allowed:
-                return ToolResult(
-                    False,
-                    "capability_denied",
-                    request.tool,
-                    error=capability.reason,
-                )
+                return self._deny(request, "capability_denied", capability.reason)
 
         arguments = dict(request.arguments)
-        if request.tool == "run_command":
+        if request.tool in {"run_command", "jalankan_python"}:
             remaining_runtime = self._budget.remaining_runtime_seconds
             if remaining_runtime <= 0:
-                return ToolResult(
-                    False,
-                    "budget_exceeded",
-                    request.tool,
-                    error="RUNTIME_BUDGET_EXCEEDED",
-                )
-            timeout = arguments.get("timeout", remaining_runtime)
+                return self._deny(request, "budget_exceeded", "RUNTIME_BUDGET_EXCEEDED")
+            max_timeout = 120.0 if request.tool == "run_command" else 30.0
+            default_timeout = (
+                remaining_runtime if request.tool == "run_command"
+                else min(15.0, remaining_runtime)
+            )
+            timeout = arguments.get("timeout", default_timeout)
             if (
                 isinstance(timeout, bool)
                 or not isinstance(timeout, (int, float))
                 or not math.isfinite(timeout)
                 or timeout <= 0
             ):
-                return ToolResult(
-                    False,
-                    "schema_invalid",
-                    request.tool,
-                    error="INVALID_TIMEOUT",
-                )
-            arguments["timeout"] = min(float(timeout), remaining_runtime)
+                return self._deny(request, "schema_invalid", "INVALID_TIMEOUT")
+            arguments["timeout"] = min(float(timeout), remaining_runtime, max_timeout)
 
         schema = metadata.get("parameters")
         if schema is not None:
             try:
                 validate_tool_arguments(schema, arguments)
             except SchemaValidationError as error:
-                return ToolResult(
-                    False,
-                    "schema_invalid",
-                    request.tool,
-                    error=str(error),
-                )
+                return self._deny(request, "schema_invalid", str(error))
 
         # Run security inspection before asking for approval so a disallowed
         # process request can never be approved accidentally.
         guard = self._guard.check(tool=request.tool, arguments=arguments)
         if not guard.allowed:
-            return ToolResult(
-                False,
-                "guard_denied",
-                request.tool,
-                error=guard.reason,
-            )
+            return self._deny(request, "guard_denied", guard.reason)
 
         policy = self._policy.decide(
             PolicyContext(
@@ -162,18 +170,13 @@ class ToolRouter:
         )
 
         if policy.decision == Decision.DENY:
-            return ToolResult(False, "denied", request.tool, error=policy.reason)
+            return self._deny(request, "denied", policy.reason)
 
         if policy.decision == Decision.ASK:
             if self._confirmation is None or not self._confirmation(
                 request.tool, arguments
             ):
-                return ToolResult(
-                    False,
-                    "cancelled",
-                    request.tool,
-                    error="User denied tool execution",
-                )
+                return self._deny(request, "cancelled", "User denied tool execution")
 
         # Check the task-local quota without mutating it. Mutation is deferred
         # until the handler exists and the global budget has been reserved.
@@ -183,32 +186,22 @@ class ToolRouter:
             and contract is not None
             and getattr(task, "tool_calls", 0) >= contract.max_tool_calls
         ):
-            return ToolResult(
-                False,
-                "task_limit_exceeded",
-                request.tool,
-                error="TASK_TOOL_CALL_LIMIT_EXCEEDED",
-            )
+            return self._deny(request, "task_limit_exceeded", "TASK_TOOL_CALL_LIMIT_EXCEEDED")
 
         function = metadata.get("func")
         if function is None:
-            return ToolResult(False, "error", request.tool, error="Tool has no handler")
+            return self._deny(request, "error", "Tool has no handler")
 
         try:
             self._budget.reserve_tool_call()
         except RuntimeError as error:
-            return ToolResult(
-                False,
-                "budget_exceeded",
-                request.tool,
-                error=str(error),
-            )
+            return self._deny(request, "budget_exceeded", str(error))
 
         if self._task_tool_call_consumer is not None and request.task_id is not None:
             try:
                 self._task_tool_call_consumer(request.task_id)
             except RuntimeError as error:
-                return ToolResult(False, "task_limit_exceeded", request.tool, error=str(error))
+                return self._deny(request, "task_limit_exceeded", str(error))
 
         evidence_id = f"ev-{uuid.uuid4().hex[:12]}"
 

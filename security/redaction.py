@@ -24,7 +24,25 @@ def redact_value(value: Any) -> Any:
     if isinstance(value, str):
         return redact_text(value)
     if isinstance(value, dict):
-        return {key: redact_value(item) for key, item in value.items()}
+        redacted = {}
+        for key, item in value.items():
+            normalized_key = key.upper() if isinstance(key, str) else ""
+            sensitive_key = (
+                "API_KEY" in normalized_key
+                or "PASSWORD" in normalized_key
+                or "SECRET" in normalized_key
+                or "PRIVATE_KEY" in normalized_key
+                or "CREDENTIAL" in normalized_key
+                or "AUTHORIZATION" in normalized_key
+                or normalized_key == "TOKEN"
+                or normalized_key.endswith("_TOKEN")
+            )
+            redacted[key] = (
+                "[REDACTED_SECRET]"
+                if sensitive_key and item is not None
+                else redact_value(item)
+            )
+        return redacted
     if isinstance(value, list):
         return [redact_value(item) for item in value]
     if isinstance(value, tuple):

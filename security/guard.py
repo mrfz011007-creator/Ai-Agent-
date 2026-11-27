@@ -7,6 +7,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from execution.sandbox import find_trusted_system_executable, namespace_sandbox_status
+
 
 @dataclass(frozen=True)
 class GuardResult:
@@ -109,7 +111,22 @@ class GuardEngine:
 
     def check(self, *, tool: str, arguments: dict) -> GuardResult:
         if tool == "jalankan_python":
-            return GuardResult(False, "INTERPRETER_EXECUTION_DENIED")
+            if not isinstance(arguments.get("nama"), str) or not arguments["nama"].strip():
+                return GuardResult(False, "PYTHON_SCRIPT_REQUIRED")
+            if not self.workspace_root.is_dir():
+                return GuardResult(False, "WORKSPACE_NOT_CONFIGURED")
+            if self.workspace_root == Path(self.workspace_root.anchor):
+                return GuardResult(False, "WORKSPACE_ROOT_TOO_BROAD")
+            available, reason = namespace_sandbox_status()
+            if not available:
+                return GuardResult(False, f"PYTHON_SANDBOX_UNAVAILABLE:{reason}")
+            for helper in ("setpriv", "env"):
+                if find_trusted_system_executable(helper) is None:
+                    return GuardResult(
+                        False,
+                        f"PYTHON_SANDBOX_UNAVAILABLE: trusted {helper} utility is required",
+                    )
+            return GuardResult(True, "PYTHON_SANDBOX_AVAILABLE")
         if tool != "run_command":
             return GuardResult(True, "GUARD_NOT_APPLICABLE")
 

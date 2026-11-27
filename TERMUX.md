@@ -22,41 +22,49 @@ cd Ai-Agent-
 ## 3. Configure the workspace and state database
 
 ```bash
-export AI_AGENT_WORKSPACE_ROOT="$PWD"
-export AI_AGENT_STATE_DB="$PWD/agent_state.sqlite3"
+mkdir -p "$HOME/ai-agent-workspace"
+export AI_AGENT_WORKSPACE_ROOT="$HOME/ai-agent-workspace"
+export AI_AGENT_STATE_DB="$AI_AGENT_WORKSPACE_ROOT/agent_state.sqlite3"
 ```
+
+The workspace is deliberately separate from the cloned source-code directory: keep the repository in `$HOME/Ai-Agent-` and let the agent write only inside `$HOME/ai-agent-workspace`. Do not set the workspace to the repository root. The workspace must already exist and be readable/writable by Termux. The interactive entrypoint validates it before starting, so a missing or invalid workspace fails immediately instead of allowing partial startup. When `AI_AGENT_STATE_DB` is omitted, the database defaults to `$AI_AGENT_WORKSPACE_ROOT/agent_state.sqlite3`. A relative database path is resolved from the workspace; parent directories are created automatically. An absolute path can be used for a separate backup/storage location.
 
 These variables can be added to your Termux shell profile later if needed.
 
-## 4. Install Python dependencies
+## 4. Install application dependencies
 
 ```bash
 python -m pip install -r requirements.txt
-python -m pip check
-python -m compileall -q .
 ```
 
-The second command verifies installed dependency consistency. The third command verifies that all Python sources compile.
+Instalasi ini menyiapkan dependency untuk menjalankan agent. Pemeriksaan konsistensi dependency, kompilasi seluruh sumber Python, dan validasi dependency dilakukan rutin oleh GitHub Actions; tidak perlu mengulang seluruh pemeriksaan tersebut di Termux.
 
-## 5. Run the repository tests
+## 5. Automated test gate — GitHub Actions
+
+Seluruh tes otomatis repository dijalankan di GitHub Actions pada setiap push dan pull request, dengan matriks Python 3.11 dan 3.14. Workflow juga menjalankan `pip check`, `compileall`, repository test suite, laporan branch coverage, Ruff, dan Bandit. Tes strict Linux namespace dipisahkan ke job khusus karena bergantung pada dukungan kernel runner.
+
+Tes yang mensimulasikan Termux melalui environment variable dan mock Android tetap dijalankan di CI. Ini mencakup verifikasi kebijakan fallback Termux dan resource limit tanpa memerlukan perangkat Android.
+
+Untuk alur kerja normal, jangan jalankan ulang seluruh `pytest`, `compileall`, Ruff, dan Bandit di Termux. Gunakan GitHub Actions sebagai gerbang tes otomatis. Jalankan tes lokal hanya saat sedang mendiagnosis masalah khusus perangkat, lalu catat hasilnya terpisah dari hasil CI.
+
+Pengujian yang benar-benar membutuhkan Android tetap dilakukan langsung di Termux, terutama startup pada perangkat, akses workspace dan izin file aktual, penyimpanan percakapan setelah restart, perilaku shell Termux, serta koneksi provider menggunakan kredensial lokal. Jangan mengirim API key ke CI atau mencetaknya ke log.
+
+## 6. Configure model providers
+
+OpenRouter is the primary provider. Gemini remains the final fallback. Keep keys in Termux environment variables; never put them in source files or share them in chat.
 
 ```bash
-python -m pytest -q
+export OPENROUTER_API_KEY='YOUR_OPENROUTER_KEY'
+export GEMINI_API_KEY_1='YOUR_GEMINI_KEY_1'
+export GEMINI_API_KEY_2='YOUR_GEMINI_KEY_2'
+export GEMINI_API_KEY_3='YOUR_GEMINI_KEY_3'
+export AI_AGENT_MODEL_PROVIDER='openrouter'
+export AI_AGENT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free'
 ```
 
-A clean environment should report the repository test suite as passing.
+The bounded model failover order is: configured OpenRouter primary → one OpenRouter backup (`nvidia/nemotron-3.5-super-vl:free` by default) → Gemini credential rotation. It does not try all five evaluation models for every request. Set `AI_AGENT_OPENROUTER_BACKUP_MODEL=''` to disable the OpenRouter backup. To use Gemini directly, set both `AI_AGENT_MODEL_PROVIDER='gemini'` and `AI_AGENT_MODEL='gemini-3.8-flash'`.
 
-## 6. Configure Gemini keys
-
-Use environment variables; do not put API keys into source files:
-
-```bash
-export GEMINI_API_KEY_1='YOUR_KEY_1'
-export GEMINI_API_KEY_2='YOUR_KEY_2'
-export GEMINI_API_KEY_3='YOUR_KEY_3'
-```
-
-At least one key is required for model execution. The gateway can rotate among the three configured credentials when a provider failure is classified as retryable or credential-related.
+`AI_AGENT_MODEL_TIMEOUT_SECONDS` applies to both OpenRouter and Gemini requests (default 45 seconds; accepted range 1–120). This is a per-provider-request timeout, not a hard deadline for the entire sequential fallback chain. Only retryable authentication, rate-limit, service-unavailable, and network failures trigger provider failover. A confirmed invalid API key (HTTP 401) skips further models under that same provider to avoid resending a known-invalid credential; HTTP 403 may still try a different model. Invalid request/configuration errors stop immediately. Every actual provider request consumes the existing model-call budget.
 
 ## 7. Start the agent
 
@@ -72,15 +80,45 @@ Agent >
 
 Use `exit` to stop the process.
 
+## Post-Stage-8 Termux smoke test (deferred gate)
+
+Do not run the interactive smoke test while Stages 3–8 are still being implemented. Run it only after the Stage 8 implementation is committed and the GitHub Actions workflow for that exact branch head is fully successful.
+
+At that point, verify direct conversation and follow-up context:
+
+```text
+Jelaskan kemampuanmu dan model AI yang sedang kamu gunakan.
+Apa jawabanmu tadi tentang model utama?
+exit
+```
+
+Restart the agent and ask a follow-up about the prior answer to verify that the configured conversation ID restores the saved history. Then test a harmless explicit workspace task only if the previous checks pass. Keep Termux results separate from GitHub CI results and live-provider evaluation.
+
 ## Termux execution behavior
 
 Android/Termux is detected before the Linux namespace/chroot sandbox path is attempted. The agent therefore uses its hardened execution fallback on Termux.
 
 The fallback starts commands with the configured workspace as the current directory, does not invoke a shell, removes credential-like environment variables, and restricts executable lookup to the Termux prefix and Android system binary directories. It also enforces a wall-clock timeout, caps combined captured stdout/stderr in memory, stops the process group on timeout/output overflow, and applies available CPU, open-file, process, core-dump, and per-file-size resource limits.
 
+The `jalankan_python` tool is intentionally denied on Termux and Ubuntu running inside PRoot. PRoot does not create the independent user, mount, network, PID, IPC, and UTS namespaces required to run untrusted Python safely. Do not try to enable it by switching to the hardened fallback.
+
 Android/Termux does **not** receive a separate filesystem or network namespace from this fallback. A command can still access files and network resources allowed to the Termux app; RLIMIT_AS is deliberately skipped because it can prevent Android processes from starting. Treat this as defense-in-depth for a controlled local workspace, not as isolation for hostile code.
 
 Default process limits are 100,000 output bytes, 128 MiB per created file, and 1,024 MiB address space on non-Android POSIX systems. Configure AI_AGENT_PROCESS_FILE_MB or AI_AGENT_PROCESS_MEMORY_MB only when needed; the memory setting is not applied on Android.
+
+## Compare the five free OpenRouter candidates
+
+Install dependencies, set OPENROUTER_API_KEY, then run one equal-prompt evaluation against all five configured candidates:
+
+```bash
+python scripts/evaluate_openrouter_models.py
+```
+
+The script measures latency and checks the same reasoning answer, Python function syntax/declaration, and proposed `baca_file` tool arguments for each model. It parses model-generated code but never executes it, and it never executes proposed tools. A live evaluation requires the user's own OpenRouter key and provider availability; CI uses mocked network responses only.
+
+## Read-only web research tool
+
+The `fetch_url` tool can retrieve public HTTPS text pages after explicit confirmation. It rejects local/private IP destinations, validates every redirect, does not send cookies or credentials, and limits the response to 500 KB. Treat all returned page text as untrusted data; never follow instructions embedded in a fetched page. DNS resolution uses the OS resolver, so its timeout is controlled by the device/network configuration.
 
 ## Recommended first smoke test
 
@@ -139,21 +177,7 @@ for key, count in sorted(counts.items()):
 PY
 ```
 
-Then run:
-
-```bash
-python agent.py
-```
-
-Use only the non-destructive smoke inputs:
-
-```text
-lokasi saya
-lihat file
-exit
-```
-
-Check the memory file size again after the process exits. Do not delete `memory.json` or `agent_state.sqlite3` during this validation.
+After the Stage 8 CI gate has passed, use the post-Stage-8 Termux smoke procedure above. Check the memory file size again after the process exits. Do not delete `memory.json` or `agent_state.sqlite3` during this validation.
 
 The current defaults are 8 MiB automatic compaction, 500 active non-durable execution experiences, and 5 retained historical revisions per memory identity. Override them only when there is a concrete storage requirement.
 
@@ -175,7 +199,7 @@ The default keeps the existing experience → reflection → memory-candidate pi
 
 The agent command tool on Android/Termux is **not a full sandbox**. Termux fallback does not create independent filesystem or network namespaces, so arbitrary programs must not be run as if they were isolated.
 
-The agent-facing `run_command` route is restricted to a small allowlist of non-interpreting utilities (`pwd`, `ls`, `whoami`, `true`, `false`, `echo`, `printf`, and a single numeric `sleep` argument capped at 60 seconds). Shells, interpreters (including Python and Node), executable wrappers, unknown binaries, non-trusted executable paths, and workspace-escaping `ls` paths are denied. `jalankan_python` is disabled. The lower-level process runner remains an internal implementation detail; it is not permission to expose arbitrary command execution through a tool.
+The agent-facing `run_command` route is restricted to a small allowlist of non-interpreting utilities (`pwd`, `ls`, `whoami`, `true`, `false`, `echo`, `printf`, and a single numeric `sleep` argument capped at 60 seconds). Shells, interpreters (including Python and Node), executable wrappers, unknown binaries, non-trusted executable paths, and workspace-escaping `ls` paths are denied. `jalankan_python` remains disabled on Termux/PRoot and is available only on native Linux hosts that pass the strict namespace probe. The lower-level process runner remains an internal implementation detail; it is not permission to expose arbitrary command execution through a tool.
 
 Termux applies conservative upper bounds to process wall time, CPU time, captured output, file size, open descriptors, and process count. Android memory address-space limits remain disabled for compatibility with Bionic. These controls are defense-in-depth and do not provide a total disk quota or network isolation.
 

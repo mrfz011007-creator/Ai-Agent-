@@ -6,7 +6,7 @@ import sys
 import pytest
 
 from core.budget import Budget, BudgetManager
-from core.contracts import Task, TaskStatus, ToolRequest
+from core.contracts import Task, TaskStatus, ToolRequest, ToolResult
 from core.execution_contract import ExecutionContract
 from core.model_execution import ModelExecutionService
 from core.model_planner import ModelPlanService
@@ -84,12 +84,13 @@ def test_guard_allows_only_simple_workspace_commands(tmp_path):
         assert result.allowed is True, (command, result.reason)
 
 
-def test_registry_blocks_python_tool_and_its_direct_handler(tmp_path, monkeypatch):
+def test_registry_exposes_confirm_gated_python_runner_and_keeps_legacy_helper_blocked(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     from registry import TOOL_REGISTRY, get_tool_permission
     from tools import jalankan_python
 
-    assert get_tool_permission("jalankan_python") == "blocked"
+    assert get_tool_permission("jalankan_python") == "confirm"
+    assert TOOL_REGISTRY["jalankan_python"]["permission"] == "confirm"
     direct = jalankan_python("payload.py")
     handler = TOOL_REGISTRY["jalankan_python"]["func"]("payload.py")
     assert direct["success"] is False
@@ -152,7 +153,8 @@ def test_router_default_guard_cannot_be_omitted_to_bypass_interpreter_block(tmp_
     assert called == []
 
 
-def test_task_contract_blocks_combined_tool_escalation(tmp_path):
+def test_task_contract_blocks_combined_tool_escalation(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     store = StateStore(tmp_path / "state.sqlite3")
     manager = TaskManager(store=store, checkpoints=CheckpointManager(store))
     task = manager.create(Task(
@@ -317,7 +319,15 @@ def test_reflection_memory_candidates_require_human_review(tmp_path, monkeypatch
     from core.memory_service import MemoryService
     import memory
 
-    service = MemoryService(project_id="demo")
+    evidence_store = EvidenceStore()
+    evidence_store.record(
+        evidence_id="ev-real",
+        task_id="task-1",
+        tool="run_command",
+        action="execute",
+        result=ToolResult(True, "SUCCESS", "run_command"),
+    )
+    service = MemoryService(project_id="demo", evidence_store=evidence_store)
 
     def model_call(**kwargs):
         return json.dumps({
@@ -431,6 +441,7 @@ def test_sandbox_policy_error_is_not_misclassified_as_value_error(tmp_path, monk
     def policy_failure(*args, **kwargs):
         raise command.SandboxPolicyError("unsafe executable")
 
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     monkeypatch.setattr(command, "prepare_sandbox", unavailable)
     monkeypatch.setattr(command, "prepare_hardened", policy_failure)
 
@@ -460,3 +471,94 @@ def test_schema_rejects_invalid_unicode_before_execution():
     }
     with pytest.raises(SchemaValidationError, match="INVALID_UNICODE"):
         validate_tool_arguments(schema, {"value": "\ud800"})
+
+
+
+def test_public_process_runner_cannot_bypass_command_guard(tmp_path, monkeypatch):
+    import sys
+    from execution.command import run_command
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    result = run_command(
+        command=f"{sys.executable} -c 'print(1)'",
+        cwd=str(workspace),
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "GUARD_DENIED"
+    assert result["stderr"] == "INTERPRETER_EXECUTION_DENIED"
+
+
+def test_legacy_command_helper_rechecks_guard(tmp_path, monkeypatch):
+    import sys
+    from tools import jalankan
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
+    result = jalankan([sys.executable, "-c", "print(1)"])
+
+    assert result["success"] is False
+    assert result["status"] == "GUARD_DENIED"
+    assert result["stderr"] == "INTERPRETER_EXECUTION_DENIED"
+
+
+
+def test_guard_denial_is_persisted_as_redacted_security_evidence(tmp_path):
+    from core.contracts import ToolRequest
+    from execution.router import ToolRouter
+    from security.guard import GuardEngine
+    from security.policy import PolicyEngine
+    from core.budget import Budget, BudgetManager
+    from core.state_store import StateStore
+    from verification.evidence import EvidenceStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.write_text("private", encoding="utf-8")
+    registry = {
+        "run_command": {
+            "permission": "confirm",
+            "parameters": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "command": {"type": "string"},
+                    "cwd": {"type": "string"},
+                    "timeout": {"type": "number"},
+                },
+                "required": ["command", "cwd"],
+            },
+            "func": lambda **kwargs: pytest.fail("denied command must not execute"),
+        }
+    }
+    store = StateStore(tmp_path / "audit.sqlite3")
+    evidence = EvidenceStore(store)
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=evidence,
+        confirmation=lambda *_: True,
+        guard=GuardEngine(workspace),
+    )
+
+    result = router.execute(ToolRequest(
+        "run_command",
+        "execute",
+        {"command": f"ls {outside}", "cwd": str(workspace)},
+    ))
+
+    assert result.success is False
+    assert result.status == "guard_denied"
+    assert result.evidence_id
+    record = evidence.get(result.evidence_id)
+    assert record is not None
+    assert record.success is False
+    assert record.result_status == "guard_denied"
+    assert record.authority == "execution_router"

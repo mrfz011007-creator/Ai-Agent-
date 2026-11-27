@@ -5,6 +5,7 @@ import json
 from typing import Any, Mapping
 
 from memory import (
+    MAX_MEMORY_VALUE_CHARS,
     compact_memory_if_needed,
     invalidate_memory,
     remember,
@@ -12,7 +13,7 @@ from memory import (
     update_memory,
 )
 
-MAX_EXPERIENCE_VALUE_CHARS = 6000
+MAX_EXPERIENCE_VALUE_CHARS = 5000
 MAX_PROMPT_RECORD_VALUE_CHARS = 3000
 from core.reflection import ReflectionService
 from core import reflection_queue
@@ -21,8 +22,9 @@ from core import reflection_queue
 class MemoryService:
     """Bounded adapter between agent lifecycle and persistent structured memory."""
 
-    def __init__(self, *, project_id: str | None = None):
+    def __init__(self, *, project_id: str | None = None, evidence_store=None):
         self.project_id = project_id
+        self.evidence_store = evidence_store
         # Clean oversized legacy/runtime memory at startup without touching
         # the store when it is already below the configured threshold.
         compact_memory_if_needed()
@@ -75,6 +77,9 @@ class MemoryService:
                 "original_chars": len(serialized),
                 "preview": serialized[:MAX_EXPERIENCE_VALUE_CHARS] + "...[TRUNCATED]",
             }
+            while len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > MAX_MEMORY_VALUE_CHARS:
+                preview = value["preview"]
+                value["preview"] = preview[: max(0, len(preview) // 2)] + "...[TRUNCATED]"
         return remember(key, value, memory_type="experience",
                         project_id=project_id if project_id is not None else self.project_id,
                         task_id=task_id, context=context, source=source, provenance=provenance,
@@ -85,7 +90,53 @@ class MemoryService:
                            related_memory: list[Mapping[str, Any]] | None = None, project_id: str | None = None,
                            task_id: str | None = None, context: Mapping[str, Any] | None = None,
                            source: Mapping[str, Any] | str | None = None) -> dict[str, Any]:
-        """Reflect on one verified experience and commit only bounded candidates."""
+        """Reflect on an evidence-backed experience; require authentic task evidence."""
+        if self.evidence_store is None:
+            return {
+                "status": "reflection_rejected",
+                "success": False,
+                "reason": "EVIDENCE_STORE_REQUIRED",
+                "committed": [],
+            }
+        if not evidence_refs:
+            return {
+                "status": "reflection_rejected",
+                "success": False,
+                "reason": "EVIDENCE_REQUIRED",
+                "committed": [],
+            }
+        verified_evidence = []
+        for evidence_id in evidence_refs:
+            evidence = self.evidence_store.get(str(evidence_id))
+            if evidence is None:
+                return {
+                    "status": "reflection_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_NOT_FOUND",
+                    "committed": [],
+                }
+            if evidence.kind not in {"execution", "reconciliation"}:
+                return {
+                    "status": "reflection_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_KIND_INVALID",
+                    "committed": [],
+                }
+            if evidence.authority not in {"execution_router", "reconciliation_boundary"}:
+                return {
+                    "status": "reflection_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_AUTHORITY_INVALID",
+                    "committed": [],
+                }
+            if evidence.task_id != task_id:
+                return {
+                    "status": "reflection_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_TASK_MISMATCH",
+                    "committed": [],
+                }
+            verified_evidence.append(evidence)
         service = ReflectionService(model_call)
         try:
             candidates = service.reflect(
@@ -121,26 +172,46 @@ class MemoryService:
             # Model-generated memory is never committed automatically. Evidence
             # references prove provenance, not that the model's interpretation
             # is true or safe. Every candidate requires explicit review.
-            item = reflection_queue.enqueue(
-                {
-                    "key": candidate.key,
-                    "value": candidate.value,
-                    "memory_type": candidate.memory_type,
-                    "summary": candidate.summary,
-                    "confidence": candidate.confidence,
-                    "importance": candidate.importance,
-                    "retention": candidate.retention,
-                    "evidence_refs": list(candidate.evidence_refs),
-                    "tags": list(candidate.tags),
-                    "scope": candidate.scope,
-                    "risk": candidate.risk,
-                    "project_id": project_id if project_id is not None else self.project_id,
-                    "task_id": task_id,
-                    "context": context or {},
-                    "source": source,
-                },
-                reason="REFLECTION_REQUIRES_HUMAN_REVIEW",
+            candidate_evidence = next(
+                evidence
+                for evidence in verified_evidence
+                if evidence.evidence_id in candidate.evidence_refs
             )
+            try:
+                item = reflection_queue.enqueue(
+                    {
+                        "key": candidate.key,
+                        "value": candidate.value,
+                        "memory_type": candidate.memory_type,
+                        "summary": candidate.summary,
+                        "confidence": candidate.confidence,
+                        "importance": candidate.importance,
+                        "retention": candidate.retention,
+                        "evidence_refs": list(candidate.evidence_refs),
+                        "tags": list(candidate.tags),
+                        "scope": candidate.scope,
+                        "risk": candidate.risk,
+                        "project_id": project_id if project_id is not None else self.project_id,
+                        "task_id": task_id,
+                        "context": context or {},
+                        "source": {
+                            "kind": candidate_evidence.kind,
+                            "ref": candidate_evidence.evidence_id,
+                        },
+                        "provenance": {
+                            "reason": "human-reviewed reflection derived from recorded evidence",
+                            "authority": candidate_evidence.authority,
+                        },
+                    },
+                    reason="REFLECTION_REQUIRES_HUMAN_REVIEW",
+                )
+            except (RuntimeError, ValueError) as error:
+                rejected.append({
+                    "key": candidate.key,
+                    "status": "queue_rejected",
+                    "reason": str(error),
+                })
+                continue
             rejected.append({
                 "key": candidate.key,
                 "status": "pending_review",
@@ -157,7 +228,59 @@ class MemoryService:
         if not approve:
             resolved = reflection_queue.resolve(review_id, status="rejected", resolution=reviewer)
             return {"status": "rejected", "success": True, "review": resolved}
-        result = self.commit_proposal(candidate)
+        if self.evidence_store is None:
+            return {
+                "status": "commit_rejected",
+                "success": False,
+                "reason": "EVIDENCE_STORE_REQUIRED",
+            }
+        evidence_refs = candidate.get("evidence_refs")
+        if not isinstance(evidence_refs, list) or not evidence_refs:
+            return {
+                "status": "commit_rejected",
+                "success": False,
+                "reason": "EVIDENCE_REQUIRED",
+            }
+        verified_evidence = []
+        for evidence_id in evidence_refs:
+            evidence = self.evidence_store.get(str(evidence_id))
+            if evidence is None:
+                return {
+                    "status": "commit_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_NOT_FOUND",
+                }
+            if (
+                evidence.kind not in {"execution", "reconciliation"}
+                or evidence.authority not in {"execution_router", "reconciliation_boundary"}
+            ):
+                return {
+                    "status": "commit_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_AUTHORITY_INVALID",
+                }
+            if evidence.task_id != candidate.get("task_id"):
+                return {
+                    "status": "commit_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_TASK_MISMATCH",
+                }
+            verified_evidence.append(evidence)
+        candidate_evidence = next(
+            evidence
+            for evidence in verified_evidence
+            if evidence.evidence_id in evidence_refs
+        )
+        trusted_candidate = dict(candidate)
+        trusted_candidate["source"] = {
+            "kind": candidate_evidence.kind,
+            "ref": candidate_evidence.evidence_id,
+        }
+        trusted_candidate["provenance"] = {
+            "reason": "human-approved reflection derived from recorded evidence",
+            "authority": candidate_evidence.authority,
+        }
+        result = self.commit_proposal(trusted_candidate)
         if not result.get("success"):
             return {"status": "commit_rejected", "success": False, "result": result}
         resolved = reflection_queue.resolve(review_id, status="approved", resolution=reviewer)

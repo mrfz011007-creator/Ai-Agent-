@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import shlex
@@ -7,40 +8,54 @@ from pathlib import Path
 
 from execution.command import run_command
 from security.guard import GuardEngine
+from security.workspace import (
+    FileChangedError,
+    FileTooLargeError,
+    create_directory_secure,
+    create_file_secure,
+    max_file_bytes,
+    max_search_bytes,
+    max_search_files,
+    max_search_results,
+    read_file_secure,
+    search_text_secure,
+    write_file_secure,
+)
 
 DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024
-DEFAULT_MAX_SEARCH_RESULTS = 5000
-
-
-def _max_file_bytes() -> int:
-    value = int(os.environ.get("AI_AGENT_MAX_FILE_BYTES", str(DEFAULT_MAX_FILE_BYTES)))
-    if value < 1:
-        raise ValueError("AI_AGENT_MAX_FILE_BYTES must be positive")
-    return value
+DEFAULT_MAX_SEARCH_RESULTS = 500
+MAX_STATIC_PYTHON_VALIDATION_BYTES = 256 * 1024
 
 
 def workspace_root() -> Path:
-    """Return the single configured workspace boundary used by legacy handlers."""
-    return Path(
-        os.environ.get("AI_AGENT_WORKSPACE_ROOT", os.getcwd())
-    ).resolve()
+    """Return the configured workspace root; filesystem operations use dirfds."""
+    configured = os.environ.get("AI_AGENT_WORKSPACE_ROOT")
+    if not configured or not configured.strip():
+        raise RuntimeError("AI_AGENT_WORKSPACE_ROOT wajib dikonfigurasi; cwd pemanggil tidak dipercaya.")
+    return Path(configured).resolve(strict=True)
 
 
 def path_aman(nama: str) -> Path:
-    """Resolve a path and reject traversal outside the configured workspace."""
-    root = workspace_root()
-    path = (root / nama).resolve()
+    """Return a lexical workspace path for display/compatibility, not for I/O.
 
-    if path == root or root in path.parents:
-        return path
+    Actual reads and writes use descriptor-relative helpers with O_NOFOLLOW.
+    """
+    if not isinstance(nama, str) or not nama or "\x00" in nama or "\\" in nama:
+        raise PermissionError("Path workspace tidak valid.")
+    relative = Path(nama)
+    if relative.is_absolute() or any(part in ("", ".", "..") for part in relative.parts):
+        raise PermissionError("Akses ditolak: path harus relatif dan berada di workspace.")
+    if len(nama) > 1024:
+        raise PermissionError("Path workspace terlalu panjang.")
+    return workspace_root().joinpath(*relative.parts)
 
-    raise PermissionError(
-        "Akses ditolak: path berada di luar workspace agent."
-    )
+
+def _max_file_bytes() -> int:
+    return max_file_bytes()
 
 
 def jalankan(command):
-    """Run a command through the bounded command executor."""
+    """Run a command only after checking the shared process guard."""
     command_text = shlex.join(command) if not isinstance(command, str) else command
     cwd = str(workspace_root())
     decision = GuardEngine(workspace_root()).check(
@@ -80,7 +95,7 @@ def siapa():
 
 def buat_folder(nama):
     try:
-        path_aman(nama).mkdir()
+        create_directory_secure(workspace_root(), nama)
         return {
             "status": "success",
             "success": True,
@@ -102,8 +117,7 @@ def buat_folder(nama):
 
 def buat_file(nama):
     try:
-        path = path_aman(nama)
-        path.touch(exist_ok=False)
+        create_file_secure(workspace_root(), nama)
         return {
             "status": "success",
             "success": True,
@@ -124,51 +138,27 @@ def buat_file(nama):
 
 
 def cari_teks(query, pola="*.py"):
-    """Search text inside workspace files without leaving the workspace."""
-    query = str(query)
-    if not query:
-        raise ValueError("Query pencarian tidak boleh kosong.")
-
-    root = workspace_root()
-    hasil = []
-    max_results = int(
-        os.environ.get("AI_AGENT_MAX_SEARCH_RESULTS", str(DEFAULT_MAX_SEARCH_RESULTS))
+    """Search regular workspace files without following links and with hard caps."""
+    limits = {
+        "per_file_limit": _max_file_bytes(),
+        "max_results": max_search_results(),
+        "max_files": max_search_files(),
+        "max_total_bytes": max_search_bytes(),
+    }
+    result = search_text_secure(
+        workspace_root(),
+        query,
+        pola,
+        **limits,
     )
-    if max_results < 1:
-        raise ValueError("AI_AGENT_MAX_SEARCH_RESULTS must be positive")
-    max_bytes = _max_file_bytes()
-    for path in root.rglob(pola):
-        if len(hasil) >= max_results:
-            break
-        if not path.is_file():
-            continue
-        try:
-            resolved = path.resolve()
-            if not (resolved == root or root in resolved.parents):
-                continue
-            if resolved.stat().st_size > max_bytes:
-                continue
-            with resolved.open("r", encoding="utf-8") as stream:
-                for nomor, line in enumerate(stream, 1):
-                    if query.lower() in line.lower():
-                        hasil.append(
-                            {
-                                "path": str(resolved.relative_to(root)),
-                                "line": nomor,
-                                "text": line.rstrip("\n"),
-                            }
-                        )
-                        if len(hasil) >= max_results:
-                            break
-        except (OSError, UnicodeDecodeError):
-            continue
-
     return {
         "status": "success",
         "success": True,
         "query": query,
-        "hasil": hasil,
-        "truncated": len(hasil) >= max_results,
+        "hasil": result["hasil"],
+        "truncated": result["truncated"],
+        "files_scanned": result["files_scanned"],
+        "bytes_scanned": result["bytes_scanned"],
     }
 
 
@@ -177,18 +167,30 @@ def _sha256_text(text: str) -> str:
 
 
 def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
-    """Apply an exact bounded text replacement with optional optimistic locking."""
+    """Apply an exact, size-bounded patch to the already-open regular file."""
     if not isinstance(old, str) or not old:
         raise ValueError("Teks lama tidak boleh kosong.")
     if not isinstance(new, str):
         raise TypeError("Teks baru harus berupa string.")
-    if expected_count < 1:
-        raise ValueError("expected_count harus >= 1.")
+    if (
+        isinstance(expected_count, bool)
+        or not isinstance(expected_count, int)
+        or expected_count < 1
+    ):
+        raise ValueError("expected_count harus berupa integer >= 1.")
 
-    path = path_aman(nama)
-    max_bytes = _max_file_bytes()
+    limit = _max_file_bytes()
+    # Bound attacker-controlled patch strings before count/replace allocations.
+    if len(old) > limit or len(new) > limit:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "PATCH_INPUT_TOO_LARGE",
+            "pesan": "Input patch melebihi batas karakter yang diizinkan.",
+        }
+    root = workspace_root()
     try:
-        raw = path.read_bytes()
+        raw = read_file_secure(root, nama, limit)
     except FileNotFoundError:
         return {
             "status": "error",
@@ -196,22 +198,30 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
             "code": "FILE_NOT_FOUND",
             "pesan": f"File tidak ditemukan: {nama}",
         }
-    except IsADirectoryError:
-        return {
-            "status": "error",
-            "success": False,
-            "code": "NOT_A_FILE",
-            "pesan": f"Target bukan file: {nama}",
-        }
-
-    if len(raw) > max_bytes:
+    except FileTooLargeError:
         return {
             "status": "error",
             "success": False,
             "code": "FILE_TOO_LARGE",
             "pesan": "File melebihi batas ukuran patch.",
         }
-    text = raw.decode("utf-8")
+    except OSError as error:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "WORKSPACE_ACCESS_DENIED",
+            "pesan": str(error),
+        }
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_ENCODING_INVALID",
+            "pesan": "File bukan teks UTF-8 yang valid.",
+        }
     current_sha256 = _sha256_text(text)
     if expected_sha256 is not None and current_sha256 != expected_sha256:
         return {
@@ -230,8 +240,58 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
             "pesan": f"Patch ditolak: ditemukan {count} kecocokan, diharapkan {expected_count}.",
         }
 
+    # Estimate the resulting character count before allocating the replacement.
+    projected_chars = len(text) - count * len(old) + count * len(new)
+    if projected_chars > limit:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "Hasil patch diperkirakan melebihi batas ukuran file.",
+        }
     updated_text = text.replace(old, new)
-    path.write_text(updated_text, encoding="utf-8")
+    updated_bytes = updated_text.encode("utf-8")
+    if len(updated_bytes) > limit:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "Hasil patch melebihi batas ukuran file.",
+        }
+
+    try:
+        # Always compare against the snapshot read above, even when callers did
+        # not supply an expected hash. The check happens on the same no-follow fd
+        # that is subsequently updated, closing the pathname TOCTOU window.
+        write_file_secure(
+            root,
+            nama,
+            updated_bytes,
+            limit,
+            expected_sha256=current_sha256,
+        )
+    except FileChangedError as error:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_CHANGED",
+            "pesan": "Patch ditolak: file berubah selama proses patch.",
+            "current_sha256": error.current_sha256,
+        }
+    except FileTooLargeError:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "File melebihi batas ukuran patch.",
+        }
+    except OSError as error:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "WORKSPACE_ACCESS_DENIED",
+            "pesan": str(error),
+        }
     return {
         "status": "success",
         "success": True,
@@ -242,21 +302,21 @@ def patch_file(nama, old, new, expected_count=1, expected_sha256=None):
 
 def baca_file(nama):
     try:
-        path = path_aman(nama)
-        if path.stat().st_size > _max_file_bytes():
-            return {
-                "status": "error",
-                "success": False,
-                "code": "FILE_TOO_LARGE",
-                "pesan": "File melebihi batas ukuran baca.",
-            }
-        isi = path.read_text(encoding="utf-8")
+        raw = read_file_secure(workspace_root(), nama, _max_file_bytes())
+        isi = raw.decode("utf-8")
         return {
             "status": "success",
             "success": True,
             "isi": isi,
             "sha256": _sha256_text(isi),
-            "size": len(isi.encode("utf-8")),
+            "size": len(raw),
+        }
+    except FileTooLargeError:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "File melebihi batas ukuran baca.",
         }
     except FileNotFoundError:
         return {
@@ -280,45 +340,44 @@ def baca_file(nama):
 
 def tulis_file(nama, isi, expected_sha256=None):
     try:
-        path = path_aman(nama)
-        if len(isi.encode("utf-8")) > _max_file_bytes():
-            return {
-                "status": "error",
-                "success": False,
-                "code": "FILE_TOO_LARGE",
-                "pesan": "File melebihi batas ukuran tulis.",
-            }
-        if expected_sha256 is not None:
-            if not path.exists():
-                return {
-                    "status": "error",
-                    "success": False,
-                    "code": "FILE_CHANGED",
-                    "pesan": "Penulisan ditolak: file yang diharapkan tidak ada.",
-                }
-            if path.stat().st_size > _max_file_bytes():
-                return {
-                    "status": "error",
-                    "success": False,
-                    "code": "FILE_TOO_LARGE",
-                    "pesan": "File saat ini melebihi batas ukuran snapshot.",
-                }
-            current = path.read_text(encoding="utf-8")
-            current_sha256 = _sha256_text(current)
-            if current_sha256 != expected_sha256:
-                return {
-                    "status": "error",
-                    "success": False,
-                    "code": "FILE_CHANGED",
-                    "pesan": "Penulisan ditolak: isi file berubah sejak snapshot terakhir.",
-                    "current_sha256": current_sha256,
-                }
-        path.write_text(isi, encoding="utf-8")
+        if not isinstance(isi, str):
+            raise TypeError("Isi file harus berupa string.")
+        limit = _max_file_bytes()
+        # Check character count before allocating the UTF-8 byte representation.
+        if len(isi) > limit:
+            raise FileTooLargeError("Workspace write exceeds the maximum size")
+        payload = isi.encode("utf-8")
+        if len(payload) > limit:
+            raise FileTooLargeError("Workspace write exceeds the maximum size")
+        write_file_secure(
+            workspace_root(),
+            nama,
+            payload,
+            limit,
+            expected_sha256=expected_sha256,
+        )
         return {
             "status": "success",
             "success": True,
             "pesan": f"File berhasil ditulis: {nama}",
         }
+    except FileTooLargeError:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "FILE_TOO_LARGE",
+            "pesan": "File melebihi batas ukuran tulis.",
+        }
+    except FileChangedError as error:
+        result = {
+            "status": "error",
+            "success": False,
+            "code": "FILE_CHANGED",
+            "pesan": "Penulisan ditolak: file berubah sejak snapshot terakhir.",
+        }
+        if error.current_sha256 is not None:
+            result["current_sha256"] = error.current_sha256
+        return result
     except PermissionError:
         return {
             "status": "error",
@@ -331,6 +390,76 @@ def tulis_file(nama, isi, expected_sha256=None):
             "success": False,
             "pesan": str(error),
         }
+
+
+
+def validasi_python(nama, fungsi_wajib=None):
+    """Validate Python syntax and required top-level definitions without executing code."""
+    if fungsi_wajib is None:
+        fungsi_wajib = []
+    if (
+        not isinstance(fungsi_wajib, list)
+        or len(fungsi_wajib) > 64
+        or any(not isinstance(item, str) or not item.isidentifier() for item in fungsi_wajib)
+    ):
+        return {
+            "status": "error",
+            "success": False,
+            "code": "VALIDATION_ARGUMENT_INVALID",
+            "pesan": "fungsi_wajib harus berupa daftar nama fungsi/class yang valid.",
+        }
+    try:
+        raw = read_file_secure(
+            workspace_root(), nama,
+            min(_max_file_bytes(), MAX_STATIC_PYTHON_VALIDATION_BYTES),
+        )
+        source = raw.decode("utf-8")
+    except FileTooLargeError:
+        return {"status": "error", "success": False, "code": "FILE_TOO_LARGE", "pesan": "File melebihi batas validasi 256 KiB."}
+    except UnicodeDecodeError:
+        return {"status": "error", "success": False, "code": "FILE_ENCODING_INVALID", "pesan": "File bukan UTF-8 valid."}
+    except FileNotFoundError:
+        return {"status": "error", "success": False, "code": "FILE_NOT_FOUND", "pesan": f"File tidak ditemukan: {nama}"}
+    except Exception as error:
+        return {"status": "error", "success": False, "code": "WORKSPACE_ACCESS_DENIED", "pesan": str(error)}
+
+    try:
+        tree = ast.parse(source, filename=nama, mode="exec")
+    except (SyntaxError, RecursionError) as error:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "PYTHON_SYNTAX_INVALID",
+            "pesan": (
+                f"Syntax error pada baris {error.lineno}: {error.msg}"
+                if isinstance(error, SyntaxError)
+                else "Struktur sintaks terlalu dalam untuk divalidasi."
+            ),
+            "line": error.lineno if isinstance(error, SyntaxError) else None,
+        }
+
+    definitions = [
+        node.name for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
+    missing = sorted(set(fungsi_wajib) - set(definitions))
+    if missing:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "REQUIRED_DEFINITION_MISSING",
+            "pesan": "Definisi wajib tidak ditemukan.",
+            "missing": missing,
+            "definitions": definitions,
+        }
+    return {
+        "status": "success",
+        "success": True,
+        "code": "PYTHON_SYNTAX_VALID",
+        "pesan": "Sintaks Python valid; kode tidak dieksekusi.",
+        "definitions": definitions,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
 
 
 def jalankan_python(nama):
