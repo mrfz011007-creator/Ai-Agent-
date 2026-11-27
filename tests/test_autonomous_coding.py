@@ -160,10 +160,10 @@ def test_python_validator_never_executes_source_and_rejects_workspace_escape(
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     outside = tmp_path / "outside.py"
-    outside.write_text("def hidden():\\n    return True\\n", encoding="utf-8")
+    outside.write_text("def hidden():\n    return True\n", encoding="utf-8")
     marker = workspace / "executed.txt"
     (workspace / "safe.py").write_text(
-        f"from pathlib import Path\\nPath({str(marker)!r}).write_text('executed')\\ndef run():\\n    return True\\n",
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('executed')\ndef run():\n    return True\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
