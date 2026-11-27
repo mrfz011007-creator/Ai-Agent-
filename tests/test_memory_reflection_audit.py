@@ -104,6 +104,40 @@ def test_recall_without_scope_returns_only_global_memory(tmp_path, monkeypatch):
     )["value"] == "private task"
 
 
+def test_memory_rejects_oversized_values_and_caps_active_records(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    from memory import MAX_ACTIVE_MEMORY_RECORDS
+
+    oversized = _remember("too-large", "x" * 6001)
+    assert oversized["success"] is False
+    assert oversized["reason"] == "MEMORY_VALUE_TOO_LARGE"
+
+    monkeypatch.setattr("memory.MAX_ACTIVE_MEMORY_RECORDS", 1)
+    first = _remember("first", "stored")
+    second = _remember("second", "rejected")
+    assert first["success"] is True
+    assert second["success"] is False
+    assert second["reason"] == "MEMORY_CAPACITY_REACHED"
+
+
+def test_large_experience_is_truncated_before_bounded_storage(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    service = MemoryService(project_id="project-a")
+    result = service.record_experience(
+        key="task:large:experience",
+        value={"output": "x" * 10000},
+        task_id="task-large",
+        source={"kind": "execution", "ref": "evidence-large"},
+        provenance={"reason": "test"},
+    )
+    assert result["success"] is True
+    assert result["record"]["value"]["_truncated"] is True
+
+
 def test_reflection_rejects_oversized_or_unbounded_candidates():
     payload = {
         "candidates": [
