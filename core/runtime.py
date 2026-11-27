@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from core.budget import BudgetManager
@@ -218,7 +218,6 @@ class AgentRuntime:
         plan, graph = self.orchestrator.materialize(proposal, resolved_plan_id)
         # Planning-only goals must persist the same project/context metadata
         # as executable goals so a later resume has the original scope.
-        from dataclasses import replace
         plan = replace(
             plan,
             project_id=project_id,
