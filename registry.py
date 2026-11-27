@@ -4,6 +4,7 @@ from tools import (
     siapa,
     buat_folder,
     buat_file,
+    buat_file_terverifikasi,
     baca_file,
     tulis_file,
     cari_teks,
@@ -189,6 +190,25 @@ TOOL_REGISTRY = {
         },
     },
 
+    "buat_file_terverifikasi": {
+        "capabilities": ["workspace.write", "workspace.read"],
+        "func": buat_file_terverifikasi,
+        "permission": "confirm",
+        "description": (
+            "Membuat file baru tanpa menimpa file yang sudah ada, menulis isi UTF-8, "
+            "membaca ulang, lalu membandingkan isi secara persis. Sukses hanya jika "
+            "hasil baca sama persis; satu persetujuan mencakup seluruh urutan."
+        ),
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "nama": {"type": "string", "maxLength": 1024},
+                "isi": {"type": "string", "maxLength": 16000},
+            },
+            "required": ["nama", "isi"],
+        },
+    },
     "tulis_file": {
         "capabilities": ["workspace.write"],
         "func": tulis_file,
