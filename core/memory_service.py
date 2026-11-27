@@ -173,6 +173,11 @@ class MemoryService:
             # Model-generated memory is never committed automatically. Evidence
             # references prove provenance, not that the model's interpretation
             # is true or safe. Every candidate requires explicit review.
+            candidate_evidence = next(
+                evidence
+                for evidence in verified_evidence
+                if evidence.evidence_id in candidate.evidence_refs
+            )
             try:
                 item = reflection_queue.enqueue(
                     {
@@ -191,12 +196,12 @@ class MemoryService:
                         "task_id": task_id,
                         "context": context or {},
                         "source": {
-                            "kind": verified_evidence[0].kind,
-                            "ref": verified_evidence[0].evidence_id,
+                            "kind": candidate_evidence.kind,
+                            "ref": candidate_evidence.evidence_id,
                         },
                         "provenance": {
                             "reason": "human-reviewed reflection derived from recorded evidence",
-                            "authority": verified_evidence[0].authority,
+                            "authority": candidate_evidence.authority,
                         },
                     },
                     reason="REFLECTION_REQUIRES_HUMAN_REVIEW",
@@ -262,14 +267,19 @@ class MemoryService:
                     "reason": "EVIDENCE_TASK_MISMATCH",
                 }
             verified_evidence.append(evidence)
+        candidate_evidence = next(
+            evidence
+            for evidence in verified_evidence
+            if evidence.evidence_id in evidence_refs
+        )
         trusted_candidate = dict(candidate)
         trusted_candidate["source"] = {
-            "kind": verified_evidence[0].kind,
-            "ref": verified_evidence[0].evidence_id,
+            "kind": candidate_evidence.kind,
+            "ref": candidate_evidence.evidence_id,
         }
         trusted_candidate["provenance"] = {
             "reason": "human-approved reflection derived from recorded evidence",
-            "authority": verified_evidence[0].authority,
+            "authority": candidate_evidence.authority,
         }
         result = self.commit_proposal(trusted_candidate)
         if not result.get("success"):
