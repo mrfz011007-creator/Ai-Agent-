@@ -153,6 +153,15 @@ class ToolRouter:
             except SchemaValidationError as error:
                 return self._deny(request, "schema_invalid", str(error))
 
+        # Verified file creation must contain meaningful content. Enforce this
+        # at the execution boundary, before guard/policy checks and approval.
+        if request.tool == "buat_file_terverifikasi":
+            content = arguments.get("isi")
+            if isinstance(content, str) and not content.strip():
+                return self._deny(
+                    request, "schema_invalid", "WHITESPACE_ONLY: isi"
+                )
+
         # Run security inspection before asking for approval so a disallowed
         # process request can never be approved accidentally.
         guard = self._guard.check(tool=request.tool, arguments=arguments)
