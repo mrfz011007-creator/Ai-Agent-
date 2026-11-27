@@ -107,20 +107,41 @@ Status: FAILED
 Goal belum selesai.
 ```
 
-Kesimpulan yang boleh diambil:
+Pemeriksaan database SQLite dilakukan secara read-only setelah uji tersebut. Record yang ditemukan:
 
-- CLI berhasil menerima prompt dan memulai proses perencanaan/eksekusi.
-- Tugas `explain_capabilities` gagal.
-- Terminal hanya menampilkan status gagal dan belum menunjukkan penyebab teknis yang cukup untuk memastikan akar masalah.
-- ID plan yang perlu ditelusuri: `plan-e84ebe96d724`.
+- Plan `plan-e84ebe96d724`: status `FAILED`.
+- Goal: `Jelaskan kemampuanmu dan model AI yang sedang kamu gunakan.`
+- Task `explain_capabilities`: status `FAILED`, percobaan 1.
+- Judul task: `Tulis penjelasan kemampuan dan model AI ke file`.
+- Execution contract hanya mengizinkan tool `tulis_file`.
+- Model execution mengusulkan tool `lihat`.
+- Evidence mencatat `success=0`, `result_status=contract_denied`, dan error `Tool not allowed by execution contract: lihat`.
+- Checkpoint terakhir mencatat event `failed` dengan alasan yang sama.
+- Tidak ada bukti bahwa file berhasil dibuat.
 
-Kesimpulan yang **belum boleh** diambil:
+**Akar masalah kegagalan ini terkonfirmasi:** pertanyaan percakapan umum salah diarahkan ke pipeline perencanaan dan eksekusi tugas. Planner membentuk tugas untuk menulis penjelasan ke file, lalu model execution memilih tool `lihat`, yang tidak termasuk dalam kontrak tugas. ToolRouter/kontrak menolak permintaan tersebut dengan benar. Ini bukan bukti kegagalan autentikasi API key. Pengamanan kontrak tidak boleh dilonggarkan untuk mengatasi masalah ini.
 
-- Belum terbukti bahwa penyebabnya adalah API key, model provider, tool registry, planner, atau executor.
-- Belum terbukti bahwa model berhasil menghasilkan jawaban percakapan.
-- Belum terbukti bahwa seluruh fitur agent interaktif berjalan normal.
+Audit kode pada branch kerja menguatkan diagnosis:
 
-Diagnosis berikutnya perlu membaca bukti kegagalan yang relevan dari database state secara read-only, lalu mencocokkannya dengan alur `agent.py`, runtime, planner, executor, dan registry. Jangan menampilkan isi rahasia atau seluruh database ke terminal/chat.
+- Jalur CLI mengirim input non-lokal ke `runtime.run_goal()`.
+- `GoalRunner` membuat rencana melalui model, kemudian menjalankan `ModelExecutionService`.
+- `ModelExecutionService` meminta output JSON berupa satu tool/action/arguments, bukan jawaban percakapan bebas.
+- `ExecutionContract.allows_tool()` membatasi tool pada daftar `allowed_tools` yang ditetapkan untuk task.
+
+### Diagnosis keterlambatan
+
+Konfigurasi Termux saat pemeriksaan menunjukkan timeout model 45 detik. Pipeline melakukan panggilan model berurutan untuk perencanaan dan proposal eksekusi. Gateway juga memiliki jalur fallback OpenRouter backup dan Gemini ketika error provider tergolong dapat dipulihkan.
+
+Ini menjelaskan sumber latensi arsitektural yang masuk akal, tetapi **durasi aktual setiap panggilan dan apakah fallback benar-benar terjadi pada percobaan ini belum tercatat**. Database hanya membuktikan kegagalan kontrak tool, bukan durasi request. Jangan menyatakan bahwa timeout 45 detik benar-benar habis pada kasus ini.
+
+### Status diagnosis
+
+- Akar masalah kegagalan `explain_capabilities`: **TERKONFIRMASI**.
+- Penyebab struktural: pencampuran jalur percakapan dan jalur eksekusi tugas.
+- Kontrak keamanan: bekerja sesuai desain; jangan dilemahkan.
+- Sumber potensi keterlambatan: dua tahap model berurutan ditambah kemungkinan fallback.
+- Pengukuran latensi aktual: belum tersedia; perlu instrumentasi waktu per request pada tahap perbaikan.
+- Tidak ada kode produksi yang diubah sebagai bagian diagnosis ini.
 
 ## 7. Batasan Termux dan PRoot yang sudah diketahui
 
