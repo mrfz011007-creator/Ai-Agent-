@@ -1,4 +1,4 @@
-name: Architecture Tests
+name: CI
 
 on:
   push:
@@ -11,13 +11,22 @@ on:
       - main
       - "agent/**"
       - "fix/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * 1"
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  tests:
+    name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -27,17 +36,64 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies and coverage tooling
+        run: python -m pip install -r requirements.txt coverage
       - name: Check dependency consistency
         run: python -m pip check
       - name: Compile all Python sources
         run: python -m compileall -q .
-      - name: Run repository tests
-        run: python -m pytest -q
-      - name: Run Python Runner bootstrap smoke test
-        run: python -m pytest -q tests/test_python_runner.py -k bootstrap
+      - name: Prepare test reports
+        run: mkdir -p test-results
+      - name: Run repository tests and collect branch coverage
+        run: |
+          python -m coverage run --branch --source=. --omit="tests/*,test_*.py" -m pytest -q -ra -k "not test_python_runner_real_namespace_smoke" --junitxml="test-results/pytest-${{ matrix.python-version }}.xml"
+          python -m coverage report -m
+          python -m coverage xml -o "test-results/coverage-${{ matrix.python-version }}.xml"
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-python-${{ matrix.python-version }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  namespace-smoke:
+    name: Strict Linux namespace smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Probe and test strict namespace execution
+        run: python -m pytest -q -ra tests/test_python_runner.py -k real_namespace_smoke
+
+  static-analysis:
+    name: Static analysis and security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies and analysis tools
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install ruff bandit
+      - name: Check dependency consistency
+        run: python -m pip check
       - name: Static correctness checks
-        run: python -m pip install ruff && python -m ruff check core execution security verification agent.py conversation.py intent_router.py local_router.py llm.py key_manager.py scripts memory.py memory_context.py memory_policy.py permissions.py registry.py tools.py --select F,E9
-      - name: Security scan
-        run: python -m pip install bandit && python -m bandit -r core execution security verification scripts tools.py memory.py -lll
+        run: python -m ruff check core execution security verification agent.py conversation.py intent_router.py local_router.py llm.py key_manager.py scripts memory.py memory_context.py memory_policy.py permissions.py registry.py tools.py --select F,E9
+      - name: Security scan across production Python code
+        run: python -m bandit -r agent.py conversation.py intent_router.py local_router.py llm.py key_manager.py core execution security verification scripts memory.py memory_context.py memory_policy.py permissions.py registry.py tools.py -lll
