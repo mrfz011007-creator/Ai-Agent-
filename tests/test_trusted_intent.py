@@ -1,4 +1,4 @@
-from core.trusted_intent import extract_trusted_file_intent
+from core.trusted_intent import extract_trusted_file_intent, is_file_creation_request
 
 
 def test_extract_exact_multiline_file_request_and_stop_before_followup_instruction():
@@ -54,3 +54,10 @@ def test_extract_preserves_blank_lines_inside_file_content():
 def test_unrecognized_exact_file_format_remains_untrusted():
     request = "Buat file catatan.txt dengan isi tepat seperti berikut\nIsi yang diminta"
     assert extract_trusted_file_intent(request) is None
+
+
+
+def test_explicit_file_creation_is_detected_even_when_format_is_unsupported():
+    assert is_file_creation_request("Buat file catatan.txt dengan isi tepat seperti berikut")
+    assert is_file_creation_request("Create a file notes.txt with exact contents")
+    assert not is_file_creation_request("Jelaskan cara kerja file system")
