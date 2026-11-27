@@ -215,7 +215,8 @@ For the existing Termux checkout at `~/Projects/Ai-Agent/testing`:
 cd ~/Projects/Ai-Agent/testing
 git status --short
 git fetch origin agent/audit-hardening-followups
-git switch -C termux/roadmap-validation origin/agent/audit-hardening-followups
+# If this local branch already exists, stop and inspect it; do not force-reset it.
+git switch --create termux/roadmap-validation --track origin/agent/audit-hardening-followups
 git rev-parse HEAD
 ```
 
@@ -280,7 +281,7 @@ git status --short
 git fetch origin agent/post-pr24-hardening
 # If this local branch already exists, stop and inspect it; do not force-reset it.
 git switch --create termux/post-pr24-hardening --track origin/agent/post-pr24-hardening
-git rev-parse --short HEAD
+git rev-parse HEAD
 git status --short
 ```
 
