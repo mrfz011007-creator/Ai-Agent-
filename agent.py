@@ -105,18 +105,20 @@ def main():
     while True:
         try:
             perintah = input("\nAgent > ").strip()
+
+            if not perintah:
+                continue
+
+            if perintah.lower() == "exit":
+                print("Agent berhenti.")
+                break
+
+            handle_request(runtime, perintah)
         except (EOFError, KeyboardInterrupt):
+            # Interrupts can happen while the model provider is responding,
+            # not only while waiting for terminal input.
             print("\nAgent berhenti.")
             break
-
-        if not perintah:
-            continue
-
-        if perintah.lower() == "exit":
-            print("Agent berhenti.")
-            break
-
-        handle_request(runtime, perintah)
 
 
 if __name__ == "__main__":
