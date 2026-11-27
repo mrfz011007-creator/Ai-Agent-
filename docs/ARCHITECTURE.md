@@ -23,7 +23,7 @@ A model response never grants itself tool permission. A normal chat response is 
 
 ## Agent working standard
 
-`AGENT_RULES.md` defines Think First, Simplicity First, Surgical Changes, and Evidence-Based Completion. The fixed repository-root file is loaded with a strict size bound by `core/agent_rules.py` and included in both model-planning and model-execution prompts. The loader does not accept a user-supplied path and falls back to minimal built-in guidance if the file is unavailable or invalid.
+`AGENT_RULES.md` defines Think First, Simplicity First, Surgical Changes, and Evidence-Based Completion. The fixed repository-root file is loaded with a strict size bound by `core/agent_rules.py`; only its compact, marked prompt section is included in model-planning and model-execution prompts. The loader does not accept a user-supplied path and falls back to minimal built-in guidance if the file or marked section is unavailable or invalid.
 
 The rules are model-facing guidance, not an enforcement boundary. The deterministic `Planner` in `core/plan.py` and the existing validators continue to validate plans and execution contracts. `Orchestrator` still controls bounded task sequencing and requires evidence plus the acceptance gate before completion. `ToolRouter`, GuardEngine, PolicyEngine, capability checks, confirmation, budgets, and the strict Python sandbox remain authoritative.
 
