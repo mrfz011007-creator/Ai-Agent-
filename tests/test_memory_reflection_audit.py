@@ -236,6 +236,8 @@ def test_reflection_is_queued_until_human_approval_and_survives_restart(
     approved = restarted.review_reflection(review_id, approve=True)
     assert approved["status"] == "approved"
     assert approved["record"]["value"] == candidate["value"]
+    assert approved["record"]["source"]["ref"] == "ev-verified-1"
+    assert approved["record"]["provenance"]["authority"] == "execution_router"
     assert not any(
         item["id"] == review_id for item in restarted.pending_reflections()
     )
