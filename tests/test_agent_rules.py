@@ -28,7 +28,7 @@ def test_rules_loader_uses_built_in_guidance_for_oversized_or_invalid_files(monk
     oversized = agent_rules.load_agent_rules()
     assert "Security precedence" in oversized
 
-    rules_path.write_bytes(b"\\xff\\xfe")
+    rules_path.write_bytes(bytes((0xFF, 0xFE)))
     invalid = agent_rules.load_agent_rules()
     assert "Security precedence" in invalid
 
