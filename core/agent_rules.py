@@ -7,6 +7,8 @@ from pathlib import Path
 
 MAX_AGENT_RULES_BYTES = 16 * 1024
 RULES_PATH = Path(__file__).resolve().parent.parent / "AGENT_RULES.md"
+PROMPT_RULES_START = "<!-- BEGIN AGENT PROMPT RULES -->"
+PROMPT_RULES_END = "<!-- END AGENT PROMPT RULES -->"
 
 _FALLBACK_RULES = """Think First: identify the requested outcome, scope, constraints, uncertainty, and verification before proposing work. Ask one focused question when a blocking ambiguity cannot be resolved safely.
 Simplicity First: choose the smallest solution that meets the request; reuse existing interfaces and avoid unrequested features or refactors.
@@ -31,10 +33,18 @@ def load_agent_rules() -> str:
     if len(raw) > MAX_AGENT_RULES_BYTES:
         return _FALLBACK_RULES
     try:
-        rules = raw.decode("utf-8").strip()
+        document = raw.decode("utf-8")
     except UnicodeDecodeError:
         return _FALLBACK_RULES
-    return rules or _FALLBACK_RULES
+
+    start = document.find(PROMPT_RULES_START)
+    if start < 0:
+        return _FALLBACK_RULES
+    start += len(PROMPT_RULES_START)
+    end = document.find(PROMPT_RULES_END, start)
+    if end < 0:
+        return _FALLBACK_RULES
+    return document[start:end].strip() or _FALLBACK_RULES
 
 
 def agent_rules_prompt_section() -> str:
