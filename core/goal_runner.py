@@ -60,7 +60,11 @@ class GoalRunner:
 
         def execute_with_context(proposal, *, task_id, attempt_id=None):
             trusted_kwargs = {}
-            if trusted_file_intent is not None:
+            # A verified-file proposal always requires constraints extracted
+            # from the original user goal. If extraction was ambiguous or the
+            # format is unsupported, pass a missing constraint so ToolRouter
+            # fails closed before approval rather than silently skipping it.
+            if proposal.tool == "buat_file_terverifikasi" or trusted_file_intent is not None:
                 trusted_kwargs = {
                     "trusted_tool": "buat_file_terverifikasi",
                     "trusted_arguments": trusted_file_intent,
@@ -134,6 +138,7 @@ class GoalRunner:
         while not graph.is_complete():
             if max_steps is not None and steps >= max_steps:
                 plan = self._persist(plan, PlanStatus.WAITING)
+                self._record_conversation_outcome(plan.goal, plan, graph)
                 return plan, graph
 
             model_wait_active = [
@@ -332,13 +337,15 @@ class GoalRunner:
 
         # Project/context metadata is not persisted with Plan yet. Resume
         # therefore uses explicit runtime defaults instead of undefined names.
-        return self._run_graph(
+        result = self._run_graph(
             plan,
             graph,
             max_steps=max_steps,
             project_id=plan.project_id,
             context=plan.context,
         )
+        self._record_conversation_outcome(plan.goal, *result)
+        return result
 
     @staticmethod
     def _new_plan_id() -> str:
