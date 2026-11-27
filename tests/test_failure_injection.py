@@ -12,7 +12,6 @@ from core.runtime import AgentRuntime
 from core.state_store import StateStore
 from core.task_manager import TaskManager
 from core.checkpoint import CheckpointManager
-from core.model_execution import ModelExecutionService
 
 
 def _contract(*, retry_limit=0):
@@ -114,8 +113,6 @@ def test_successful_tool_with_failed_verification_cannot_complete_task(tmp_path)
     runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
     proposal = Planner().propose("wrong output", [Task("wrong", "Return correct output")])
     _, graph = runtime.orchestrator.materialize(proposal, "wrong-output-plan")
-    calls = []
-
     task = runtime.orchestrator.execute_model_step(
         graph,
         model_call=lambda _prompt: '{"tool":"run_command","action":"execute","arguments":{"command":"true","cwd":"."}}',
@@ -144,8 +141,7 @@ def test_interrupted_task_is_not_replayed_after_runtime_restart(tmp_path):
 
     restarted = AgentRuntime.create(state_path=state_path)
     model_calls = []
-    monkeypatch_gateway = restarted.model_gateway
-    monkeypatch_gateway.text = lambda *args, **kwargs: model_calls.append(args) or "{}"
+    restarted.model_gateway.text = lambda *args, **kwargs: model_calls.append(args) or "{}"
 
     restored_plan, graph = restarted.resume_goal(plan.plan_id)
 
