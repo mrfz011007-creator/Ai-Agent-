@@ -7,6 +7,8 @@ import pytest
 from core.memory_service import MemoryService
 from core.contracts import ToolResult
 from verification.evidence import EvidenceStore
+from core.state_store import StateStore
+from core import reflection_queue
 from core.reflection import (
     MAX_REFLECTION_OUTPUT_CHARS,
     ReflectionError,
@@ -62,6 +64,17 @@ def test_memory_retrieval_is_hierarchical_and_never_crosses_project_or_task(
     assert "task B1" not in {row["record"]["value"] for row in task_rows}
 
 
+def test_global_memory_write_does_not_supersede_project_or_task_records(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    _remember("shared-key", "project value", project_id="project-a")
+    _remember("shared-key", "global value")
+
+    assert recall("shared-key")["value"] == "global value"
+    assert recall("shared-key", project_id="project-a")["value"] == "project value"
+
+
 def test_recall_without_scope_returns_only_global_memory(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     _remember("same-key", "global")
@@ -111,8 +124,8 @@ def test_reflection_rejects_model_response_over_output_limit():
         service.reflect(experience={"success": True}, evidence_refs=["ev-1"])
 
 
-def _evidence_store(evidence_id, task_id):
-    store = EvidenceStore()
+def _evidence_store(evidence_id, task_id, state_path=None):
+    store = EvidenceStore(StateStore(state_path) if state_path is not None else None)
     store.record(
         evidence_id=evidence_id,
         task_id=task_id,
@@ -144,7 +157,8 @@ def test_reflection_is_queued_until_human_approval_and_survives_restart(
     def model_call(**_):
         return json.dumps({"candidates": [candidate]})
 
-    evidence_store = _evidence_store("ev-verified-1", "task-a1")
+    evidence_path = tmp_path / "evidence.sqlite3"
+    evidence_store = _evidence_store("ev-verified-1", "task-a1", evidence_path)
     service = MemoryService(project_id="project-a", evidence_store=evidence_store)
     result = service.reflect_and_commit(
         model_call=model_call,
@@ -163,7 +177,8 @@ def test_reflection_is_queued_until_human_approval_and_survives_restart(
         "Check the SDK", project_id="project-a", limit=10
     )["results"] == []
 
-    restarted = MemoryService(project_id="project-a", evidence_store=evidence_store)
+    restarted_evidence = EvidenceStore(StateStore(evidence_path))
+    restarted = MemoryService(project_id="project-a", evidence_store=restarted_evidence)
     assert any(item["id"] == review_id for item in restarted.pending_reflections())
     approved = restarted.review_reflection(review_id, approve=True)
     assert approved["status"] == "approved"
@@ -223,3 +238,29 @@ def test_reflection_rejects_missing_or_cross_task_evidence(tmp_path, monkeypatch
 
     assert missing["reason"] == "EVIDENCE_NOT_FOUND"
     assert mismatch["reason"] == "EVIDENCE_TASK_MISMATCH"
+
+
+
+def test_reflection_queue_enforces_pending_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setattr(reflection_queue, "MAX_PENDING_ITEMS", 1)
+    reflection_queue.enqueue({"key": "one"}, reason="test")
+
+    with pytest.raises(RuntimeError, match="REFLECTION_QUEUE_FULL"):
+        reflection_queue.enqueue({"key": "two"}, reason="test")
+
+
+def test_reflection_without_evidence_store_fails_closed(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    service = MemoryService(project_id="project-a")
+
+    result = service.reflect_and_commit(
+        model_call=lambda **_: json.dumps({"candidates": []}),
+        experience={"success": True},
+        evidence_refs=["ev-1"],
+        project_id="project-a",
+        task_id="task-a",
+    )
+
+    assert result["success"] is False
+    assert result["reason"] == "EVIDENCE_STORE_REQUIRED"
