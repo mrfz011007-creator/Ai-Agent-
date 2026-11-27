@@ -440,8 +440,8 @@ def _scope_matches(
     return (
         (key is None or record["key"] == key)
         and (memory_type is None or record["type"] == memory_type)
-        and (project_id is None or record["project_id"] == project_id)
-        and (task_id is None or record["task_id"] == task_id)
+        and record["project_id"] == project_id
+        and record["task_id"] == task_id
     )
 
 
