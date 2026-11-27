@@ -103,3 +103,24 @@ def test_model_plan_service_rejects_contract_capability_not_declared_by_tool():
         assert False, "contract capabilities must match the selected tools"
     except PlanGraphError as error:
         assert "capability exceeds selected tools" in str(error)
+
+
+
+def test_model_plan_prompt_includes_repository_working_rules():
+    prompts = []
+    service = ModelPlanService(
+        lambda prompt: prompts.append(prompt) or (
+            '{"goal":"inspect","tasks":[{"task_id":"inspect","title":"Inspect","dependencies":[]}],'
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+        )
+    )
+
+    service.propose("inspect")
+
+    assert len(prompts) == 1
+    assert "PROJECT WORKING STANDARD" in prompts[0]
+    assert "Think First" in prompts[0]
+    assert "Simplicity First" in prompts[0]
+    assert "Surgical Changes" in prompts[0]
+    assert "Evidence-Based Completion" in prompts[0]
+    assert "never grants permission" in prompts[0]
