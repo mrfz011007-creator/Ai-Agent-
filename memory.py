@@ -445,6 +445,31 @@ def _scope_matches(
     )
 
 
+def _retrieval_scope_matches(
+    record: Mapping[str, Any],
+    *,
+    project_id: str | None,
+    task_id: str | None,
+) -> bool:
+    """Allow only global, current-project, and current-task memory.
+
+    A missing scope is deliberately restrictive: it means global memory only,
+    never every project or task. Task-scoped records are eligible only when
+    both their project and task match the active execution scope.
+    """
+    record_project = record["project_id"]
+    record_task = record["task_id"]
+    if project_id is None:
+        return record_project is None and record_task is None
+    if record_project not in (None, project_id):
+        return False
+    if task_id is None:
+        return record_task is None
+    return record_task is None or (
+        record_project == project_id and record_task == task_id
+    )
+
+
 def _active_matches(store: Mapping[str, Any], **filters: Any) -> list[dict[str, Any]]:
     return [
         record for record in store["records"]
@@ -533,13 +558,9 @@ def recall(
     store = _load_store()
     records = [
         record for record in store["records"]
-        if _scope_matches(
-            record,
-            key=key,
-            memory_type=memory_type,
-            project_id=project_id,
-            task_id=task_id,
-        )
+        if record["key"] == key
+        and (memory_type is None or record["type"] == memory_type)
+        and _retrieval_scope_matches(record, project_id=project_id, task_id=task_id)
         and (include_invalidated or record["status"] == "active")
     ]
     records.sort(key=lambda record: (record["version"], record["updated_at"]), reverse=True)
@@ -671,9 +692,9 @@ def search_memory(
             continue
         if memory_type and record["type"] != memory_type:
             continue
-        if project_id is not None and record["project_id"] != project_id:
-            continue
-        if task_id is not None and record["task_id"] != task_id:
+        if not _retrieval_scope_matches(
+            record, project_id=project_id, task_id=task_id
+        ):
             continue
         if wanted_tags and not wanted_tags.intersection(record["tags"]):
             continue
