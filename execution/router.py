@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 import os
 import uuid
@@ -13,6 +14,7 @@ from security.guard import GuardEngine
 from security.capabilities import CapabilityPolicy, capabilities_for_tool
 from security.schema import SchemaValidationError, validate_tool_arguments
 from security.redaction import redact_text, redact_value
+from security.approval import approval_digest
 
 
 class ToolRouter:
@@ -154,7 +156,7 @@ class ToolRouter:
             if not capability.allowed:
                 return self._deny(request, "capability_denied", capability.reason)
 
-        arguments = dict(request.arguments)
+        arguments = copy.deepcopy(dict(request.arguments))
         if request.tool in {"run_command", "jalankan_python"}:
             remaining_runtime = self._budget.remaining_runtime_seconds
             if remaining_runtime <= 0:
@@ -190,9 +192,17 @@ class ToolRouter:
                     request, "schema_invalid", "WHITESPACE_ONLY: isi"
                 )
 
+        # Keep a private execution snapshot. Guard, policy, and confirmation
+        # receive independent copies and can never silently alter the payload
+        # that reaches the handler.
+        execution_arguments = copy.deepcopy(arguments)
+
         # Run security inspection before asking for approval so a disallowed
         # process request can never be approved accidentally.
-        guard = self._guard.check(tool=request.tool, arguments=arguments)
+        guard = self._guard.check(
+            tool=request.tool,
+            arguments=copy.deepcopy(execution_arguments),
+        )
         if not guard.allowed:
             return self._deny(request, "guard_denied", guard.reason)
 
@@ -200,7 +210,7 @@ class ToolRouter:
             PolicyContext(
                 tool=request.tool,
                 action=request.action,
-                arguments=arguments,
+                arguments=copy.deepcopy(execution_arguments),
                 source=request.source,
                 task_id=request.task_id,
             )
@@ -210,10 +220,27 @@ class ToolRouter:
             return self._deny(request, "denied", policy.reason)
 
         if policy.decision == Decision.ASK:
+            approval_arguments = copy.deepcopy(execution_arguments)
+            expected_approval_digest = approval_digest(
+                request.tool, request.action, execution_arguments
+            )
             if self._confirmation is None or not self._confirmation(
-                request.tool, arguments
+                request.tool, approval_arguments
             ):
                 return self._deny(request, "cancelled", "User denied tool execution")
+            approved_digest = approval_digest(
+                request.tool, request.action, approval_arguments
+            )
+            if approved_digest != expected_approval_digest:
+                return self._deny(
+                    request,
+                    "approval_invalidated",
+                    "APPROVAL_INVALIDATED: tool arguments changed during approval",
+                )
+
+        # Execute only a fresh copy of the exact snapshot whose digest was
+        # approved. Nested objects are detached from callback-owned references.
+        arguments = copy.deepcopy(execution_arguments)
 
         # Check the task-local quota without mutating it. Mutation is deferred
         # until the handler exists and the global budget has been reserved.
