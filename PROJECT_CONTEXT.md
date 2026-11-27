@@ -9,8 +9,10 @@ Updated: 2026-11-27
 - Pull request: [#17](https://github.com/mrfz011007-creator/Ai-Agent-/pull/17)
 - PR base: `agent/security-hardening`
 - PR status at last inspection: OPEN, not merged.
-- Previous audited head: `b6884f7b66c7502a8d7c88484028b64966753217`
+- Previous audit baseline: `b6884f7b66c7502a8d7c88484028b64966753217`
 - Provider identity fix/code test commit: `a06e226128a15971e1b1e9ab6b1c613cfefb3f94`
+- Last verified pre-documentation branch head: `6da0aa67c1ba5d6eae14d2f281b4907eed923832`
+- Post-fix live Termux test: **PASS**, details recorded below and in `docs/TERMUX_VALIDATION_LOG.md`.
 - Do not merge PR #17 without explicit user approval.
 
 ## Current task: per-request provider/model identity
@@ -69,12 +71,35 @@ At commit `b6884f7`, the model received the configured primary/fallback descript
 - This CI run validates deterministic tests and static checks. It is not a security certification and does not validate live provider credentials or Termux behavior.
 - Push-triggered run: [#46000421772](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46000421772) — status `completed`, conclusion `success` at documentation update time.
 
-## Current status
+## Final validation status (2026-11-27)
 
 - Stages 1–3: **complete** — cause audited, prompt/CLI behavior corrected, and regression tests added in `a06e226`.
-- Stage 4: **passed** — PR CI run #46000429534, with the namespace-test skips stated above.
-- Stage 5: **pending Termux** — live Android/provider retest is required on the user's device after pulling the latest branch.
-- Stage 6: **checkpoint recorded** in this file and `docs/TERMUX_VALIDATION_LOG.md`. Final closure remains pending until the post-fix Termux output is recorded.
+- Stage 4: **passed** — latest PR CI for pre-documentation head `6da0aa6`, run [#46000660140](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46000660140). All four jobs reported success; Python 3.11 and 3.14 each reported **402 passed, 1 skipped, 1 deselected**.
+- Stage 5: **passed on Termux** — post-fix live test on the user's TECNO BG6, using branch head `6da0aa6`. The CLI reported provider `openrouter`, actual model `nvidia/nemotron-3-ultra-550b-a55b:free`, and identity verified from provider response metadata.
+- Stage 6: **complete** — this file and `docs/TERMUX_VALIDATION_LOG.md` now record the post-fix device evidence.
+- PR #17 remains OPEN and unmerged. Do not merge without explicit user approval.
+
+The hosted CI namespace tests were skipped because the runner kernel lacked the required strict namespace support. This is not evidence that the Python sandbox ran successfully and is not a security certification. The successful Termux identity test proves the observed provider/model metadata display for that request; it does not certify every provider or all security controls.
+
+## Post-fix Termux evidence
+
+- Tested checkout: `~/Projects/Ai-Agent/testing`, branch `agent/security-hardening-workspace`, commit `6da0aa67c1ba5d6eae14d2f281b4907eed923832`.
+- The user confirmed a clean working tree before pulling; `git pull --ff-only` fast-forwarded from `b6884f7` to `6da0aa6`.
+- Runtime environment used:
+  - `AI_AGENT_WORKSPACE_ROOT="$HOME/Projects/Ai-Agent/workspace"`
+  - `AI_AGENT_STATE_DB="$AI_AGENT_WORKSPACE_ROOT/agent_state.sqlite3"`
+  - `AI_AGENT_CONVERSATION_ID="stage9-identity-20261127"`
+- The existing OpenRouter credential was available in the shell. Its value was not printed or added to repository records.
+- Test prompt asked which provider and model actually handled the current request, specifically requiring provider-response metadata rather than configuration guesses.
+- The model response correctly said that response metadata is unavailable to it while generating the answer and directed the user to the separate runtime metadata block.
+- CLI output:
+  ```text
+  Metadata runtime (di luar jawaban AI):
+  Provider : openrouter
+  Model aktual : nvidia/nemotron-3-ultra-550b-a55b:free
+  Identitas model : Terverifikasi dari metadata provider
+  ```
+- Result: **PASS** — configuration was not presented as actual identity, provider-reported metadata appeared separately, and the old literal `\\nProvider` formatting defect was no longer present.
 
 ## Working rules
 
