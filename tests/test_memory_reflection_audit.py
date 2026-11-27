@@ -64,6 +64,22 @@ def test_memory_retrieval_is_hierarchical_and_never_crosses_project_or_task(
     assert "task B1" not in {row["record"]["value"] for row in task_rows}
 
 
+def test_unprojected_task_memory_is_visible_only_to_that_task(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    _remember("task-only", "task A", task_id="task-a")
+    _remember("task-only", "task B", task_id="task-b")
+    _remember("task-only", "global")
+
+    assert {row["record"]["value"] for row in search_memory("task-only")["results"]} == {
+        "global"
+    }
+    assert {row["record"]["value"] for row in search_memory(
+        "task-only", task_id="task-a"
+    )["results"]} == {"global", "task A"}
+
+
 def test_global_memory_write_does_not_supersede_project_or_task_records(
     tmp_path, monkeypatch
 ):
