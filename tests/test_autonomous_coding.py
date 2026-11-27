@@ -175,3 +175,20 @@ def test_python_validator_never_executes_source_and_rejects_workspace_escape(
     escaped = tools.validasi_python("../outside.py")
     assert escaped["success"] is False
     assert not marker.exists()
+
+
+
+def test_python_validator_has_a_hard_input_size_cap(tmp_path, monkeypatch):
+    import tools
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    (workspace / "large.py").write_text(
+        "VALUE = 1\\n" + (" " * tools.MAX_STATIC_PYTHON_VALIDATION_BYTES),
+        encoding="utf-8",
+    )
+
+    result = tools.validasi_python("large.py")
+    assert result["success"] is False
+    assert result["code"] == "FILE_TOO_LARGE"
