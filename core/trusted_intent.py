@@ -11,6 +11,10 @@ _FILE_NAME = re.compile(
 _ANY_FILE_NAME = re.compile(
     r"\b[A-Za-z0-9_-][A-Za-z0-9_.-]*\.[A-Za-z0-9]{1,12}\b"
 )
+_FILE_CREATION_REQUEST = re.compile(
+    r"\\b(?:buat|bikin|tulis|create|write)\\s+(?:(?:sebuah|satu)\\s+)?file\\b",
+    re.IGNORECASE,
+)
 _EXACT_CONTENT = re.compile(
     r"\b(?:isi|konten|content)\b.{0,60}?"
     r"\b(?:persis|tepat|exact(?:ly)?)\b"
@@ -56,3 +60,9 @@ def extract_trusted_file_intent(goal: str) -> dict[str, Any] | None:
     if not content.strip():
         return None
     return {"nama": relative_name, "isi": content}
+
+
+
+def is_file_creation_request(goal: str) -> bool:
+    """Identify explicit file-creation requests so unsupported formats fail closed."""
+    return isinstance(goal, str) and _FILE_CREATION_REQUEST.search(goal) is not None
