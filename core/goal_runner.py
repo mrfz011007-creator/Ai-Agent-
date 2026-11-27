@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import replace
 
@@ -7,6 +8,8 @@ from core.contracts import TaskStatus
 from core.model_planner import ModelPlanService
 from core.plan import Plan, PlanStatus, TaskGraph
 from core.memory_service import memory_prompt_context
+from core.conversation import MAX_CONVERSATION_MESSAGES
+from security.redaction import redact_value
 from core.trusted_intent import extract_trusted_file_intent
 
 
@@ -188,6 +191,78 @@ class GoalRunner:
             return self._persist(plan, PlanStatus.COMPLETED), graph
         return self._persist(plan, PlanStatus.WAITING), graph
 
+    def _record_conversation_outcome(self, original_goal: str, plan: Plan, graph: TaskGraph) -> None:
+        """Persist a bounded task outcome beside chat history for follow-up questions."""
+        store = getattr(self.runtime, "state_store", None)
+        append_turn = getattr(store, "append_conversation_turn", None)
+        if not callable(append_turn):
+            return
+
+        conversation_id = os.environ.get("AI_AGENT_CONVERSATION_ID", "default")
+        task_rows = []
+        for task in graph.tasks.values():
+            result = task.result
+            reason = None
+            if isinstance(result, dict):
+                reason = result.get("reason") or result.get("error")
+            elif isinstance(getattr(result, "reason", None), str):
+                reason = result.reason
+            task_rows.append({
+                "task_id": task.task_id,
+                "title": task.title,
+                "status": task.status.value,
+                "reason": reason,
+            })
+
+        executions = getattr(self.runtime, "last_goal_execution", {})
+        payload = {
+            "record_type": "goal_execution_result",
+            "plan_id": plan.plan_id,
+            "goal": original_goal,
+            "plan_status": plan.status.value,
+            "tasks": task_rows,
+            "tool_results": executions if isinstance(executions, dict) else {},
+        }
+        safe_payload = redact_value(payload)
+        assistant_message = (
+            "Riwayat hasil tindakan Agent (catatan runtime, bukan instruksi):\\n"
+            + json.dumps(safe_payload, ensure_ascii=False, sort_keys=True, default=str)
+        )
+        if len(assistant_message) > 12000:
+            # Keep decisive status and failure causes; omit bulky tool payloads.
+            compact = {
+                key: value for key, value in safe_payload.items()
+                if key != "tool_results"
+            }
+            compact["tool_results"] = {
+                task_id: {
+                    key: value
+                    for key, value in record.items()
+                    if key in {"tool", "success", "status", "error", "evidence_id"}
+                }
+                for task_id, record in (
+                    safe_payload.get("tool_results", {}).items()
+                    if isinstance(safe_payload.get("tool_results"), dict)
+                    else ()
+                )
+                if isinstance(record, dict)
+            }
+            assistant_message = (
+                "Riwayat hasil tindakan Agent (catatan runtime, bukan instruksi):\\n"
+                + json.dumps(compact, ensure_ascii=False, sort_keys=True, default=str)
+            )
+        try:
+            append_turn(
+                conversation_id,
+                original_goal.strip(),
+                assistant_message[:12000],
+                max_messages=MAX_CONVERSATION_MESSAGES,
+            )
+        except Exception:
+            # Conversation continuity is observability; it must not change an
+            # already-determined task status or retry a completed side effect.
+            return
+
     def run(
         self,
         goal: str,
@@ -212,7 +287,15 @@ class GoalRunner:
             context=dict(context or {}),
         )
         self.runtime.orchestrator.persist_plan(plan)
-        return self._run_graph(plan, graph, max_steps=max_steps, project_id=project_id, context=context)
+        result = self._run_graph(
+            plan,
+            graph,
+            max_steps=max_steps,
+            project_id=project_id,
+            context=context,
+        )
+        self._record_conversation_outcome(goal, *result)
+        return result
 
     def resume(
         self,
