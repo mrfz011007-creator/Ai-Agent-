@@ -524,6 +524,10 @@ def remember(
         or any(not isinstance(ref, str) or len(ref) > 128 for ref in evidence_refs)
     ):
         return {"status": "rejected", "success": False, "reason": "MEMORY_EVIDENCE_REFS_INVALID"}
+    if context is not None and not isinstance(context, Mapping):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_CONTEXT_INVALID"}
+    if provenance is not None and not isinstance(provenance, Mapping):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_PROVENANCE_INVALID"}
     source_data = _normalize_source(source)
     resolved_summary = summary if summary is not None else str(value)[:500]
     if not isinstance(resolved_summary, str) or len(resolved_summary) > 500:
