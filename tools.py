@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import shlex
@@ -388,6 +389,69 @@ def tulis_file(nama, isi, expected_sha256=None):
             "success": False,
             "pesan": str(error),
         }
+
+
+
+def validasi_python(nama, fungsi_wajib=None):
+    """Validate Python syntax and required top-level definitions without executing code."""
+    if fungsi_wajib is None:
+        fungsi_wajib = []
+    if (
+        not isinstance(fungsi_wajib, list)
+        or len(fungsi_wajib) > 64
+        or any(not isinstance(item, str) or not item.isidentifier() for item in fungsi_wajib)
+    ):
+        return {
+            "status": "error",
+            "success": False,
+            "code": "VALIDATION_ARGUMENT_INVALID",
+            "pesan": "fungsi_wajib harus berupa daftar nama fungsi/class yang valid.",
+        }
+    try:
+        raw = read_file_secure(workspace_root(), nama, _max_file_bytes())
+        source = raw.decode("utf-8")
+    except FileTooLargeError:
+        return {"status": "error", "success": False, "code": "FILE_TOO_LARGE", "pesan": "File melebihi batas validasi."}
+    except UnicodeDecodeError:
+        return {"status": "error", "success": False, "code": "FILE_ENCODING_INVALID", "pesan": "File bukan UTF-8 valid."}
+    except FileNotFoundError:
+        return {"status": "error", "success": False, "code": "FILE_NOT_FOUND", "pesan": f"File tidak ditemukan: {nama}"}
+    except Exception as error:
+        return {"status": "error", "success": False, "code": "WORKSPACE_ACCESS_DENIED", "pesan": str(error)}
+
+    try:
+        tree = ast.parse(source, filename=nama, mode="exec")
+    except SyntaxError as error:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "PYTHON_SYNTAX_INVALID",
+            "pesan": f"Syntax error pada baris {error.lineno}: {error.msg}",
+            "line": error.lineno,
+        }
+
+    definitions = [
+        node.name for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
+    missing = sorted(set(fungsi_wajib) - set(definitions))
+    if missing:
+        return {
+            "status": "error",
+            "success": False,
+            "code": "REQUIRED_DEFINITION_MISSING",
+            "pesan": "Definisi wajib tidak ditemukan.",
+            "missing": missing,
+            "definitions": definitions,
+        }
+    return {
+        "status": "success",
+        "success": True,
+        "code": "PYTHON_SYNTAX_VALID",
+        "pesan": "Sintaks Python valid; kode tidak dieksekusi.",
+        "definitions": definitions,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
 
 
 def jalankan_python(nama):
