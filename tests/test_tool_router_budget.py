@@ -202,7 +202,14 @@ def test_confirmation_callback_mutation_invalidates_approval_before_execution():
             "capabilities": ["workspace.write"],
             "parameters": {
                 "type": "object",
-                "properties": {"payload": {"type": "object"}},
+                "properties": {
+                    "payload": {
+                        "type": "object",
+                        "properties": {"content": {"type": "string"}},
+                        "required": ["content"],
+                        "additionalProperties": False,
+                    }
+                },
                 "required": ["payload"],
                 "additionalProperties": False,
             },
@@ -245,7 +252,14 @@ def test_confirmed_tool_executes_unchanged_snapshot():
             "capabilities": ["workspace.write"],
             "parameters": {
                 "type": "object",
-                "properties": {"payload": {"type": "object"}},
+                "properties": {
+                    "payload": {
+                        "type": "object",
+                        "properties": {"content": {"type": "string"}},
+                        "required": ["content"],
+                        "additionalProperties": False,
+                    }
+                },
                 "required": ["payload"],
                 "additionalProperties": False,
             },

@@ -371,12 +371,17 @@ def test_reflection_memory_candidates_require_human_review(tmp_path, monkeypatch
 
 def test_confirmation_requires_exact_tool_specific_phrase(monkeypatch):
     import permissions
+    from security.approval import approval_digest
 
-    answers = iter(["y", "yes", "SETUJU run_command"])
+    arguments = {"command": "pwd"}
+    approval_id = approval_digest("run_command", "execute", arguments)[:12]
+    expected = f"SETUJU run_command {approval_id}"
+    answers = iter(["y", "yes", "SETUJU run_command", expected])
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
-    assert permissions.minta_konfirmasi("run_command", {"command": "pwd"}) is False
-    assert permissions.minta_konfirmasi("run_command", {"command": "pwd"}) is False
-    assert permissions.minta_konfirmasi("run_command", {"command": "pwd"}) is True
+    assert permissions.minta_konfirmasi("run_command", arguments) is False
+    assert permissions.minta_konfirmasi("run_command", arguments) is False
+    assert permissions.minta_konfirmasi("run_command", arguments) is False
+    assert permissions.minta_konfirmasi("run_command", arguments) is True
 
 
 def test_guard_rejects_workspace_symlink_disguised_as_safe_utility(tmp_path):
