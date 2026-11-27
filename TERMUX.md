@@ -203,4 +203,67 @@ The agent-facing `run_command` route is restricted to a small allowlist of non-i
 
 Termux applies conservative upper bounds to process wall time, CPU time, captured output, file size, open descriptors, and process count. Android memory address-space limits remain disabled for compatibility with Bionic. These controls are defense-in-depth and do not provide a total disk quota or network isolation.
 
-Tools requiring confirmation demand the exact phrase `SETUJU <nama_tool>`. Approval does not create a sandbox and does not grant extra Android permissions.
+Tools requiring confirmation display the full redacted argument payload and a deterministic approval ID. Approve only after checking the displayed tool and arguments; type the exact phrase `SETUJU <nama_tool> <approval_id>`. A different phrase denies execution. If the approval callback changes any argument after the approval prompt, the router invalidates approval and refuses to execute. Approval does not create a sandbox and does not grant extra Android permissions.
+
+## Roadmap regression and device validation
+
+Use the latest stacked validation branch only after its GitHub Actions workflow is fully successful. The current implementation chain is PR #18 → #19 → #20 → #21 → #22 → #23. These PRs are deliberately kept open until review; a successful CI run does not merge them.
+
+For the existing Termux checkout at `~/Projects/Ai-Agent/testing`:
+
+```bash
+cd ~/Projects/Ai-Agent/testing
+git status --short
+git fetch origin agent/termux-regression-gate
+git switch -C termux/roadmap-validation origin/agent/termux-regression-gate
+git rev-parse --short HEAD
+```
+
+Create an isolated workspace and database for this validation. Do not reuse or delete an existing production/test database:
+
+```bash
+mkdir -p "$HOME/Projects/Ai-Agent/workspace/termux-roadmap-validation"
+export AI_AGENT_WORKSPACE_ROOT="$HOME/Projects/Ai-Agent/workspace/termux-roadmap-validation"
+export AI_AGENT_STATE_DB="$HOME/Projects/Ai-Agent/termux-roadmap-validation.sqlite3"
+export AI_AGENT_CONVERSATION_ID="termux-roadmap-validation"
+```
+
+Run focused regression tests and the Android filesystem smoke test:
+
+```bash
+python -m pytest -q tests/test_trusted_intent.py tests/test_verified_workspace_goal.py tests/test_tool_router_budget.py tests/test_goal_conversation_context.py
+python scripts/termux_filesystem_smoke.py
+```
+
+Expected filesystem smoke result: `HASIL: PASS`. This checks real workspace creation/read/write/verification and refusal to overwrite an existing file. It is separate from model-provider and interactive approval checks.
+
+Then start the live Agent:
+
+```bash
+python agent.py
+```
+
+Test the exact-file instruction:
+
+```text
+Buat file uji_agent_02.txt di workspace dengan isi persis berikut:
+Fariz Agent Test
+Tahap: 2
+Status: berhasil
+
+Baca kembali file tersebut dan verifikasi seluruh isinya sama persis. Laporkan path relatif, isi aktual, dan hasil verifikasi. Jangan menyatakan berhasil jika verifikasi gagal.
+```
+
+At the approval prompt, compare the tool and every displayed argument against the request. Approve only by typing the exact phrase shown, in the form `SETUJU buat_file_terverifikasi <approval_id>`. If the model proposes altered content such as `test`, the router must reject the proposal before asking for approval. Never approve a mismatched proposal.
+
+Test denial and history persistence with a separate new file request. At its approval prompt, type a deliberately incorrect phrase to deny it. Exit the Agent, restart it with the same `AI_AGENT_CONVERSATION_ID`, then ask: `Apa status tugas terakhir tadi dan kenapa?` The answer must report the recorded failure/denial, not success, without asking you to repeat the original instruction.
+
+Finally verify that an existing file is not overwritten by requesting `uji_agent_02.txt` again, then use `exit` and Ctrl+C at the prompt to check graceful shutdown. Do not use Ctrl+C during an active write unless explicitly testing interruption recovery.
+
+Keep results separate:
+- GitHub Actions: hosted Python/static/security/namespace checks.
+- Termux pytest: local Python compatibility.
+- Termux filesystem smoke: actual Android app workspace behavior.
+- Live interactive test: model response, approval prompt, provider connection, and persisted follow-up history.
+
+Do not paste API keys, tokens, or full environment dumps into test reports. Record the branch commit SHA, each command, pass/fail output, and any skip reason in `docs/TERMUX_VALIDATION_LOG.md` after the device test is complete.

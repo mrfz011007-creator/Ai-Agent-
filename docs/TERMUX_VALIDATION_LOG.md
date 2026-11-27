@@ -486,3 +486,25 @@ Pada commit sebelum perbaikan, `python scripts/termux_filesystem_smoke.py` di pe
 Uji interaktif Agent pada commit lama gagal dengan task `create_file` dan alasan `Tool not allowed by execution contract: cari_teks`. Kegagalan ini menjadi bukti reproduksi bug.
 
 **Status saat catatan dibuat:** perbaikan sudah masuk ke branch PR #18 dan CI lulus; uji interaktif di Termux harus diulang setelah checkout diperbarui ke commit `020005d`. Jangan menyatakan tahap end-to-end lulus sebelum pengulangan perangkat dan pemeriksaan file aktual berhasil.
+
+
+## 19. Roadmap integrity and approval validation — 2026-11-27
+
+Implementation branches added after the earlier checkpoint:
+
+- PR #20: bind explicit exact-file requests to the original user instruction. The runtime rejects a model proposal whose filename or full content differs, before interactive approval. A failed mismatch is recorded as tool evidence.
+- PR #21: bind explicit human approval to the tool, action, and exact argument payload using a SHA-256 approval ID. The prompt requires `SETUJU <nama_tool> <approval_id>`; callback argument mutation invalidates approval.
+- PR #22: persist each goal's original request, plan/task status, failure reason, and redacted tool results into the bounded SQLite conversation history used by direct chat. A regression test covers a denied file operation followed by a chat question after reopening the database.
+- PR #23: this document adds the device-validation procedure and current approval phrase.
+
+### Evidence and limits
+
+- PR #20 CI passed on Python 3.11 and 3.14, static/security checks, and the namespace smoke job on the final PR #20 code head `cfe5e73a15793e30ebd27880e1125e9b6d0dc2f1`.
+- PR #21 and PR #22 still require their own final CI results.
+- The Linux namespace smoke job must be interpreted from its step result; a successful job can report a platform skip if the hosted kernel does not support namespaces.
+- No claim is made here that PR #21/#22 or the current code has passed on a physical Android/Termux device.
+- PRs remain unmerged pending review and explicit approval.
+
+### Termux validation gate
+
+Run the commands and interactive cases in `TERMUX.md` section “Roadmap regression and device validation”. Record actual output and exact tested commit SHA here only after the device run. The gate includes exact file content, mismatched model proposal rejection (covered deterministically by regression tests), explicit approval and denial, refusal to overwrite, context after restart, and graceful exit.
