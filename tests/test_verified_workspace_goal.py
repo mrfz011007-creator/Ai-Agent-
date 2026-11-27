@@ -132,3 +132,76 @@ def test_runtime_rejects_invalid_verified_content_before_approval(
     assert execution["success"] is False
     assert execution["status"] == "schema_invalid"
     assert expected_error in execution["error"]
+
+
+
+def test_runtime_rejects_model_arguments_that_change_the_exact_user_request(
+    tmp_path, monkeypatch
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    runtime = AgentRuntime.create(state_path=tmp_path / "state.sqlite3")
+    approvals = []
+    monkeypatch.setattr(
+        runtime.tool_router,
+        "_confirmation",
+        lambda tool, args: approvals.append((tool, args)) or True,
+    )
+
+    goal = (
+        "Buat file uji_agent_02.txt di workspace dengan isi persis berikut:\n"
+        "Fariz Agent Test\nTahap: 2\nStatus: berhasil\n\n"
+        "Baca kembali file tersebut dan verifikasi seluruh isinya sama persis."
+    )
+    plan_payload = {
+        "goal": "Model-generated replacement goal",
+        "tasks": [{
+            "task_id": "create_file",
+            "title": "Create requested file",
+            "dependencies": [],
+            "execution_contract": {
+                "objective": "Create and verify the requested file",
+                "allowed_tools": ["buat_file_terverifikasi"],
+                "allowed_capabilities": ["workspace.write", "workspace.read"],
+                "max_tool_calls": 1,
+                "retry_limit": 0,
+                "evidence_required": True,
+                "completion_conditions": [
+                    {"type": "evidence_success", "task_id": "create_file"}
+                ],
+            },
+        }],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
+    }
+    wrong_proposal = {
+        "tool": "buat_file_terverifikasi",
+        "action": "execute",
+        "arguments": {"nama": "uji_agent_02.txt", "isi": "test"},
+    }
+    monkeypatch.setattr(
+        runtime.model_gateway,
+        "generate_text",
+        lambda *_args, **_kwargs: json.dumps(plan_payload),
+    )
+    monkeypatch.setattr(
+        runtime.model_gateway,
+        "text",
+        lambda *_args, **_kwargs: json.dumps(wrong_proposal),
+    )
+
+    plan, graph = runtime.run_goal(
+        goal,
+        plan_id="plan-reject-model-content-mutation",
+    )
+
+    assert plan.goal == goal
+    assert plan.status.value == "FAILED"
+    assert graph.tasks["create_file"].status == TaskStatus.FAILED
+    assert approvals == []
+    assert not (workspace / "uji_agent_02.txt").exists()
+    execution = runtime.last_goal_execution["create_file"]
+    assert execution["success"] is False
+    assert execution["status"] == "instruction_mismatch"
+    assert "TRUSTED_INSTRUCTION_MISMATCH" in execution["error"]
+    assert execution["evidence_id"] is not None

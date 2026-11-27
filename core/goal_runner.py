@@ -7,6 +7,7 @@ from core.contracts import TaskStatus
 from core.model_planner import ModelPlanService
 from core.plan import Plan, PlanStatus, TaskGraph
 from core.memory_service import memory_prompt_context
+from core.trusted_intent import extract_trusted_file_intent
 
 
 class GoalRunner:
@@ -52,12 +53,20 @@ class GoalRunner:
             last_results.clear()
         steps = 0
         execution_context = {"goal": plan.goal, "project_id": project_id, "context": dict(context or {})}
+        trusted_file_intent = extract_trusted_file_intent(plan.goal)
 
         def execute_with_context(proposal, *, task_id, attempt_id=None):
+            trusted_kwargs = {}
+            if trusted_file_intent is not None:
+                trusted_kwargs = {
+                    "trusted_tool": "buat_file_terverifikasi",
+                    "trusted_arguments": trusted_file_intent,
+                }
             result = self.runtime.execute_model_proposal(
                 proposal,
                 task_id=task_id,
                 attempt_id=attempt_id,
+                **trusted_kwargs,
             )
             execution_record = {
                 "tool": proposal.tool,
@@ -194,7 +203,7 @@ class GoalRunner:
             memory=self.runtime.memory,
             tool_catalog=self.runtime.tool_catalog(),
         )
-        proposal = proposer.propose(goal, project_id=project_id, context=context)
+        proposal = replace(proposer.propose(goal, project_id=project_id, context=context), goal=goal.strip())
         resolved_id = plan_id or self._new_plan_id()
         plan, graph = self.runtime.orchestrator.materialize(proposal, resolved_id)
         plan = replace(

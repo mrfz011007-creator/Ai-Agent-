@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from core.budget import BudgetManager
@@ -213,12 +213,11 @@ class AgentRuntime:
             memory=self.memory,
             tool_catalog=self.tool_catalog(),
         )
-        proposal = proposer.propose(goal, project_id=project_id, context=context)
+        proposal = replace(proposer.propose(goal, project_id=project_id, context=context), goal=goal.strip())
         resolved_plan_id = plan_id or f"plan-{uuid.uuid4().hex[:12]}"
         plan, graph = self.orchestrator.materialize(proposal, resolved_plan_id)
         # Planning-only goals must persist the same project/context metadata
         # as executable goals so a later resume has the original scope.
-        from dataclasses import replace
         plan = replace(
             plan,
             project_id=project_id,
@@ -246,6 +245,8 @@ class AgentRuntime:
         *,
         task_id: str,
         attempt_id: str | None = None,
+        trusted_tool: str | None = None,
+        trusted_arguments: dict | None = None,
     ):
         """Send model intent through the bounded recovery-aware execution path."""
         return self.execute_with_recovery(
@@ -254,16 +255,39 @@ class AgentRuntime:
             source="model",
             task_id=task_id,
             attempt_id=attempt_id,
+            trusted_tool=trusted_tool,
+            trusted_arguments=trusted_arguments,
         )
 
     def handle_model_failure(self, task_id: str | None, error: Exception):
         return self.recovery_controller.handle_model_failure(task_id, error)
 
-    def execute_with_recovery(self, name: str, args: dict, *, source: str = "agent", task_id: str | None = None, attempt_id: str | None = None):
+    def execute_with_recovery(
+        self,
+        name: str,
+        args: dict,
+        *,
+        source: str = "agent",
+        task_id: str | None = None,
+        attempt_id: str | None = None,
+        trusted_tool: str | None = None,
+        trusted_arguments: dict | None = None,
+    ):
         """Execute a tool and perform at most one bounded recovery retry."""
         task = self.task_manager.get(task_id) if task_id is not None else None
         current_attempt = attempt_id or (f"{task_id}:attempt:{task.attempts}" if task_id and task else None)
-        result = self.tool_router.execute(ToolRequest(tool=name, action="execute", arguments=args, source=source, task_id=task_id, attempt_id=current_attempt))
+        result = self.tool_router.execute(
+            ToolRequest(
+                tool=name,
+                action="execute",
+                arguments=args,
+                source=source,
+                task_id=task_id,
+                attempt_id=current_attempt,
+                trusted_tool=trusted_tool,
+                trusted_arguments=trusted_arguments,
+            )
+        )
         if result.success or task_id is None:
             return result
 
@@ -296,6 +320,8 @@ class AgentRuntime:
                 source=source,
                 task_id=task_id,
                 attempt_id=current_attempt,
+                trusted_tool=trusted_tool,
+                trusted_arguments=trusted_arguments,
             )
         )
 

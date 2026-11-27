@@ -1,0 +1,35 @@
+from core.trusted_intent import extract_trusted_file_intent
+
+
+def test_extract_exact_multiline_file_request_and_stop_before_followup_instruction():
+    request = (
+        "Buat file uji_agent_02.txt di workspace dengan isi persis berikut:\n"
+        "Fariz Agent Test\n"
+        "Tahap: 2\n"
+        "Status: berhasil\n"
+        "\n"
+        "Baca kembali file tersebut dan verifikasi seluruh isinya sama persis."
+    )
+
+    assert extract_trusted_file_intent(request) == {
+        "nama": "uji_agent_02.txt",
+        "isi": "Fariz Agent Test\nTahap: 2\nStatus: berhasil",
+    }
+
+
+def test_extract_exact_file_request_with_inline_content():
+    request = "Buat file uji_agent_01.txt dengan isi persis: Fariz Agent Test\nTahap: 1"
+    assert extract_trusted_file_intent(request) == {
+        "nama": "uji_agent_01.txt",
+        "isi": "Fariz Agent Test\nTahap: 1",
+    }
+
+
+def test_ambiguous_or_non_exact_file_request_does_not_create_constraints():
+    assert extract_trusted_file_intent("Buat file catatan.txt") is None
+    assert extract_trusted_file_intent(
+        "Buat file ../catatan.txt dengan isi persis: halo"
+    ) is None
+    assert extract_trusted_file_intent(
+        "Buat file satu.txt dan dua.txt dengan isi persis: halo"
+    ) is None

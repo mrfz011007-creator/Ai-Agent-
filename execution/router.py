@@ -68,6 +68,34 @@ class ToolRouter:
         return result
 
     def execute(self, request: ToolRequest) -> ToolResult:
+        if request.trusted_tool is not None:
+            if request.tool != request.trusted_tool:
+                return self._deny(
+                    request,
+                    "instruction_mismatch",
+                    f"TRUSTED_INSTRUCTION_MISMATCH: expected tool {request.trusted_tool}",
+                )
+            if request.trusted_arguments is None:
+                return self._deny(
+                    request,
+                    "instruction_mismatch",
+                    "TRUSTED_INSTRUCTION_CONSTRAINT_MISSING",
+                )
+            actual_arguments = dict(request.arguments)
+            expected_arguments = dict(request.trusted_arguments)
+            if actual_arguments != expected_arguments:
+                changed_keys = sorted(
+                    key for key in set(actual_arguments) | set(expected_arguments)
+                    if actual_arguments.get(key) != expected_arguments.get(key)
+                    or (key in actual_arguments) != (key in expected_arguments)
+                )
+                return self._deny(
+                    request,
+                    "instruction_mismatch",
+                    "TRUSTED_INSTRUCTION_MISMATCH: exact arguments required; "
+                    f"mismatched keys: {', '.join(changed_keys) or 'unknown'}",
+                )
+
         metadata = self._registry_getter(request.tool)
         if metadata is None:
             return self._deny(request, "denied", "Unknown tool")
