@@ -5,6 +5,7 @@ import json
 from typing import Any, Mapping
 
 from memory import (
+    MAX_MEMORY_VALUE_CHARS,
     compact_memory_if_needed,
     invalidate_memory,
     remember,
@@ -76,7 +77,7 @@ class MemoryService:
                 "original_chars": len(serialized),
                 "preview": serialized[:MAX_EXPERIENCE_VALUE_CHARS] + "...[TRUNCATED]",
             }
-            while len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > 6000:
+            while len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > MAX_MEMORY_VALUE_CHARS:
                 preview = value["preview"]
                 value["preview"] = preview[: max(0, len(preview) // 2)] + "...[TRUNCATED]"
         return remember(key, value, memory_type="experience",
