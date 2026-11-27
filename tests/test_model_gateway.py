@@ -288,3 +288,24 @@ def test_runtime_budget_window_resets_after_restart(tmp_path):
     second = AgentRuntime.create(state_path=state_path)
     assert second.budget_manager.elapsed_seconds < 1.0
     assert second.budget_manager.remaining_runtime_seconds > 0.0
+
+
+
+def test_fallback_provider_exhaustion_puts_task_in_waiting(tmp_path):
+    from core.contracts import Task, TaskStatus
+    from core.runtime import AgentRuntime
+
+    runtime = AgentRuntime.create(tmp_path / "state.sqlite3")
+    task = runtime.task_manager.create(Task("MODEL-F1", "fallback failure"))
+    task.status = TaskStatus.READY
+    runtime.task_manager.start("MODEL-F1")
+
+    wrapped = RuntimeError("MODEL_PROVIDERS_EXHAUSTED")
+    wrapped.__cause__ = RuntimeError("NO_MODEL_CREDENTIAL_AVAILABLE")
+    decision = runtime.handle_model_failure("MODEL-F1", wrapped)
+
+    assert decision.status == TaskStatus.WAITING
+    assert decision.action == "WAIT_FOR_MODEL"
+    restored = runtime.task_manager.get("MODEL-F1")
+    assert restored.status == TaskStatus.WAITING
+    assert restored.result["recovery_action"] == "WAIT_FOR_MODEL"
