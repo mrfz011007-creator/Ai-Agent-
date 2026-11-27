@@ -13,7 +13,7 @@ Updated: 2026-11-27
 - Provider identity fix/code test commit: `a06e226128a15971e1b1e9ab6b1c613cfefb3f94`
 - Last verified pre-documentation branch head: `6da0aa67c1ba5d6eae14d2f281b4907eed923832`
 - Post-fix live Termux test: **PASS**, details recorded below and in `docs/TERMUX_VALIDATION_LOG.md`.
-- Do not merge PR #17 without explicit user approval.
+- Do not merge PR #18 without explicit user approval.
 
 ## Current task: per-request provider/model identity
 
@@ -124,3 +124,20 @@ Do not claim tests passed unless their actual results are available. Do not merg
 ### Termux next action
 
 From `~/Projects/Ai-Agent/testing`, fetch and switch to `agent/filesystem-execution-fix` only after confirming the working tree is clean. Set `AI_AGENT_WORKSPACE_ROOT` to `~/Projects/Ai-Agent/workspace`, then run `python scripts/termux_filesystem_smoke.py`. After it passes, run the interactive Agent test with a separate state database and approve only the exact tool/arguments shown by the Agent.
+
+
+
+## Current audit and fix checkpoint — 2026-11-27
+
+- Repository structure inspected at commit `6e7658a`: 119 tracked files across root, `.github`, `core`, `docs`, `execution`, `scripts`, `security`, `tests`, and `verification`.
+- Confirmed root cause: `Orchestrator.execute_model_step` did not pass the active task's validated execution contract to `ModelExecutionService`. The execution prompt exposed the full tool catalog, allowing the model to propose `cari_teks` for a task whose contract did not allow that tool. `ToolRouter` correctly denied it.
+- Fix commit: [`020005d`](https://github.com/mrfz011007-creator/Ai-Agent-/commit/020005d95bfeaba2ddafcd4a794cdb2d3d58afcc).
+- The executor now receives the execution contract, sees only the contract's allowed tool catalog, and rejects out-of-contract proposals before routing. ToolRouter enforcement was not weakened.
+- Regression tests cover contract-scoped tool visibility, deterministic rejection of a disallowed tool, and the runtime goal integration.
+- CI run [#46010607260](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46010607260): Python 3.11 and 3.14 each **418 passed, 1 skipped, 1 deselected**; dependency check, compileall, Ruff, and Bandit passed. Strict Linux namespace smoke test was skipped because the hosted kernel lacked namespace support; this is not sandbox verification.
+- Termux filesystem smoke test on the prior commit **PASSED** all seven checks. The interactive test reproduced the bug on the old commit and must be rerun after updating to `020005d`.
+- PR #18 remains OPEN and unmerged. Do not merge without explicit user approval.
+
+### Next device verification
+
+Update the local branch to the latest PR head using `git pull --ff-only origin agent/filesystem-execution-fix`, then rerun the interactive file-creation prompt with a fresh state database. Approve only `buat_file_terverifikasi` with the exact requested filename and contents. Independently read the resulting file and compare the full text byte-for-byte. Do not delete the existing stash; it is a backup of earlier local changes.
