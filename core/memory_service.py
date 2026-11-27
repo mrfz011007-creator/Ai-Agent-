@@ -124,7 +124,7 @@ class MemoryService:
                     "reason": "EVIDENCE_AUTHORITY_INVALID",
                     "committed": [],
                 }
-            if task_id is not None and evidence.task_id != task_id:
+            if evidence.task_id != task_id:
                 return {
                     "status": "reflection_rejected",
                     "success": False,
