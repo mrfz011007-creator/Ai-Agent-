@@ -22,12 +22,12 @@ cd Ai-Agent-
 ## 3. Configure the workspace and state database
 
 ```bash
-export AI_AGENT_WORKSPACE_ROOT="$PWD"
-# Optional override. By default the database is created in the workspace.
-# export AI_AGENT_STATE_DB="$AI_AGENT_WORKSPACE_ROOT/agent_state.sqlite3"
+mkdir -p "$HOME/ai-agent-workspace"
+export AI_AGENT_WORKSPACE_ROOT="$HOME/ai-agent-workspace"
+export AI_AGENT_STATE_DB="$AI_AGENT_WORKSPACE_ROOT/agent_state.sqlite3"
 ```
 
-The workspace must already exist and be readable/writable by Termux. The interactive entrypoint validates it before starting, so a missing or invalid workspace fails immediately instead of allowing partial startup. When `AI_AGENT_STATE_DB` is omitted, the database defaults to `$AI_AGENT_WORKSPACE_ROOT/agent_state.sqlite3`. A relative database path is resolved from the workspace; parent directories are created automatically. An absolute path can be used for a separate backup/storage location.
+The workspace is deliberately separate from the cloned source-code directory: keep the repository in `$HOME/Ai-Agent-` and let the agent write only inside `$HOME/ai-agent-workspace`. Do not set the workspace to the repository root. The workspace must already exist and be readable/writable by Termux. The interactive entrypoint validates it before starting, so a missing or invalid workspace fails immediately instead of allowing partial startup. When `AI_AGENT_STATE_DB` is omitted, the database defaults to `$AI_AGENT_WORKSPACE_ROOT/agent_state.sqlite3`. A relative database path is resolved from the workspace; parent directories are created automatically. An absolute path can be used for a separate backup/storage location.
 
 These variables can be added to your Termux shell profile later if needed.
 
