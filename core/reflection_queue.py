@@ -10,8 +10,8 @@ from typing import Any, Mapping
 
 MAX_PENDING_ITEMS = 500
 MAX_TOTAL_ITEMS = 1000
-MAX_QUEUE_FILE_BYTES = 12 * 1024 * 1024
-MAX_QUEUE_CANDIDATE_CHARS = 10000
+MAX_QUEUE_FILE_BYTES = 20 * 1024 * 1024
+MAX_QUEUE_CANDIDATE_CHARS = 16000
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
