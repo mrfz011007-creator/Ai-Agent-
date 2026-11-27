@@ -8,6 +8,7 @@ from tools import (
     tulis_file,
     cari_teks,
     patch_file,
+    validasi_python,
 )
 
 from execution.command import _run_command_unchecked
@@ -242,6 +243,26 @@ TOOL_REGISTRY = {
                 "timeout": {"type": "number", "minimum": 0.1, "maximum": 120},
             },
             "required": ["command", "cwd"],
+        },
+    },
+
+    "validasi_python": {
+        "capabilities": ["workspace.read"],
+        "func": validasi_python,
+        "permission": "safe",
+        "description": "Memeriksa sintaks Python dan definisi top-level tanpa mengeksekusi kode.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "nama": {"type": "string", "maxLength": 1024},
+                "fungsi_wajib": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 128},
+                    "maxItems": 64,
+                },
+            },
+            "required": ["nama"],
         },
     },
 
