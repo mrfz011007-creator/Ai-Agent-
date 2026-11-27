@@ -42,11 +42,11 @@ def test_python_runner_bootstrap_executes_source_from_stdin(tmp_path):
         str(script_path),
         str(script_path.parent),
     )
-    source = (
-        "print('python-runner-bootstrap-ok')\\n"
-        "print(__name__)\\n"
-        "print(__file__)\\n"
-    ).encode('utf-8')
+    source = chr(10).join((
+        "print('python-runner-bootstrap-ok')",
+        "print(__name__)",
+        "print(__file__)",
+    )).encode('utf-8')
 
     result = subprocess.run(
         [sys.executable, "-I", "-S", "-B", "-c", bootstrap],
