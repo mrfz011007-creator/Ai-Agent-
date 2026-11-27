@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 MAX_PENDING_ITEMS = 500
-MAX_TOTAL_ITEMS = 2000
+MAX_TOTAL_ITEMS = 1000
+MAX_QUEUE_FILE_BYTES = 12 * 1024 * 1024
+MAX_QUEUE_CANDIDATE_CHARS = 10000
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
@@ -21,6 +23,8 @@ def _load() -> dict[str, Any]:
     path = _path()
     if not path.exists():
         return {'schema_version': 1, 'items': []}
+    if path.stat().st_size > MAX_QUEUE_FILE_BYTES:
+        raise RuntimeError('REFLECTION_QUEUE_TOO_LARGE')
     value = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(value, Mapping) or value.get('schema_version') != 1 or not isinstance(value.get('items'), list):
         raise RuntimeError('REFLECTION_QUEUE_INVALID')
@@ -30,6 +34,7 @@ def _load() -> dict[str, Any]:
             or not isinstance(item.get('id'), str)
             or item.get('status') not in {'pending', 'approved', 'rejected'}
             or not isinstance(item.get('candidate'), Mapping)
+            or len(json.dumps(item.get('candidate'), ensure_ascii=False, separators=(",", ":"))) > MAX_QUEUE_CANDIDATE_CHARS
         ):
             raise RuntimeError('REFLECTION_QUEUE_ITEM_INVALID')
     return dict(value)
@@ -50,6 +55,12 @@ def _save(value: Mapping[str, Any]) -> None:
         raise
 
 def enqueue(candidate: Mapping[str, Any], *, reason: str) -> dict[str, Any]:
+    if not isinstance(candidate, Mapping):
+        raise ValueError('REFLECTION_QUEUE_CANDIDATE_INVALID')
+    if len(json.dumps(candidate, ensure_ascii=False, separators=(",", ":"))) > MAX_QUEUE_CANDIDATE_CHARS:
+        raise ValueError('REFLECTION_QUEUE_CANDIDATE_TOO_LARGE')
+    if not isinstance(reason, str) or len(reason) > 200:
+        raise ValueError('REFLECTION_QUEUE_REASON_INVALID')
     store = _load()
     pending_count = sum(1 for entry in store['items'] if entry.get('status') == 'pending')
     if pending_count >= MAX_PENDING_ITEMS:
