@@ -6,8 +6,8 @@ import re
 # Only clear, imperative action requests enter the task planner. Explanations,
 # questions about how to do something, and general conversation stay in chat.
 _ACTION_PREFIX = re.compile(
-    r"^(?:tolong\s+|silakan\s+|please\s+)?"
-    r"(?:buat|bikin|tulis|ubah|edit|hapus|delete|install|pasang|"
+    r"^(?:(?:tolong|silakan|please|coba)\s+){0,2}"
+    r"(?:buat(?:kan)?|bikin(?:kan)?|tulis(?:kan)?|ubah|edit|hapus(?:kan)?|delete|install|pasang|"
     r"jalankan|run|eksekusi|periksa|cek|lihat|baca|cari|unduh|download|"
     r"upload|commit|push|build|test|uji|perbaiki|implementasikan|"
     r"selesaikan|kerjakan|lanjutkan|resume|deploy|"
@@ -17,14 +17,14 @@ _ACTION_PREFIX = re.compile(
 )
 
 _QUESTION_PREFIX = re.compile(
-    r"^(?:buat|bikin)\s+apa\b|"
-    r"^(?:bisa|dapat)\s+(?:kamu\s+)?(?:buat|bikin)\s+apa\b",
+    r"^(?:buat|buatkan|bikin|bikinkan|tulis|tuliskan)\s+apa\b|"
+    r"^(?:bisa|dapat)\s+(?:kamu\s+)?(?:buat|buatkan|bikin|bikinkan|tulis|tuliskan)\s+apa\b",
     re.IGNORECASE,
 )
 
 _REQUEST_PREFIX = re.compile(
     r"^(?:bisa|dapat)\s+(?:kamu\s+)?"
-    r"(?:buat|bikin|tulis|ubah|edit|hapus|install|pasang|jalankan|"
+    r"(?:buat(?:kan)?|bikin(?:kan)?|tulis(?:kan)?|ubah|edit|hapus(?:kan)?|install|pasang|jalankan|"
     r"cek|periksa|lihat|baca|cari|perbaiki|kerjakan|selesaikan)\b",
     re.IGNORECASE,
 )

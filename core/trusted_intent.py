@@ -12,14 +12,14 @@ _ANY_FILE_NAME = re.compile(
     r"\b[A-Za-z0-9_-][A-Za-z0-9_.-]*\.[A-Za-z0-9]{1,12}\b"
 )
 _FILE_CREATION_REQUEST = re.compile(
-    r"\b(?:buat|bikin|tulis|create|write)\s+(?:(?:sebuah|satu|a|an|the)\s+)?file\b",
+    r"\b(?:buat(?:kan)?|bikin(?:kan)?|tulis(?:kan)?|create|write)\s+(?:(?:sebuah|satu|a|an|the)\s+)?file\b",
     re.IGNORECASE,
 )
 _EXACT_CONTENT = re.compile(
     r"\b(?:isi|konten|content)\b.{0,60}?"
     r"\b(?:persis|tepat|exact(?:ly)?)\b"
     r"(?:.{0,30}?\b(?:berikut|as\s+follows)\b)?"
-    r"\s*[:：]\s*(.*)\Z",
+    r"\s*[:：](?:\r\n|\n|\r|[ \t])?(.*)\Z",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -56,7 +56,9 @@ def extract_trusted_file_intent(goal: str) -> dict[str, Any] | None:
     )
     if follow_up:
         raw_content = raw_content[:follow_up.start()]
-    content = raw_content.rstrip("\r\n")
+    # Do not strip whitespace or line endings: they are part of exact file content.
+    # The recognized follow-up separator above is the only removed boundary.
+    content = raw_content
     if not content.strip():
         return None
     return {"nama": relative_name, "isi": content}

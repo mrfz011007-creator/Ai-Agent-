@@ -525,3 +525,48 @@ Run the commands and interactive cases in `TERMUX.md` section “Roadmap regress
 - CI code/test validation: commit `9526c226fa678e6f99d47ad8f6a18560cacb9acb`, PR workflow run `46024720194` — Python 3.11: 435 passed, 1 skipped, 1 deselected; Python 3.14: 435 passed, 1 skipped, 1 deselected; static/security and strict namespace smoke jobs succeeded. The subsequent documentation-only commit `f97c7b0adb52c0a5de390787deb109b81a6846be` was also validated by PR workflow run `46024905058`: all four jobs succeeded, with the same test counts. The strict namespace job's success is not proof of namespace isolation on Termux.
 - Termux status: NOT YET TESTED for this follow-up branch. Do not reuse older Termux results as evidence for this commit.
 - Latest verified follow-up commit and CI run must be recorded here after GitHub Actions completes. Device test results must be appended only after the user runs them on Termux.
+
+
+## 20. Post-PR #24 hardening — pre-Termux audit gate
+
+- Base commit: `e0b1cc3843bd6049454892b0fbe140065c6f34d9` (PR #24 head; PR #24 is not modified).
+- Branch: `agent/post-pr24-hardening`.
+- Scope: Indonesian action-request variants, exact trailing-newline preservation, provider JSON mode where supported, one bounded JSON-format repair attempt, and a persistent model-provider attempt ledger grouped by logical request ID.
+- Provider attempt accounting records the provider, requested model, credential label, outcome, duration, and normalized error category. Each real credential attempt consumes one model-call budget unit. Raw provider errors and credential values are not stored in the ledger.
+- CI must be checked against the exact final branch commit. The Linux namespace smoke test is host-dependent and may skip; that result is not evidence of namespace isolation on Termux.
+- Termux status: NOT TESTED. Device verification remains blocked until the exact final commit passes its CI gate and the user runs the commands in `TERMUX.md`.
+- Do not merge automatically. PR #24 remains open and unchanged.
+
+### Final pre-Termux CI audit — commit `d5d268c0932d830f09a05a2d0b8dc13c0cdad2ef`
+
+- PR #25 CI run #1514: all 4 jobs completed successfully.
+- Python 3.11: 468 passed, 1 skipped, 1 deselected.
+- Python 3.14: 468 passed, 1 skipped, 1 deselected.
+- Static analysis and security scan: passed (`ruff` correctness checks and Bandit scan completed).
+- Strict Linux namespace smoke job: job completed successfully, but the actual namespace test was skipped because strict namespaces were unavailable on the hosted runner. No namespace-isolation claim is made.
+- Audit review: 11 changed files only; changes are limited to routing, trusted file intent, model execution/provider accounting, regression tests, and Termux instructions.
+- Termux actual-device validation: NOT YET TESTED. The commands in `TERMUX.md` must be run on the device against the final CI-verified commit. Record the returned output here only after the real device test.
+- PR #24 remains open and unchanged; PR #25 remains a draft and must not be merged before Termux validation and review.
+
+## 21. Final pre-Termux validation — implementation commit `e59378bc61748baef543654f091b904c99b5dfb9`
+
+- PR #25 head used for implementation CI: `e59378bc61748baef543654f091b904c99b5dfb9`.
+- GitHub Actions PR run #1534: all 4 jobs succeeded.
+- Python 3.11: 469 passed, 1 skipped, 1 deselected.
+- Python 3.14: 469 passed, 1 skipped, 1 deselected.
+- Static analysis and security scan: passed.
+- Strict Linux namespace smoke job: job succeeded but the test itself was skipped because strict Linux namespaces were unavailable on the hosted runner. Do not treat this as namespace isolation evidence.
+- Termux filesystem smoke script now additionally tests `extract_trusted_file_intent()` with a final newline, writes it through `buat_file_terverifikasi()`, and verifies the UTF-8 bytes exactly. This check is still NOT RUN on the user's Termux device.
+- Termux device status: NOT TESTED. Continue only with the exact final branch head after its CI completes. Record actual command outputs and the tested commit SHA after the user runs the procedure in `TERMUX.md`.
+- PR #24 remains open and unchanged. PR #25 remains a draft; no merge was performed.
+
+## 22. Latest pre-Termux CI and smoke-test review — `d5ebbe99544890f0a29bee816980fd684e5727c2`
+
+- GitHub Actions PR run #1536: all four jobs succeeded on this commit.
+- Python 3.11: 469 passed, 1 skipped, 1 deselected.
+- Python 3.14: 469 passed, 1 skipped, 1 deselected.
+- Static analysis and security scan: passed.
+- Strict Linux namespace job: job succeeded; verify its log before treating the namespace test as executed. A hosted-runner skip does not establish process isolation.
+- Reviewed `scripts/termux_filesystem_smoke.py`: added a parser-to-verified-write check for a single trailing newline and compares the exact UTF-8 bytes. This script has only been CI-reviewed; it has NOT been executed on the user's Android/Termux device.
+- Termux status: NOT TESTED. The next gate is execution of `TERMUX.md` on the phone with the exact branch head SHA. Preserve any existing local changes before switching branches.
+- PR #24 remains open and unchanged. PR #25 remains draft and unmerged.

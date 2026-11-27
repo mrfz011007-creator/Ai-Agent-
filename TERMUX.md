@@ -215,8 +215,9 @@ For the existing Termux checkout at `~/Projects/Ai-Agent/testing`:
 cd ~/Projects/Ai-Agent/testing
 git status --short
 git fetch origin agent/audit-hardening-followups
-git switch -C termux/roadmap-validation origin/agent/audit-hardening-followups
-git rev-parse --short HEAD
+# If this local branch already exists, stop and inspect it; do not force-reset it.
+git switch --create termux/roadmap-validation --track origin/agent/audit-hardening-followups
+git rev-parse HEAD
 ```
 
 Create an isolated workspace and database for this validation. Do not reuse or delete an existing production/test database:
@@ -267,3 +268,83 @@ Keep results separate:
 - Live interactive test: model response, approval prompt, provider connection, and persisted follow-up history.
 
 Do not paste API keys, tokens, or full environment dumps into test reports. Record the branch commit SHA, each command, pass/fail output, and any skip reason in `docs/TERMUX_VALIDATION_LOG.md` after the device test is complete.
+
+
+## Post-PR #24 hardening validation
+
+Run this only after GitHub Actions is successful on the exact final commit of `agent/post-pr24-hardening`.
+
+```bash
+cd ~/Projects/Ai-Agent/testing
+git status --short
+# If the command above prints modified/untracked files, stop and preserve them first.
+git fetch origin agent/post-pr24-hardening
+# If this local branch already exists, stop and inspect it; do not force-reset it.
+git switch --create termux/post-pr24-hardening --track origin/agent/post-pr24-hardening
+git rev-parse HEAD
+git status --short
+```
+
+Use a dedicated workspace and database. Do not reuse, overwrite, or delete existing agent state:
+
+```bash
+mkdir -p "$HOME/Projects/Ai-Agent/workspace/post-pr24-hardening"
+export AI_AGENT_WORKSPACE_ROOT="$HOME/Projects/Ai-Agent/workspace/post-pr24-hardening"
+export AI_AGENT_STATE_DB="$HOME/Projects/Ai-Agent/post-pr24-hardening.sqlite3"
+export AI_AGENT_CONVERSATION_ID="post-pr24-hardening"
+```
+
+Run targeted regressions and the Android filesystem smoke test before making a live model request:
+
+```bash
+python -m pytest -q tests/test_request_router.py tests/test_trusted_intent.py tests/test_model_execution.py tests/test_model_gateway.py
+python -m compileall -q core agent.py
+python scripts/termux_filesystem_smoke.py
+```
+
+All tests must pass. The filesystem smoke test must print `HASIL: PASS`. A skipped Linux namespace smoke test on GitHub is not evidence that process isolation is available on Android; Python execution through the agent remains disabled on Termux when strict namespaces are unavailable.
+
+Start the interactive agent:
+
+```bash
+python agent.py
+```
+
+First check a non-destructive local action:
+
+```text
+lokasi saya
+```
+
+The filesystem smoke test above also extracts a trusted file request containing a final newline, creates the file through `buat_file_terverifikasi`, and compares the actual bytes. It must print:
+
+```text
+[PASS] trusted intent preserves final newline byte
+HASIL: PASS
+```
+
+The interactive CLI reads one line at a time and strips terminal input, so do not use a multiline prompt to test a final newline. Use a single-line request for the interactive approval and history test:
+
+```text
+Buatkan file uji_post_pr24.txt dengan isi persis: Fariz Agent
+```
+
+At the approval prompt, inspect the exact tool and arguments. Approve only if the displayed `isi` is exactly `Fariz Agent` with no extra text. Then verify the bytes from a second Termux shell using the same environment variables:
+
+```bash
+python - <<'PY'
+from pathlib import Path
+import os
+
+path = Path(os.environ["AI_AGENT_WORKSPACE_ROOT"]) / "uji_post_pr24.txt"
+actual = path.read_bytes()
+print("actual:", repr(actual))
+assert actual == b"Fariz Agent"
+print("EXACT_BYTES: PASS")
+PY
+```
+
+
+Restart the agent with the same state database and conversation ID. Ask for the recorded status of the previous task. It must report the stored outcome, not claim success without execution evidence. Then request the same filename again; the existing file must not be overwritten. Exit normally.
+
+Record the exact commit SHA and raw output for each check in `docs/TERMUX_VALIDATION_LOG.md` only after the device run. Do not paste API keys, tokens, or full environment dumps into the log.

@@ -264,3 +264,64 @@ def test_execution_proposal_rejects_tool_outside_task_contract():
         assert False, "a tool outside the task contract must be rejected"
     except ValueError as error:
         assert "outside task execution contract" in str(error)
+
+
+
+def test_execution_requests_json_mode_when_callback_supports_it():
+    observed = {}
+
+    def model_call(prompt, *, response_mime_type=None):
+        observed["mime_type"] = response_mime_type
+        return '{"tool":"baca_file","action":"execute","arguments":{"nama":"README.md"}}'
+
+    proposal = ModelExecutionService(model_call).propose("inspect README")
+
+    assert proposal.tool == "baca_file"
+    assert observed["mime_type"] == "application/json"
+
+
+def test_invalid_json_gets_exactly_one_bounded_format_repair_attempt():
+    responses = iter([
+        "Here is the tool call: not-json",
+        '{"tool":"baca_file","action":"execute","arguments":{"nama":"README.md"}}',
+    ])
+    prompts = []
+
+    def model_call(prompt, *, response_mime_type=None):
+        prompts.append((prompt, response_mime_type))
+        return next(responses)
+
+    proposal = ModelExecutionService(
+        model_call,
+        tool_catalog={
+            "baca_file": {
+                "description": "Read a workspace file",
+                "parameters": {"type": "object", "properties": {"nama": {"type": "string"}}},
+                "permission": "safe",
+            }
+        },
+    ).propose("inspect README")
+
+    assert proposal.tool == "baca_file"
+    assert len(prompts) == 2
+    assert all(item[1] == "application/json" for item in prompts)
+    assert "FORMAT REPAIR ONLY" in prompts[1][0]
+    assert "UNTRUSTED PREVIOUS RESPONSE JSON" in prompts[1][0]
+    assert "AVAILABLE TOOLS" in prompts[1][0]
+    assert "baca_file" in prompts[1][0]
+
+
+def test_invalid_json_after_repair_fails_without_proposal():
+    calls = []
+
+    def model_call(prompt):
+        calls.append(prompt)
+        return "not-json"
+
+    try:
+        ModelExecutionService(model_call).propose("inspect README")
+        assert False, "invalid output must be rejected"
+    except ValueError as error:
+        assert "one format-repair attempt" in str(error)
+
+    assert len(calls) == 2
