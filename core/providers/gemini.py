@@ -8,13 +8,25 @@ class GeminiProvider:
 
     name = "gemini"
 
-    def __init__(self, client_factory=None):
+    def __init__(self, client_factory=None, *, timeout_seconds: float = 45.0):
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not 1 <= timeout_seconds <= 120
+        ):
+            raise ValueError("timeout_seconds must be between 1 and 120")
+        self.timeout_seconds = float(timeout_seconds)
         self._client_factory = client_factory or self._default_client_factory
 
-    @staticmethod
-    def _default_client_factory(api_key: str) -> Any:
+    def _default_client_factory(self, api_key: str) -> Any:
         from google import genai
-        return genai.Client(api_key=api_key)
+        from google.genai import types
+
+        # Google Gen AI HttpOptions.timeout is expressed in milliseconds.
+        http_options = types.HttpOptions(
+            timeout=int(self.timeout_seconds * 1000)
+        )
+        return genai.Client(api_key=api_key, http_options=http_options)
 
     def generate(
         self,
