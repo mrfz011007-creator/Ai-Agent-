@@ -16,6 +16,11 @@ MEMORY_RETENTION_POLICIES = frozenset({"normal", "durable", "ephemeral"})
 DEFAULT_AUTO_COMPACT_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_ACTIVE_EXPERIENCES = 500
 DEFAULT_MAX_HISTORY_PER_KEY = 5
+MAX_MEMORY_KEY_CHARS = 200
+MAX_MEMORY_VALUE_CHARS = 6000
+MAX_MEMORY_TAGS = 20
+MAX_MEMORY_EVIDENCE_REFS = 10
+MAX_ACTIVE_MEMORY_RECORDS = 2000
 
 
 class MemoryValidationError(ValueError):
@@ -499,6 +504,26 @@ def remember(
     evidence_refs: list[str] | None = None,
 ) -> dict[str, Any]:
     from memory_policy import evaluate_memory_candidate
+    if not isinstance(key, str) or not key.strip() or len(key) > MAX_MEMORY_KEY_CHARS:
+        return {"status": "rejected", "success": False, "reason": "MEMORY_KEY_INVALID"}
+    try:
+        serialized_value = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_VALUE_NOT_JSON_SERIALIZABLE"}
+    if len(serialized_value) > MAX_MEMORY_VALUE_CHARS:
+        return {"status": "rejected", "success": False, "reason": "MEMORY_VALUE_TOO_LARGE"}
+    if tags is not None and (
+        not isinstance(tags, list)
+        or len(tags) > MAX_MEMORY_TAGS
+        or any(not isinstance(tag, str) or len(tag) > 64 for tag in tags)
+    ):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_TAGS_INVALID"}
+    if evidence_refs is not None and (
+        not isinstance(evidence_refs, list)
+        or len(evidence_refs) > MAX_MEMORY_EVIDENCE_REFS
+        or any(not isinstance(ref, str) or len(ref) > 128 for ref in evidence_refs)
+    ):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_EVIDENCE_REFS_INVALID"}
     source_data = _normalize_source(source)
     decision = evaluate_memory_candidate(memory_type=memory_type, key=key, value=value,
         source=source_data, provenance=provenance or {}, context=context or {},
@@ -514,6 +539,13 @@ def remember(
         project_id=project_id,
         task_id=task_id,
     )
+    active_count = sum(1 for record in store["records"] if record["status"] == "active")
+    if not previous and active_count >= MAX_ACTIVE_MEMORY_RECORDS:
+        return {
+            "status": "rejected",
+            "success": False,
+            "reason": "MEMORY_CAPACITY_REACHED",
+        }
     latest_version = max((record["version"] for record in previous), default=0)
     supersedes_id = None
     now = _utc_now()
