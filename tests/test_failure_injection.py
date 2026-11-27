@@ -91,7 +91,7 @@ def test_tool_failure_records_failed_evidence_and_never_replays_non_idempotent_c
 
     result = runtime.execute_with_recovery(
         "run_command",
-        {"command": "exit 17", "cwd": str(workspace), "timeout": 5},
+        {"command": "false", "cwd": str(workspace), "timeout": 5},
         source="model",
         task_id="task",
         attempt_id="task:attempt:1",
