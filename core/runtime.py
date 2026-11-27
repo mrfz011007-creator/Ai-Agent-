@@ -155,14 +155,18 @@ class AgentRuntime:
             memory=memory,
         )
 
-    def chat(self, message: str) -> str:
-        """Answer a normal user message with bounded persistent chat context."""
+    def chat_with_metadata(self, message: str):
+        """Return a normal chat answer and runtime-supplied provider metadata."""
         conversation_id = os.environ.get("AI_AGENT_CONVERSATION_ID", "default")
         return ConversationService(
             self.model_gateway,
             self.state_store,
             conversation_id=conversation_id,
-        ).answer(message)
+        ).answer_with_metadata(message)
+
+    def chat(self, message: str) -> str:
+        """Backward-compatible string-only chat API."""
+        return self.chat_with_metadata(message).answer
 
     def tool_catalog(self) -> dict[str, dict]:
         """Return non-executable tool metadata for model context."""
