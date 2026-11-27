@@ -254,9 +254,10 @@ def create_gemini_gateway(
         )
     if config.provider != "gemini":
         raise ValueError(f"Unsupported model provider: {config.provider}")
+    timeout = float(os.environ.get("AI_AGENT_MODEL_TIMEOUT_SECONDS", "45"))
     return ModelGateway(
         credentials=gemini_credentials(),
-        provider=GeminiProvider(),
+        provider=GeminiProvider(timeout_seconds=timeout),
         budget=budget,
         config=config,
     )
@@ -288,9 +289,37 @@ class FallbackModelGateway:
             raise ValueError("At least one model route is required")
         self.routes = routes
 
+    @staticmethod
+    def _provider_name(route) -> str | None:
+        return getattr(getattr(route, "provider", None), "name", None)
+
+    @staticmethod
+    def _should_skip_provider(error: Exception) -> bool:
+        """Avoid repeating requests to a provider when its credential cannot work."""
+        current: BaseException | None = error
+        seen: set[int] = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            status_code = getattr(current, "status_code", None)
+            message = str(current).lower()
+            if status_code == 401 or any(
+                marker in message
+                for marker in (
+                    "invalid api key",
+                    "no_model_credential_available",
+                )
+            ):
+                return True
+            current = current.__cause__ or current.__context__
+        return False
+
     def _invoke(self, method: str, **kwargs):
         last_error: Exception | None = None
+        skipped_providers: set[str] = set()
         for route in self.routes:
+            provider_name = self._provider_name(route)
+            if provider_name and provider_name in skipped_providers:
+                continue
             try:
                 return getattr(route, method)(**kwargs)
             except Exception as error:
@@ -302,6 +331,8 @@ class FallbackModelGateway:
                     ProviderErrorKind.UNAVAILABLE,
                 }:
                     raise
+                if provider_name and self._should_skip_provider(error):
+                    skipped_providers.add(provider_name)
         if last_error is not None:
             raise RuntimeError("MODEL_PROVIDERS_EXHAUSTED") from last_error
         raise RuntimeError("NO_MODEL_PROVIDER_AVAILABLE")
