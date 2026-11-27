@@ -29,7 +29,7 @@ def test_chat_system_instruction_forbids_claiming_tool_execution():
 
     instruction = gateway.calls[0]["system_instruction"]
     assert "Do not create task plans" in instruction
-    assert "do not claim to have executed actions" in instruction
+    assert "or claim to have executed actions" in instruction
 
 
 def test_chat_rejects_empty_and_oversized_messages_without_model_call():
