@@ -317,3 +317,97 @@ def test_openrouter_builds_opener_with_redirects_disabled(monkeypatch):
     assert captured["timeout"] == 7
     assert any(isinstance(handler, _NoRedirectHandler) for handler in captured["handlers"])
     assert captured["request"].get_header("Authorization") == "Bearer private-api-key"
+
+
+
+def test_provider_chain_skips_same_provider_after_invalid_key():
+    from types import SimpleNamespace
+
+    calls = []
+
+    class Route:
+        def __init__(self, name, provider, error=None, result=None):
+            self.name = name
+            self.provider = SimpleNamespace(name=provider)
+            self.error = error
+            self.result = result
+
+        def generate_text(self, **kwargs):
+            calls.append(self.name)
+            if self.error:
+                raise self.error
+            return self.result
+
+    gateway = FallbackModelGateway([
+        Route(
+            "openrouter-primary", "openrouter",
+            error=OpenRouterError("invalid API key", status_code=401),
+        ),
+        Route("openrouter-backup", "openrouter", result="must-not-run"),
+        Route("gemini-fallback", "gemini", result="fallback-ok"),
+    ])
+
+    assert gateway.generate_text(prompt="hello") == "fallback-ok"
+    assert calls == ["openrouter-primary", "gemini-fallback"]
+
+
+def test_provider_chain_keeps_model_specific_forbidden_fallback_available():
+    from types import SimpleNamespace
+
+    calls = []
+
+    class Route:
+        def __init__(self, name, error=None, result=None):
+            self.name = name
+            self.provider = SimpleNamespace(name="openrouter")
+            self.error = error
+            self.result = result
+
+        def generate_text(self, **kwargs):
+            calls.append(self.name)
+            if self.error:
+                raise self.error
+            return self.result
+
+    gateway = FallbackModelGateway([
+        Route("model-forbidden", error=OpenRouterError("model access forbidden", status_code=403)),
+        Route("allowed-backup", result="backup-ok"),
+    ])
+    assert gateway.generate_text(prompt="hello") == "backup-ok"
+    assert calls == ["model-forbidden", "allowed-backup"]
+
+
+def test_gemini_default_client_uses_explicit_timeout(monkeypatch):
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from core.providers.gemini import GeminiProvider
+
+    captured = {}
+
+    class FakeHttpOptions:
+        def __init__(self, *, timeout):
+            captured["timeout"] = timeout
+
+    def fake_client(*, api_key, http_options):
+        captured["api_key"] = api_key
+        captured["http_options"] = http_options
+        return "client"
+
+    google_module = ModuleType("google")
+    genai_module = ModuleType("google.genai")
+    genai_module.Client = fake_client
+    genai_module.types = SimpleNamespace(HttpOptions=FakeHttpOptions)
+    google_module.genai = genai_module
+    monkeypatch.setitem(sys.modules, "google", google_module)
+    monkeypatch.setitem(sys.modules, "google.genai", genai_module)
+
+    client = GeminiProvider(timeout_seconds=17.5)._default_client_factory("secret")
+    assert client == "client"
+    assert captured["api_key"] == "secret"
+    assert captured["timeout"] == 17500
+
+
+def test_gemini_rejects_invalid_timeout():
+    from core.providers.gemini import GeminiProvider
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        GeminiProvider(timeout_seconds=0)
