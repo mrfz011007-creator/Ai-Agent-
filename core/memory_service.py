@@ -214,6 +214,42 @@ class MemoryService:
         if not approve:
             resolved = reflection_queue.resolve(review_id, status="rejected", resolution=reviewer)
             return {"status": "rejected", "success": True, "review": resolved}
+        if self.evidence_store is None:
+            return {
+                "status": "commit_rejected",
+                "success": False,
+                "reason": "EVIDENCE_STORE_REQUIRED",
+            }
+        evidence_refs = candidate.get("evidence_refs")
+        if not isinstance(evidence_refs, list) or not evidence_refs:
+            return {
+                "status": "commit_rejected",
+                "success": False,
+                "reason": "EVIDENCE_REQUIRED",
+            }
+        for evidence_id in evidence_refs:
+            evidence = self.evidence_store.get(str(evidence_id))
+            if evidence is None:
+                return {
+                    "status": "commit_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_NOT_FOUND",
+                }
+            if (
+                evidence.kind not in {"execution", "reconciliation"}
+                or evidence.authority not in {"execution_router", "reconciliation_boundary"}
+            ):
+                return {
+                    "status": "commit_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_AUTHORITY_INVALID",
+                }
+            if evidence.task_id != candidate.get("task_id"):
+                return {
+                    "status": "commit_rejected",
+                    "success": False,
+                    "reason": "EVIDENCE_TASK_MISMATCH",
+                }
         result = self.commit_proposal(candidate)
         if not result.get("success"):
             return {"status": "commit_rejected", "success": False, "result": result}
