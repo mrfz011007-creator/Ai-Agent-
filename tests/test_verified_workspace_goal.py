@@ -130,8 +130,8 @@ def test_runtime_rejects_invalid_verified_content_before_approval(
     assert not (workspace / "uji_agent_invalid.txt").exists()
     execution = runtime.last_goal_execution["create_file"]
     assert execution["success"] is False
-    assert execution["status"] == "schema_invalid"
-    assert expected_error in execution["error"]
+    assert execution["status"] == "instruction_mismatch"
+    assert "TRUSTED_INSTRUCTION_CONSTRAINT_MISSING" in execution["error"]
 
 
 
