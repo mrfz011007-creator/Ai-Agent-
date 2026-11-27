@@ -166,26 +166,34 @@ class MemoryService:
             # Model-generated memory is never committed automatically. Evidence
             # references prove provenance, not that the model's interpretation
             # is true or safe. Every candidate requires explicit review.
-            item = reflection_queue.enqueue(
-                {
+            try:
+                item = reflection_queue.enqueue(
+                    {
+                        "key": candidate.key,
+                        "value": candidate.value,
+                        "memory_type": candidate.memory_type,
+                        "summary": candidate.summary,
+                        "confidence": candidate.confidence,
+                        "importance": candidate.importance,
+                        "retention": candidate.retention,
+                        "evidence_refs": list(candidate.evidence_refs),
+                        "tags": list(candidate.tags),
+                        "scope": candidate.scope,
+                        "risk": candidate.risk,
+                        "project_id": project_id if project_id is not None else self.project_id,
+                        "task_id": task_id,
+                        "context": context or {},
+                        "source": source,
+                    },
+                    reason="REFLECTION_REQUIRES_HUMAN_REVIEW",
+                )
+            except RuntimeError as error:
+                rejected.append({
                     "key": candidate.key,
-                    "value": candidate.value,
-                    "memory_type": candidate.memory_type,
-                    "summary": candidate.summary,
-                    "confidence": candidate.confidence,
-                    "importance": candidate.importance,
-                    "retention": candidate.retention,
-                    "evidence_refs": list(candidate.evidence_refs),
-                    "tags": list(candidate.tags),
-                    "scope": candidate.scope,
-                    "risk": candidate.risk,
-                    "project_id": project_id if project_id is not None else self.project_id,
-                    "task_id": task_id,
-                    "context": context or {},
-                    "source": source,
-                },
-                reason="REFLECTION_REQUIRES_HUMAN_REVIEW",
-            )
+                    "status": "queue_rejected",
+                    "reason": str(error),
+                })
+                continue
             rejected.append({
                 "key": candidate.key,
                 "status": "pending_review",
