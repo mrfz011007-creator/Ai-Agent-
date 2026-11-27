@@ -69,7 +69,7 @@ def test_runtime_goal_creates_and_verifies_exact_workspace_file(tmp_path, monkey
     [
         ("", "STRING_TOO_SHORT: isi"),
         ("   ", "WHITESPACE_ONLY: isi"),
-        ("\\t\\n", "WHITESPACE_ONLY: isi"),
+        ("\t\n", "WHITESPACE_ONLY: isi"),
     ],
 )
 def test_runtime_rejects_invalid_verified_content_before_approval(
