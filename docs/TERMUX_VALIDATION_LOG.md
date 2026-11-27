@@ -4,6 +4,8 @@ Dokumen ini menjadi catatan kesinambungan untuk pengujian lokal di Termux. Pisah
 
 Terakhir diperbarui: 2026-11-27
 
+Status terkini: uji identitas model setelah perbaikan **LULUS** pada 2026-11-27; lihat Bagian 16. Catatan lama di bawah dipertahankan sebagai riwayat dan dapat berstatus pending sesuai waktu pencatatannya.
+
 ## 1. Identitas repo dan checkpoint
 
 - Repo: `mrfz011007-creator/Ai-Agent-`
@@ -341,3 +343,56 @@ Hasil:
 Interpretasi: perubahan prompt, CLI, dan regresi lolos suite otomatis pada dua versi Python. Tes namespace yang dilewati tidak boleh dihitung sebagai bukti sandbox berhasil; hasil CI bukan sertifikasi keamanan dan tidak menggantikan tes langsung Termux.
 
 Status uji perangkat: **belum diuji ulang setelah perbaikan**. Ulangi smoke test setelah menarik commit terbaru dari branch kerja.
+
+## 16. Uji identitas model setelah perbaikan — LULUS (2026-11-27)
+
+### Checkout dan lingkungan
+
+- Repo: `mrfz011007-creator/Ai-Agent-`
+- Direktori uji: `~/Projects/Ai-Agent/testing`
+- Branch: `agent/security-hardening-workspace`
+- Commit yang diuji: `6da0aa67c1ba5d6eae14d2f281b4907eed923832` (`6da0aa6`)
+- Sebelum update, pengguna mengonfirmasi working tree bersih. `git pull --ff-only` berhasil fast-forward dari `b6884f7` ke `6da0aa6`.
+- Variabel runtime:
+  - `AI_AGENT_WORKSPACE_ROOT="$HOME/Projects/Ai-Agent/workspace"`
+  - `AI_AGENT_STATE_DB="$AI_AGENT_WORKSPACE_ROOT/agent_state.sqlite3"`
+  - `AI_AGENT_CONVERSATION_ID="stage9-identity-20261127"`
+- Kredensial OpenRouter yang sudah tersimpan tersedia di shell. Nilai key tidak dicetak, tidak dimasukkan ke log, dan tidak disimpan ke repo.
+
+### Prosedur dan hasil
+
+Prompt yang diuji meminta agent menyebut provider dan model yang benar-benar menangani request berdasarkan metadata respons provider, bukan perkiraan konfigurasi.
+
+Respons model menjelaskan dengan benar bahwa metadata respons provider belum tersedia di dalam proses generasi jawaban, dan mengarahkan pengguna ke blok metadata runtime setelah jawaban.
+
+CLI menampilkan:
+
+```text
+Metadata runtime (di luar jawaban AI):
+Provider : openrouter
+Model aktual : nvidia/nemotron-3-ultra-550b-a55b:free
+Identitas model : Terverifikasi dari metadata provider
+```
+
+### Kesimpulan
+
+**PASS — uji live pascaperbaikan berhasil.**
+
+- Provider aktual teridentifikasi sebagai `openrouter`.
+- Model aktual diambil dari metadata respons provider: `nvidia/nemotron-3-ultra-550b-a55b:free`.
+- Model tidak menebak identitas aktual dari daftar konfigurasi.
+- Metadata ditampilkan oleh runtime secara terpisah dari teks jawaban AI.
+- Prefix literal `\\nProvider` dari bug format sebelumnya sudah tidak muncul.
+
+Hasil ini hanya membuktikan perilaku identitas provider/model untuk request yang diamati. Ini bukan sertifikasi keamanan dan bukan bukti bahwa seluruh provider atau fitur sandbox telah diuji live.
+
+### Status roadmap identitas provider/model
+
+- Audit alur metadata: **selesai**.
+- Aturan identitas dan perbaikan prompt/CLI: **selesai**.
+- Regression tests: **selesai**.
+- GitHub Actions pada head `6da0aa6`: **lulus** — run [#46000660140](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46000660140), empat job success; Python 3.11 dan 3.14 masing-masing 402 passed, 1 skipped, 1 deselected.
+- Uji live pascaperbaikan di Termux: **lulus**, berdasarkan output di atas.
+- PR #17: masih OPEN dan belum di-merge.
+
+Catatan batas CI: tes network-isolation dan strict namespace yang membutuhkan dukungan kernel tidak dijalankan karena hosted runner tidak menyediakan namespace yang dibutuhkan. Status job CI yang success tidak boleh ditafsirkan sebagai bukti bahwa tes namespace tersebut benar-benar berjalan.
