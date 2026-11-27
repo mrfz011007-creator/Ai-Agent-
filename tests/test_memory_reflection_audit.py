@@ -228,6 +228,11 @@ def test_reflection_is_queued_until_human_approval_and_survives_restart(
     restarted_evidence = EvidenceStore(StateStore(evidence_path))
     restarted = MemoryService(project_id="project-a", evidence_store=restarted_evidence)
     assert any(item["id"] == review_id for item in restarted.pending_reflections())
+    unverified_approval = MemoryService(project_id="project-a").review_reflection(
+        review_id, approve=True
+    )
+    assert unverified_approval["success"] is False
+    assert unverified_approval["reason"] == "EVIDENCE_STORE_REQUIRED"
     approved = restarted.review_reflection(review_id, approve=True)
     assert approved["status"] == "approved"
     assert approved["record"]["value"] == candidate["value"]
@@ -295,6 +300,15 @@ def test_reflection_rejects_missing_or_cross_task_evidence(tmp_path, monkeypatch
     assert mismatch["reason"] == "EVIDENCE_TASK_MISMATCH"
     assert widened_scope["reason"] == "EVIDENCE_TASK_MISMATCH"
 
+
+
+def test_reflection_queue_rejects_oversized_candidates(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    with pytest.raises(ValueError, match="REFLECTION_QUEUE_CANDIDATE_TOO_LARGE"):
+        reflection_queue.enqueue(
+            {"value": "x" * (reflection_queue.MAX_QUEUE_CANDIDATE_CHARS + 1)},
+            reason="test",
+        )
 
 
 def test_reflection_queue_enforces_pending_limit(tmp_path, monkeypatch):
