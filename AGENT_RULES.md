@@ -86,6 +86,6 @@ The Python execution tool requires the strict operating-system isolation checks 
 
 ## How this standard is used
 
-The runtime loads this fixed repository-root file through `core.agent_rules` with a strict byte limit and adds it as guidance to planner and execution prompts. The file is not loaded from a user-supplied path. If it is missing or invalid, built-in minimal guidance is used; application security controls remain active either way.
+The runtime loads this fixed repository-root file through `core.agent_rules` with a strict byte limit and sends only the compact section between the prompt markers to planner and execution prompts. The file is not loaded from a user-supplied path. If the file or marked section is missing or invalid, built-in minimal guidance is used; application security controls remain active either way.
 
 Changes to this file should be reviewed together with prompt-integration tests and the security regression suite. A wording change must never be treated as permission to change enforcement code.
