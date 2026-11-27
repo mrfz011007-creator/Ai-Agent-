@@ -148,7 +148,7 @@ def test_end_to_end_goal_uses_real_guarded_execution_and_survives_restart(
 
         checkpoint = runtime.checkpoint_manager.latest(task_id)
         assert checkpoint is not None
-        assert checkpoint["event"] == "completed"
+        assert checkpoint["payload"]["event"] == "completed"
 
     # Successful execution is journaled as bounded, ephemeral memory.
     memory = runtime.memory.retrieve("execution", task_id="inspect", limit=5)
