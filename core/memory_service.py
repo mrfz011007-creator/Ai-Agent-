@@ -12,7 +12,7 @@ from memory import (
     update_memory,
 )
 
-MAX_EXPERIENCE_VALUE_CHARS = 6000
+MAX_EXPERIENCE_VALUE_CHARS = 5000
 MAX_PROMPT_RECORD_VALUE_CHARS = 3000
 from core.reflection import ReflectionService
 from core import reflection_queue
