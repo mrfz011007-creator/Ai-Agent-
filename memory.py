@@ -525,6 +525,20 @@ def remember(
     ):
         return {"status": "rejected", "success": False, "reason": "MEMORY_EVIDENCE_REFS_INVALID"}
     source_data = _normalize_source(source)
+    resolved_summary = summary if summary is not None else str(value)[:500]
+    if not isinstance(resolved_summary, str) or len(resolved_summary) > 500:
+        return {"status": "rejected", "success": False, "reason": "MEMORY_SUMMARY_INVALID"}
+    for metadata_name, metadata_value in (
+        ("source", source_data),
+        ("context", context or {}),
+        ("provenance", provenance or {}),
+    ):
+        try:
+            metadata_size = len(json.dumps(metadata_value, ensure_ascii=False, separators=(",", ":")))
+        except (TypeError, ValueError):
+            return {"status": "rejected", "success": False, "reason": f"MEMORY_{metadata_name.upper()}_INVALID"}
+        if metadata_size > 2048:
+            return {"status": "rejected", "success": False, "reason": f"MEMORY_{metadata_name.upper()}_TOO_LARGE"}
     decision = evaluate_memory_candidate(memory_type=memory_type, key=key, value=value,
         source=source_data, provenance=provenance or {}, context=context or {},
         importance=importance, confidence=confidence, retention=retention,
@@ -570,7 +584,7 @@ def remember(
         importance=decision.importance,
         confidence=decision.confidence,
         retention=retention,
-        summary=summary or str(value)[:500],
+        summary=resolved_summary,
         evidence_refs=evidence_refs or [],
         version=latest_version + 1,
         supersedes_id=supersedes_id,
