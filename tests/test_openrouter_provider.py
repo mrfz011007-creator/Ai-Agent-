@@ -411,3 +411,28 @@ def test_gemini_rejects_invalid_timeout():
     from core.providers.gemini import GeminiProvider
     with pytest.raises(ValueError, match="timeout_seconds"):
         GeminiProvider(timeout_seconds=0)
+
+
+
+def test_gemini_client_is_closed_after_request():
+    from core.providers.gemini import GeminiProvider
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            assert kwargs == {"model": "test-model", "contents": "hello", "config": {}}
+            return "response"
+
+    class FakeClient:
+        def __init__(self):
+            self.models = FakeModels()
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    client = FakeClient()
+    provider = GeminiProvider(client_factory=lambda _key: client)
+    assert provider.generate(
+        "key", contents="hello", config={}, model="test-model"
+    ) == "response"
+    assert client.closed is True
