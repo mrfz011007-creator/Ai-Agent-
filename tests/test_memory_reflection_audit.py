@@ -108,8 +108,6 @@ def test_memory_rejects_oversized_values_and_caps_active_records(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
-    from memory import MAX_ACTIVE_MEMORY_RECORDS
-
     oversized = _remember("too-large", "x" * 6001)
     assert oversized["success"] is False
     assert oversized["reason"] == "MEMORY_VALUE_TOO_LARGE"
@@ -285,9 +283,17 @@ def test_reflection_rejects_missing_or_cross_task_evidence(tmp_path, monkeypatch
         project_id="project-a",
         task_id="task-b",
     )
+    widened_scope = service.reflect_and_commit(
+        model_call=lambda **_: json.dumps({"candidates": []}),
+        experience={"success": True},
+        evidence_refs=["real-evidence"],
+        project_id="project-a",
+        task_id=None,
+    )
 
     assert missing["reason"] == "EVIDENCE_NOT_FOUND"
     assert mismatch["reason"] == "EVIDENCE_TASK_MISMATCH"
+    assert widened_scope["reason"] == "EVIDENCE_TASK_MISMATCH"
 
 
 
