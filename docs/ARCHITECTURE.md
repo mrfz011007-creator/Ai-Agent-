@@ -55,6 +55,17 @@ Memory supplied to a model is reference data only. It does not prove a task succ
 
 Timeouts are per provider request. The full fallback chain can take longer than one request timeout because routes are sequential; this is not a hard end-to-end deadline.
 
+### Per-request model identity
+
+Direct chat uses `generate_text_with_metadata()` internally while the legacy `generate_text()` and `chat()` interfaces continue returning plain strings. The fallback gateway returns metadata from the route that actually succeeded, not from the configured primary route.
+
+- OpenRouter actual model identity is read from the provider response's `model` field; its response `id` is retained as an optional request reference.
+- Gemini actual model identity is read from the response's `model_version` / `modelVersion` metadata when supplied.
+- Requested/configured model and provider-reported model remain separate. If actual model metadata is absent, the CLI labels identity as unverified and shows only the requested model; it does not infer actual identity from configuration or model-generated text.
+- Provider identity and metadata are rendered by runtime/CLI outside model-generated answer content. API keys, prompts, and full provider responses are not logged or displayed.
+
+This verifies the identity reported by the provider API response. It does not independently audit provider-side infrastructure or guarantee the underlying serving hardware.
+
 ## Task lifecycle and recovery
 
 Plans are stored with their task IDs, acceptance criteria, project ID, and context. Tasks retain status, attempt count, execution contract, tool-call count, evidence references, and checkpoints in SQLite.
