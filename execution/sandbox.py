@@ -106,6 +106,30 @@ def _resolve_executable(argv: list[str]) -> str:
     return str(Path(resolved).resolve())
 
 
+
+def find_trusted_system_executable(name: str) -> str | None:
+    """Resolve a required helper only from trusted system executable roots."""
+    if not isinstance(name, str) or not name or "/" in name or "\\" in name:
+        return None
+    candidate = shutil.which(name)
+    if candidate is None:
+        return None
+    try:
+        resolved = Path(candidate).resolve(strict=True)
+        roots = tuple(
+            Path(root).resolve(strict=True)
+            for root in ("/usr/bin", "/bin", "/usr/sbin", "/sbin")
+            if Path(root).is_dir()
+        )
+    except (OSError, RuntimeError):
+        return None
+    if not any(resolved == root or root in resolved.parents for root in roots):
+        return None
+    if not resolved.is_file() or not os.access(resolved, os.X_OK):
+        return None
+    return str(resolved)
+
+
 def _bind_sources(
     executable: str,
     env: dict[str, str],

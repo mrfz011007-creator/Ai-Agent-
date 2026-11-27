@@ -4,9 +4,11 @@ import math
 import os
 import shlex
 import sys
+import sysconfig
 from pathlib import Path
 
 from execution.command import _run_command_unchecked, python_resource_limits_available
+from execution.sandbox import find_trusted_system_executable
 from security.guard import GuardEngine
 from security.workspace import (
     FileTooLargeError,
@@ -98,18 +100,65 @@ def run_python_file(
     if not source.strip() or "\x00" in source:
         return _failure("SCRIPT_INVALID", "Python source must be non-empty and contain no NUL bytes")
 
+    setpriv = find_trusted_system_executable("setpriv")
+    env_binary = find_trusted_system_executable("env")
+    if setpriv is None or env_binary is None:
+        return _failure(
+            "SANDBOX_UNAVAILABLE",
+            "Trusted setpriv and env utilities are required to drop sandbox capabilities",
+        )
+
     script_path = str(workspace / nama)
     script_directory = str((workspace / nama).parent)
     bootstrap = (
-        "import sys\n"
-        f"sys.path.insert(0, {script_directory!r})\n"
-        f"script_path = {script_path!r}\n"
-        "sys.argv = [script_path]\n"
-        "source = sys.stdin.buffer.read().decode('utf-8')\n"
-        "namespace = {'__name__': '__main__', '__file__': script_path, '__package__': None}\n"
-        "exec(compile(source, script_path, 'exec', dont_inherit=True), namespace, namespace)\n"
+        "import sys\\n"
+        f"script_path = {script_path!r}\\n"
+        "sys.argv = [script_path]\\n"
+        "source = sys.stdin.buffer.read().decode('utf-8')\\n"
+        f"sys.path.insert(0, {script_directory!r})\\n"
+        "namespace = {'__name__': '__main__', '__file__': script_path, '__package__': None}\\n"
+        "exec(compile(source, script_path, 'exec', dont_inherit=True), namespace, namespace)\\n"
     )
-    argv = [sys.executable, "-I", "-S", "-B", "-c", bootstrap]
+
+    # Interpreter-specific libraries are injected only after setpriv has
+    # dropped every capability; setpriv itself uses only system loader paths.
+    runtime_roots = []
+    runtime_lib_dirs = []
+    for candidate in (
+        sys.base_prefix,
+        sys.prefix,
+        sysconfig.get_config_var("LIBDIR"),
+    ):
+        if not isinstance(candidate, str) or not candidate:
+            continue
+        path = Path(candidate).resolve()
+        if path.is_dir() and str(path) not in runtime_roots:
+            runtime_roots.append(str(path))
+        library_dir = path / "lib" if path.name != "lib" else path
+        if library_dir.is_dir() and str(library_dir) not in runtime_lib_dirs:
+            runtime_lib_dirs.append(str(library_dir))
+
+    env_args = []
+    if runtime_lib_dirs:
+        env_args.append("LD_LIBRARY_PATH=" + os.pathsep.join(runtime_lib_dirs))
+
+    argv = [
+        setpriv,
+        "--bounding-set=-all",
+        "--inh-caps=-all",
+        "--ambient-caps=-all",
+        "--securebits=noroot,noroot_locked,no_setuid_fixup,no_setuid_fixup_locked",
+        "--no-new-privs",
+        "--",
+        env_binary,
+        *env_args,
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        bootstrap,
+    ]
     result = _run_command_unchecked(
         command=shlex.join(argv),
         cwd=str(workspace),
@@ -117,7 +166,7 @@ def run_python_file(
         output_limit=MAX_PYTHON_OUTPUT_BYTES,
         stdin_data=source_bytes,
         require_namespace=True,
-        extra_readonly_roots=(sys.base_prefix,),
+        extra_readonly_roots=tuple(runtime_roots),
         resource_profile="python",
     )
     result["script"] = nama

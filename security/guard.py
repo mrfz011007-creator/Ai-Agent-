@@ -7,7 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from execution.sandbox import namespace_sandbox_status
+from execution.sandbox import find_trusted_system_executable, namespace_sandbox_status
 
 
 @dataclass(frozen=True)
@@ -120,6 +120,12 @@ class GuardEngine:
             available, reason = namespace_sandbox_status()
             if not available:
                 return GuardResult(False, f"PYTHON_SANDBOX_UNAVAILABLE:{reason}")
+            for helper in ("setpriv", "env"):
+                if find_trusted_system_executable(helper) is None:
+                    return GuardResult(
+                        False,
+                        f"PYTHON_SANDBOX_UNAVAILABLE: trusted {helper} utility is required",
+                    )
             return GuardResult(True, "PYTHON_SANDBOX_AVAILABLE")
         if tool != "run_command":
             return GuardResult(True, "GUARD_NOT_APPLICABLE")

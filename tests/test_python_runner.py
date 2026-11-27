@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import sys
 from pathlib import Path
 
@@ -21,6 +22,16 @@ def _workspace(tmp_path: Path, monkeypatch) -> Path:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setattr(
+        python_runner,
+        "find_trusted_system_executable",
+        lambda name: f"/usr/bin/{name}",
+    )
+    monkeypatch.setattr(
+        guard_module,
+        "find_trusted_system_executable",
+        lambda name: f"/usr/bin/{name}",
+    )
     return workspace
 
 
@@ -48,6 +59,14 @@ def test_bind_sources_keep_runtime_roots_and_library_directories(tmp_path):
     assert Path("/usr") in external_sources
     assert runtime_root in external_sources
     assert binary_directory not in external_sources
+
+
+def test_trusted_system_helper_rejects_workspace_binary(tmp_path, monkeypatch):
+    candidate = tmp_path / "setpriv"
+    candidate.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
+    candidate.chmod(0o700)
+    monkeypatch.setattr(sandbox.shutil, "which", lambda _name: str(candidate))
+    assert sandbox.find_trusted_system_executable("setpriv") is None
 
 
 def test_python_guard_rejects_root_filesystem_as_workspace():
@@ -101,8 +120,33 @@ def test_python_runner_passes_source_via_stdin_and_requires_namespace(tmp_path, 
     assert captured["resource_profile"] == "python"
     assert captured["output_limit"] == python_runner.MAX_PYTHON_OUTPUT_BYTES
     assert captured["timeout"] == python_runner.DEFAULT_PYTHON_TIMEOUT_SECONDS
-    assert captured["extra_readonly_roots"] == (sys.base_prefix,)
+    assert sys.base_prefix in captured["extra_readonly_roots"]
+    assert sys.prefix in captured["extra_readonly_roots"]
+    tokens = shlex.split(captured["command"])
+    assert tokens[0] == "/usr/bin/setpriv"
+    assert "--bounding-set=-all" in tokens
+    assert "--inh-caps=-all" in tokens
+    assert "--ambient-caps=-all" in tokens
+    assert "--no-new-privs" in tokens
+    assert "--securebits=noroot,noroot_locked,no_setuid_fixup,no_setuid_fixup_locked" in tokens
+    assert "/usr/bin/env" in tokens
     assert result["script"] == "main.py"
+
+
+def test_python_runner_fails_closed_without_trusted_privilege_dropper(tmp_path, monkeypatch):
+    _workspace(tmp_path, monkeypatch)
+    monkeypatch.setattr(guard_module, "namespace_sandbox_status", lambda: (True, "available"))
+    monkeypatch.setattr(python_runner, "find_trusted_system_executable", lambda _name: None)
+    monkeypatch.setattr(guard_module, "find_trusted_system_executable", lambda _name: None)
+    monkeypatch.setattr(
+        python_runner,
+        "_run_command_unchecked",
+        lambda **_kwargs: pytest.fail("must not execute without setpriv and env"),
+    )
+
+    result = python_runner.run_python_file("main.py")
+    assert result["success"] is False
+    assert result["status"] == "SANDBOX_UNAVAILABLE"
 
 
 def test_python_runner_fails_closed_without_namespace(tmp_path, monkeypatch):
