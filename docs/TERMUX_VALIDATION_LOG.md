@@ -299,3 +299,27 @@ Tidak ada perubahan yang melemahkan `write_file_secure`, descriptor-relative/no-
 - Uji smoke interaktif Termux: sengaja ditunda, belum diverifikasi.
 - PR #17: tetap OPEN dan belum di-merge.
 - Kelulusan CI bukan sertifikasi keamanan dan tidak menyatakan seluruh lingkungan/provider telah diuji.
+
+
+## 14. Uji identitas model pada Termux — observasi sebelum perbaikan (2026-11-27)
+
+Checkout yang diuji: branch `agent/security-hardening-workspace`, commit `b6884f7`.
+
+Kondisi yang diverifikasi dari sesi Termux:
+- Agent berhasil berjalan setelah `AI_AGENT_WORKSPACE_ROOT`, `AI_AGENT_STATE_DB`, dan `AI_AGENT_CONVERSATION_ID` diatur pada shell aktif.
+- Workspace `~/Projects/Ai-Agent/workspace` terdeteksi dan memiliki izin direktori terbatas.
+- Variabel `OPENROUTER_API_KEY` tersedia di proses shell. Nilainya tidak dicetak atau disimpan di log.
+
+Prompt uji: meminta provider dan model yang benar-benar menangani pesan, berdasarkan metadata respons provider.
+
+Hasil yang diamati:
+- Teks jawaban model menyatakan tidak memiliki metadata respons provider, lalu menjelaskan model utama dan daftar fallback dari konfigurasi.
+- Setelah teks jawaban, CLI menampilkan `Provider : openrouter`, `Model aktual : nvidia/nemotron-3-ultra-550b-a55b:free`, dan status terverifikasi dari metadata provider.
+- Prefix provider tercetak sebagai teks literal `\\nProvider`, bukan sebagai baris baru.
+
+Diagnosis:
+- Metadata aktual dikembalikan provider dan diteruskan ke `ConversationReply`, tetapi baru tersedia setelah jawaban model dihasilkan.
+- System prompt sebelumnya hanya memberikan daftar konfigurasi dan belum secara eksplisit melarang model menebak identitas aktual dari daftar tersebut.
+- Bug format berasal dari escape newline ganda pada `agent.py`; bukan kegagalan ekstraksi metadata provider.
+
+Status: ini adalah bukti uji **sebelum perbaikan** pada commit di atas. Pengujian ulang terhadap commit perbaikan tetap wajib dilakukan di Termux setelah CI GitHub lulus.

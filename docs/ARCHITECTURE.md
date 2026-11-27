@@ -63,6 +63,8 @@ Direct chat uses `generate_text_with_metadata()` internally while the legacy `ge
 - Gemini actual model identity is read from the response's `model_version` / `modelVersion` metadata when supplied.
 - Requested/configured model and provider-reported model remain separate. If actual model metadata is absent, the CLI labels identity as unverified and shows only the requested model; it does not infer actual identity from configuration or model-generated text.
 - Provider identity and metadata are rendered by runtime/CLI outside model-generated answer content. API keys, prompts, and full provider responses are not logged or displayed.
+- The model prompt contains configured route information only. The actual model field is returned with the provider response after generation, so the model must not infer current-request identity from the configured route list. The system instruction directs identity questions to the separate runtime metadata section.
+- The CLI labels this block as runtime metadata, fixes provider-line formatting, and reports identity as unverified when the provider omits the actual-model field.
 
 This verifies the identity reported by the provider API response. It does not independently audit provider-side infrastructure or guarantee the underlying serving hardware.
 

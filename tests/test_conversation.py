@@ -37,6 +37,16 @@ def test_chat_system_instruction_forbids_claiming_tool_execution():
     assert "or claim to have executed actions" in instruction
 
 
+def test_chat_prompt_does_not_guess_current_serving_model_from_configuration():
+    gateway = FakeGateway()
+    ConversationService(gateway).answer("Model apa yang menangani pesan ini?")
+
+    instruction = gateway.calls[0]["system_instruction"].lower()
+    assert "do not guess the serving provider or actual model" in instruction
+    assert "displays provider-reported identity in a separate runtime" in instruction
+    assert "label them as configuration" in instruction
+
+
 def test_chat_rejects_empty_and_oversized_messages_without_model_call():
     gateway = FakeGateway()
     service = ConversationService(gateway)
@@ -229,6 +239,41 @@ def test_cli_displays_provider_reported_model_metadata_without_changing_return_t
 
     assert result == "Jawaban"
     rendered = "\n".join(output)
+    assert "Metadata runtime (di luar jawaban AI)" in rendered
     assert "Provider : openrouter" in rendered
     assert "Model aktual : served/model" in rendered
     assert "Terverifikasi dari metadata provider" in rendered
+    assert r"\nProvider" not in rendered
+
+
+
+def test_cli_labels_missing_provider_model_metadata_as_unverified(monkeypatch):
+    import agent
+    from core.conversation import ConversationReply
+
+    class Runtime:
+        def chat_with_metadata(self, message):
+            return ConversationReply(
+                answer="Saya tidak menerima metadata model aktual.",
+                provider="gemini",
+                requested_model="gemini/configured",
+                actual_model=None,
+            )
+
+        def run_goal(self, message):
+            raise AssertionError("normal chat must not create a goal")
+
+    monkeypatch.setattr(agent, "deteksi_intent", lambda _: None)
+    output = []
+    agent.handle_request(
+        Runtime(),
+        "Model apa yang menangani pesan ini?",
+        printer=lambda *args: output.append(" ".join(map(str, args))),
+    )
+
+    rendered = "\n".join(output)
+    assert "Metadata runtime (di luar jawaban AI)" in rendered
+    assert "Provider : gemini" in rendered
+    assert "Model diminta : gemini/configured" in rendered
+    assert "Belum dapat diverifikasi dari metadata provider" in rendered
+    assert "Model aktual :" not in rendered
