@@ -7,6 +7,7 @@ from core.plan import Plan, PlanProposal, Planner, TaskGraph, PlanStatus
 from core.task_manager import TaskManager
 from core.state_store import StateStore
 from core.model_execution import ModelExecutionService
+from core.agent_rules import agent_rules_prompt_section
 
 
 @dataclass
@@ -142,7 +143,9 @@ class Orchestrator:
 
         try:
             proposal = ModelExecutionService(
-                model_call, tool_catalog=tool_catalog
+                model_call,
+                tool_catalog=tool_catalog,
+                agent_rules=agent_rules_prompt_section(),
             ).propose(task.title, context=model_context)
         except Exception as error:
             if handle_model_failure is not None:
