@@ -12,7 +12,7 @@ _ANY_FILE_NAME = re.compile(
     r"\b[A-Za-z0-9_-][A-Za-z0-9_.-]*\.[A-Za-z0-9]{1,12}\b"
 )
 _FILE_CREATION_REQUEST = re.compile(
-    r"\\b(?:buat|bikin|tulis|create|write)\\s+(?:(?:sebuah|satu)\\s+)?file\\b",
+    r"\b(?:buat|bikin|tulis|create|write)\s+(?:(?:sebuah|satu)\\s+)?file\\b",
     re.IGNORECASE,
 )
 _EXACT_CONTENT = re.compile(
