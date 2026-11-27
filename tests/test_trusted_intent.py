@@ -33,3 +33,24 @@ def test_ambiguous_or_non_exact_file_request_does_not_create_constraints():
     assert extract_trusted_file_intent(
         "Buat file satu.txt dan dua.txt dengan isi persis: halo"
     ) is None
+
+
+
+def test_extract_preserves_blank_lines_inside_file_content():
+    request = (
+        "Buat file catatan.txt dengan isi persis berikut:\n"
+        "Bagian pertama\n"
+        "\n"
+        "Bagian kedua\n"
+        "\n"
+        "Baca kembali file tersebut dan verifikasi isinya."
+    )
+    assert extract_trusted_file_intent(request) == {
+        "nama": "catatan.txt",
+        "isi": "Bagian pertama\n\nBagian kedua",
+    }
+
+
+def test_unrecognized_exact_file_format_remains_untrusted():
+    request = "Buat file catatan.txt dengan isi tepat seperti berikut\nIsi yang diminta"
+    assert extract_trusted_file_intent(request) is None
