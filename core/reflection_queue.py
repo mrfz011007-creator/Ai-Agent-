@@ -26,7 +26,12 @@ def _load() -> dict[str, Any]:
     if path.stat().st_size > MAX_QUEUE_FILE_BYTES:
         raise RuntimeError('REFLECTION_QUEUE_TOO_LARGE')
     value = json.loads(path.read_text(encoding='utf-8'))
-    if not isinstance(value, Mapping) or value.get('schema_version') != 1 or not isinstance(value.get('items'), list):
+    if (
+        not isinstance(value, Mapping)
+        or value.get('schema_version') != 1
+        or not isinstance(value.get('items'), list)
+        or len(value['items']) > MAX_TOTAL_ITEMS
+    ):
         raise RuntimeError('REFLECTION_QUEUE_INVALID')
     for item in value['items']:
         if (
