@@ -40,6 +40,8 @@ class ToolRequest:
     task_id: str | None = None
     attempt_id: str | None = None
     request_id: str | None = None
+    trusted_tool: str | None = None
+    trusted_arguments: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
