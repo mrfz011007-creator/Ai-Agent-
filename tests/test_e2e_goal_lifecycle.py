@@ -151,7 +151,9 @@ def test_end_to_end_goal_uses_real_guarded_execution_and_survives_restart(
         assert checkpoint["payload"]["event"] == "completed"
 
     # Successful execution is journaled as bounded, ephemeral memory.
-    memory = runtime.memory.retrieve("execution", task_id="inspect", limit=5)
+    memory = runtime.memory.retrieve(
+        "execution", project_id="stage5-project", task_id="inspect", limit=5
+    )
     memory_rows = memory.get("results", [])
     assert any(
         item.get("record", {}).get("source", {}).get("ref")
