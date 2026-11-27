@@ -412,6 +412,15 @@ Catatan batas CI: tes network-isolation dan strict namespace yang membutuhkan du
 
 Status: **PENDING — belum dijalankan pada perangkat.**
 
+### Hasil CI GitHub
+
+- Commit kode yang diuji: `c6df48530aa7c9344c13ce0b7ce9663f645832ac`.
+- Run PR: [#46007788810](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46007788810) — seluruh 4 job selesai dengan status success.
+- Python 3.11: **416 passed, 1 skipped, 1 deselected**.
+- Python 3.14: **416 passed, 1 skipped, 1 deselected**.
+- Ruff dan Bandit lulus; Bandit tidak menemukan isu pada level pemindaian yang dikonfigurasi.
+- Strict Linux namespace smoke test dilewati karena kernel runner tidak mendukung namespace yang diperlukan. Ini bukan bukti sandbox berjalan.
+
 Perintah:
 
 `cd ~/Projects/Ai-Agent/testing`
