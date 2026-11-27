@@ -547,3 +547,15 @@ Run the commands and interactive cases in `TERMUX.md` section “Roadmap regress
 - Audit review: 11 changed files only; changes are limited to routing, trusted file intent, model execution/provider accounting, regression tests, and Termux instructions.
 - Termux actual-device validation: NOT YET TESTED. The commands in `TERMUX.md` must be run on the device against the final CI-verified commit. Record the returned output here only after the real device test.
 - PR #24 remains open and unchanged; PR #25 remains a draft and must not be merged before Termux validation and review.
+
+## 21. Final pre-Termux validation — implementation commit `e59378bc61748baef543654f091b904c99b5dfb9`
+
+- PR #25 head used for implementation CI: `e59378bc61748baef543654f091b904c99b5dfb9`.
+- GitHub Actions PR run #1534: all 4 jobs succeeded.
+- Python 3.11: 469 passed, 1 skipped, 1 deselected.
+- Python 3.14: 469 passed, 1 skipped, 1 deselected.
+- Static analysis and security scan: passed.
+- Strict Linux namespace smoke job: job succeeded but the test itself was skipped because strict Linux namespaces were unavailable on the hosted runner. Do not treat this as namespace isolation evidence.
+- Termux filesystem smoke script now additionally tests `extract_trusted_file_intent()` with a final newline, writes it through `buat_file_terverifikasi()`, and verifies the UTF-8 bytes exactly. This check is still NOT RUN on the user's Termux device.
+- Termux device status: NOT TESTED. Continue only with the exact final branch head after its CI completes. Record actual command outputs and the tested commit SHA after the user runs the procedure in `TERMUX.md`.
+- PR #24 remains open and unchanged. PR #25 remains a draft; no merge was performed.
