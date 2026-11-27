@@ -42,10 +42,13 @@ def _load() -> dict[str, Any]:
 def _save(value: Mapping[str, Any]) -> None:
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    if len(payload.encode("utf-8")) > MAX_QUEUE_FILE_BYTES:
+        raise RuntimeError('REFLECTION_QUEUE_TOO_LARGE')
     fd, temporary = tempfile.mkstemp(prefix='.reflection-', suffix='.tmp', dir=path.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
+            stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
