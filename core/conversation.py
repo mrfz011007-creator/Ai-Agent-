@@ -90,7 +90,7 @@ class ConversationService:
         prompt = json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
         instruction = (
             SYSTEM_INSTRUCTION
-            + "\\nKonfigurasi model AI Agent (bukan jaminan model yang menangani permintaan ini): "
+            + "\nKonfigurasi model AI Agent (bukan jaminan model yang menangani permintaan ini): "
             + self.model_description
         )
         answer = self.model_gateway.generate_text(
