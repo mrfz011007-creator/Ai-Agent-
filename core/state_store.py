@@ -112,6 +112,76 @@ class StateStore:
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_messages (
+                    message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_conversation_messages_scope
+                ON conversation_messages(conversation_id, message_id)
+            """)
+
+    def load_conversation_messages(
+        self, conversation_id: str, *, limit: int = 12
+    ) -> list[dict[str, Any]]:
+        if not isinstance(conversation_id, str) or not conversation_id.strip() or len(conversation_id) > 128:
+            raise ValueError("CONVERSATION_ID_INVALID")
+        if not isinstance(limit, int) or limit < 1 or limit > 100:
+            raise ValueError("CONVERSATION_LIMIT_INVALID")
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT role,content,created_at FROM conversation_messages "
+                "WHERE conversation_id=? ORDER BY message_id DESC LIMIT ?",
+                (conversation_id, limit),
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
+
+    def append_conversation_turn(
+        self,
+        conversation_id: str,
+        user_message: str,
+        assistant_message: str,
+        *,
+        max_messages: int = 12,
+    ) -> None:
+        if not isinstance(conversation_id, str) or not conversation_id.strip() or len(conversation_id) > 128:
+            raise ValueError("CONVERSATION_ID_INVALID")
+        if not isinstance(user_message, str) or not user_message.strip() or len(user_message) > 12000:
+            raise ValueError("CONVERSATION_USER_MESSAGE_INVALID")
+        if not isinstance(assistant_message, str) or not assistant_message.strip() or len(assistant_message) > 12000:
+            raise ValueError("CONVERSATION_ASSISTANT_MESSAGE_INVALID")
+        if not isinstance(max_messages, int) or max_messages < 2 or max_messages > 100:
+            raise ValueError("CONVERSATION_RETENTION_LIMIT_INVALID")
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO conversation_messages(conversation_id,role,content) VALUES (?,?,?)",
+                (conversation_id, "user", user_message),
+            )
+            db.execute(
+                "INSERT INTO conversation_messages(conversation_id,role,content) VALUES (?,?,?)",
+                (conversation_id, "assistant", assistant_message),
+            )
+            db.execute(
+                "DELETE FROM conversation_messages WHERE conversation_id=? AND message_id NOT IN "
+                "(SELECT message_id FROM conversation_messages WHERE conversation_id=? "
+                "ORDER BY message_id DESC LIMIT ?)",
+                (conversation_id, conversation_id, max_messages),
+            )
+
+    def clear_conversation(self, conversation_id: str) -> int:
+        if not isinstance(conversation_id, str) or not conversation_id.strip() or len(conversation_id) > 128:
+            raise ValueError("CONVERSATION_ID_INVALID")
+        with self._connect() as db:
+            cursor = db.execute(
+                "DELETE FROM conversation_messages WHERE conversation_id=?",
+                (conversation_id,),
+            )
+            return int(cursor.rowcount)
 
     def save_task(self, task_id: str, status: str, attempts: int, payload: dict[str, Any]) -> None:
         with self._connect() as db:
