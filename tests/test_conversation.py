@@ -19,7 +19,11 @@ def test_regular_question_uses_direct_chat_not_task_planner():
 
     assert service.answer("Jelaskan kemampuanmu") == "Jawaban langsung"
     assert len(gateway.calls) == 1
-    assert gateway.calls[0]["prompt"] == "Jelaskan kemampuanmu"
+    import json
+
+    payload = json.loads(gateway.calls[0]["prompt"])
+    assert payload["current_user_message"] == "Jelaskan kemampuanmu"
+    assert payload["conversation_history"] == []
     assert "openrouter/test-model" in gateway.calls[0]["system_instruction"]
 
 
