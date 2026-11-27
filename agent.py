@@ -29,6 +29,21 @@ def handle_request(runtime, perintah, printer=print):
 
     if not is_action_request(perintah):
         try:
+            chat_with_metadata = getattr(runtime, "chat_with_metadata", None)
+            if callable(chat_with_metadata):
+                reply = chat_with_metadata(perintah)
+                jawaban = reply.answer
+                printer("\n" + jawaban)
+                if reply.provider:
+                    printer(f"\\nProvider : {reply.provider}")
+                if reply.actual_model:
+                    printer(f"Model aktual : {reply.actual_model}")
+                    printer("Identitas model : Terverifikasi dari metadata provider")
+                else:
+                    if reply.requested_model:
+                        printer(f"Model diminta : {reply.requested_model}")
+                    printer("Identitas model : Belum dapat diverifikasi oleh provider")
+                return jawaban
             jawaban = runtime.chat(perintah)
             printer("\n" + jawaban)
             return jawaban
