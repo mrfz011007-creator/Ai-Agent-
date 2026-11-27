@@ -16,6 +16,12 @@ _ACTION_PREFIX = re.compile(
     re.IGNORECASE,
 )
 
+_QUESTION_PREFIX = re.compile(
+    r"^(?:buat|bikin)\\s+apa\\b|"
+    r"^(?:bisa|dapat)\\s+(?:kamu\\s+)?(?:buat|bikin)\\s+apa\\b",
+    re.IGNORECASE,
+)
+
 _REQUEST_PREFIX = re.compile(
     r"^(?:bisa|dapat)\s+(?:kamu\s+)?"
     r"(?:buat|bikin|tulis|ubah|edit|hapus|install|pasang|jalankan|"
@@ -29,4 +35,6 @@ def is_action_request(message: str) -> bool:
     if not isinstance(message, str) or not message.strip():
         return False
     normalized = re.sub(r"\s+", " ", message.strip())
+    if _QUESTION_PREFIX.match(normalized):
+        return False
     return bool(_ACTION_PREFIX.match(normalized) or _REQUEST_PREFIX.match(normalized))
