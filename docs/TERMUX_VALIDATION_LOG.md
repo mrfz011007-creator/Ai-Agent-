@@ -396,3 +396,37 @@ Hasil ini hanya membuktikan perilaku identitas provider/model untuk request yang
 - PR #17: masih OPEN dan belum di-merge.
 
 Catatan batas CI: tes network-isolation dan strict namespace yang membutuhkan dukungan kernel tidak dijalankan karena hosted runner tidak menyediakan namespace yang dibutuhkan. Status job CI yang success tidak boleh ditafsirkan sebagai bukti bahwa tes namespace tersebut benar-benar berjalan.
+
+
+## 17. Filesystem create/write/read/verify — menunggu uji perangkat
+
+### Perubahan
+
+- ToolRouter sekarang mempertahankan kode dan pesan kegagalan dari tool filesystem.
+- Tool `buat_file_terverifikasi` meminta persetujuan eksplisit, menolak file yang sudah ada, membuat file, menulis teks UTF-8, membaca ulang, dan membandingkan byte secara persis.
+- CLI menampilkan path relatif, isi aktual, langkah eksekusi, status verifikasi, dan alasan kegagalan.
+- Detail hasil disimpan sementara di memori proses untuk tampilan CLI, bukan sebagai konten di database state.
+- Smoke test tersedia di `scripts/termux_filesystem_smoke.py`; seluruh file sementara berada di dalam workspace dan dibersihkan otomatis.
+
+### Uji Termux
+
+Status: **PENDING — belum dijalankan pada perangkat.**
+
+Perintah:
+
+`cd ~/Projects/Ai-Agent/testing`
+`git status --short`
+`git pull --ff-only`
+`export AI_AGENT_WORKSPACE_ROOT="$HOME/Projects/Ai-Agent/workspace"`
+`python scripts/termux_filesystem_smoke.py`
+
+Smoke test tidak menggunakan API/model. Ia menguji buat file, baca snapshot, tulis dengan SHA-256 snapshot, baca ulang, perbandingan persis, operasi gabungan, dan pencegahan overwrite.
+
+Setelah smoke test lulus, lakukan satu uji interaktif Agent dengan database terpisah. Prompt harus dimulai dengan `Buat` dan meminta file baru dengan isi persis. Ketik persetujuan sesuai frasa yang ditampilkan. Periksa juga file aktual secara langsung sebelum memberi status lulus.
+
+### Batas bukti
+
+- CI membuktikan regresi otomatis pada kode yang diuji.
+- Smoke test membuktikan primitive filesystem di perangkat Termux.
+- Uji interaktif membuktikan planner, pemilihan tool, persetujuan, dan pelaporan CLI secara langsung.
+- Status Termux tetap pending sampai kedua pengujian perangkat selesai.
