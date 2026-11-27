@@ -204,7 +204,7 @@ TOOL_REGISTRY = {
             "additionalProperties": False,
             "properties": {
                 "nama": {"type": "string", "maxLength": 1024},
-                "isi": {"type": "string", "maxLength": 16000},
+                "isi": {"type": "string", "minLength": 1, "maxLength": 16000},
             },
             "required": ["nama", "isi"],
         },
