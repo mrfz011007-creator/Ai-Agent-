@@ -237,6 +237,7 @@ class MemoryService:
                 "success": False,
                 "reason": "EVIDENCE_REQUIRED",
             }
+        verified_evidence = []
         for evidence_id in evidence_refs:
             evidence = self.evidence_store.get(str(evidence_id))
             if evidence is None:
