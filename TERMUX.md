@@ -207,7 +207,7 @@ Tools requiring confirmation display the full redacted argument payload and a de
 
 ## Roadmap regression and device validation
 
-Use the latest stacked validation branch only after its GitHub Actions workflow is fully successful. The current implementation chain is PR #18 → #19 → #20 → #21 → #22 → #23. These PRs are deliberately kept open until review; a successful CI run does not merge them.
+Use the latest stacked validation branch only after its GitHub Actions workflow is fully successful. The implementation chain through the Termux gate is PR #18 → #19 → #20 → #21 → #22 → #23. Audit follow-ups are tracked separately in the latest hardening PR. These PRs are deliberately kept open until review; a successful CI run does not merge them.
 
 For the existing Termux checkout at `~/Projects/Ai-Agent/testing`:
 
