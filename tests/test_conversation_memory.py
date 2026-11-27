@@ -129,3 +129,25 @@ def test_conversation_history_does_not_write_project_memory(tmp_path, monkeypatc
 
     assert not (tmp_path / "memory.json").exists()
     assert store.load_conversation_messages("chat-only")
+
+
+
+def test_total_conversation_history_is_globally_bounded(tmp_path):
+    from core.state_store import MAX_TOTAL_CONVERSATION_MESSAGES
+
+    store = StateStore(tmp_path / "state.sqlite3")
+    for index in range((MAX_TOTAL_CONVERSATION_MESSAGES // 2) + 5):
+        store.append_conversation_turn(
+            f"session-{index}", f"user-{index}", f"assistant-{index}"
+        )
+
+    with store._connect() as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM conversation_messages"
+        ).fetchone()[0]
+        oldest = db.execute(
+            "SELECT conversation_id FROM conversation_messages "
+            "ORDER BY message_id LIMIT 1"
+        ).fetchone()[0]
+    assert count == MAX_TOTAL_CONVERSATION_MESSAGES
+    assert oldest == "session-5"
