@@ -138,7 +138,6 @@ class GoalRunner:
         while not graph.is_complete():
             if max_steps is not None and steps >= max_steps:
                 plan = self._persist(plan, PlanStatus.WAITING)
-                self._record_conversation_outcome(plan.goal, plan, graph)
                 return plan, graph
 
             model_wait_active = [
@@ -333,6 +332,7 @@ class GoalRunner:
                 # Interrupted tool execution still requires explicit
                 # reconciliation to avoid duplicating external side effects.
                 plan = self._persist(plan, PlanStatus.WAITING)
+                self._record_conversation_outcome(plan.goal, plan, graph)
                 return plan, graph
 
         # Project/context metadata is not persisted with Plan yet. Resume
