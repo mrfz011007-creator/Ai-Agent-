@@ -63,7 +63,6 @@ def test_runtime_goal_creates_and_verifies_exact_workspace_file(tmp_path, monkey
     assert evidence and all(item["success"] for item in evidence)
 
 
-
 @pytest.mark.parametrize(
     ("content", "expected_error"),
     [
