@@ -76,6 +76,9 @@ class MemoryService:
                 "original_chars": len(serialized),
                 "preview": serialized[:MAX_EXPERIENCE_VALUE_CHARS] + "...[TRUNCATED]",
             }
+            while len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > 6000:
+                preview = value["preview"]
+                value["preview"] = preview[: max(0, len(preview) // 2)] + "...[TRUNCATED]"
         return remember(key, value, memory_type="experience",
                         project_id=project_id if project_id is not None else self.project_id,
                         task_id=task_id, context=context, source=source, provenance=provenance,
