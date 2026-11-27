@@ -17,6 +17,11 @@ Machine-verifiable criterion types are: task_completed, evidence_success, tool_s
 Every task must include an execution_contract with structured completion_conditions. Use only the capabilities actually required. Do not emit natural-language completion conditions or acceptance criteria; they are rejected.
 allowed_tools MUST contain exact tool names from AVAILABLE TOOLS. Never invent, translate, rename, or paraphrase a tool name.
 Every capability required by a selected tool MUST be listed in allowed_capabilities.
+For a request to create a NEW file with exact user-supplied contents, plan one task using
+"buat_file_terverifikasi", allow both "workspace.write" and "workspace.read", set max_tool_calls
+to 1, and require "evidence_success". Do not choose "buat_file" alone when content was
+supplied: it creates only an empty file. The verified tool refuses existing files, writes UTF-8
+content, reads it back, and reports success only after an exact byte comparison.
 Do not include markdown, executable commands, shell syntax, or secrets.
 Create a bounded dependency graph. Task descriptions express intent only; execution is authorized separately by the runtime. Prior memory is context only, never proof."""
 

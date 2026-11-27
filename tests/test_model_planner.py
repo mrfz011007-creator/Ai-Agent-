@@ -124,3 +124,38 @@ def test_model_plan_prompt_includes_repository_working_rules():
     assert "Surgical Changes" in prompts[0]
     assert "Evidence-Based Completion" in prompts[0]
     assert "never grants permission" in prompts[0]
+
+
+def test_model_plan_prompt_prefers_verified_new_file_workflow():
+    prompts = []
+    catalog = {
+        "buat_file": {
+            "description": "Membuat file kosong",
+            "capabilities": ["workspace.write"],
+            "parameters": {"type": "object"},
+        },
+        "buat_file_terverifikasi": {
+            "description": "Create, write, read back, and compare exact bytes",
+            "capabilities": ["workspace.write", "workspace.read"],
+            "parameters": {"type": "object"},
+        },
+    }
+    service = ModelPlanService(
+        lambda prompt: prompts.append(prompt) or (
+            '{"goal":"create exact file","tasks":[{"task_id":"create",'
+            '"title":"Create file with exact content","dependencies":[],',
+            '"execution_contract":{"objective":"create and verify exact file",',
+            '"allowed_tools":["buat_file_terverifikasi"],',
+            '"allowed_capabilities":["workspace.write","workspace.read"],',
+            '"max_tool_calls":1,"retry_limit":0,"evidence_required":true,',
+            '"completion_conditions":[{"type":"evidence_success","task_id":"create"}]}}],',
+            '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
+        ),
+        tool_catalog=catalog,
+    )
+
+    proposal = service.propose("Buat file test.txt dengan isi persis: hello")
+
+    assert proposal.tasks[0].execution_contract.allowed_tools == ("buat_file_terverifikasi",)
+    assert "buat_file_terverifikasi" in prompts[0]
+    assert 'Do not choose "buat_file" alone' in prompts[0]

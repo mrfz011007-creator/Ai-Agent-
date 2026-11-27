@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from core.budget import BudgetManager
@@ -89,6 +89,7 @@ class AgentRuntime:
     model_gateway: ModelGateway
     orchestrator: Orchestrator
     memory: MemoryService
+    last_goal_execution: dict[str, dict] = field(default_factory=dict)
 
     @classmethod
     def create(cls, state_path: str | Path | None = None) -> "AgentRuntime":

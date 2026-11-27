@@ -264,13 +264,7 @@ class ToolRouter:
                     request.tool,
                     data=safe_data,
                     error=None if safe_data.get("success") else redact_text(str(
-                        (f"{safe_data.get('code')}: " if safe_data.get("code") else "")
-                        + str(
-                            safe_data.get("stderr")
-                            or safe_data.get("error")
-                            or safe_data.get("pesan")
-                            or "Tool returned success=false without an error message"
-                        )
+                        safe_data.get("stderr") or safe_data.get("error") or "Command failed"
                     )),
                 )
             elif isinstance(data, str) and len(data) > self._budget.budget.max_output_chars:
