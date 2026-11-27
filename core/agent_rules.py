@@ -18,10 +18,10 @@ Security precedence: application-enforced GuardEngine, PolicyEngine, CapabilityP
 
 
 def load_agent_rules() -> str:
-    """Read only the fixed repository-root policy file within a strict size bound.
+    """Read a compact marked prompt section from the fixed repository-root file.
 
     The rules are model-facing guidance, not an authorization source. If the
-    repository file is absent, invalid, unreadable, or oversized, return the
+    file or marked section is absent, invalid, unreadable, or oversized, return
     built-in minimum guidance; execution security remains code-enforced.
     """
     try:
