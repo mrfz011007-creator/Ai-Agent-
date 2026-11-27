@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from execution.command import _run_command_unchecked, python_resource_limits_available
-from execution.sandbox import namespace_sandbox_status
+from security.guard import GuardEngine
 from security.workspace import (
     FileTooLargeError,
     WorkspaceSecurityError,
@@ -62,9 +62,19 @@ def run_python_file(
     except (OSError, RuntimeError):
         return _failure("WORKSPACE_INVALID", "Workspace must be an existing directory")
 
-    available, reason = namespace_sandbox_status()
-    if not available:
-        return _failure("SANDBOX_UNAVAILABLE", reason)
+    decision = GuardEngine(workspace).check(
+        tool="jalankan_python",
+        arguments={"nama": nama},
+    )
+    if not decision.allowed:
+        reason = decision.reason
+        status = (
+            "SANDBOX_UNAVAILABLE"
+            if reason.startswith("PYTHON_SANDBOX_UNAVAILABLE:")
+            else "GUARD_DENIED"
+        )
+        return _failure(status, reason)
+
     if not python_resource_limits_available():
         return _failure(
             "SANDBOX_UNAVAILABLE",

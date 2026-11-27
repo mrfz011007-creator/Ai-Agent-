@@ -86,7 +86,7 @@ Android/Termux is detected before the Linux namespace/chroot sandbox path is att
 
 The fallback starts commands with the configured workspace as the current directory, does not invoke a shell, removes credential-like environment variables, and restricts executable lookup to the Termux prefix and Android system binary directories. It also enforces a wall-clock timeout, caps combined captured stdout/stderr in memory, stops the process group on timeout/output overflow, and applies available CPU, open-file, process, core-dump, and per-file-size resource limits.
 
-The `jalankan_python` tool is intentionally denied on Termux and Ubuntu running inside PRoot. PRoot does not create the independent user, mount, network, and PID namespaces required to run untrusted Python safely. Do not try to enable it by switching to the hardened fallback.
+The `jalankan_python` tool is intentionally denied on Termux and Ubuntu running inside PRoot. PRoot does not create the independent user, mount, network, PID, IPC, and UTS namespaces required to run untrusted Python safely. Do not try to enable it by switching to the hardened fallback.
 
 Android/Termux does **not** receive a separate filesystem or network namespace from this fallback. A command can still access files and network resources allowed to the Termux app; RLIMIT_AS is deliberately skipped because it can prevent Android processes from starting. Treat this as defense-in-depth for a controlled local workspace, not as isolation for hostile code.
 

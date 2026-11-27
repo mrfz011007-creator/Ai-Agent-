@@ -24,11 +24,60 @@ def _workspace(tmp_path: Path, monkeypatch) -> Path:
     return workspace
 
 
+def test_bind_sources_keep_runtime_roots_and_library_directories():
+    system_sources = sandbox._bind_sources(
+        "/usr/local/bin/python3",
+        {},
+        ("/usr/local",),
+    )
+    assert Path("/usr") in system_sources
+    assert Path("/etc") in system_sources
+    assert Path("/usr/local") not in system_sources
+    assert Path("/usr/local/bin") not in system_sources
+
+    external_sources = sandbox._bind_sources(
+        "/opt/python/bin/python3",
+        {},
+        ("/opt/python",),
+    )
+    assert Path("/usr") in external_sources
+    assert Path("/opt/python") in external_sources
+    assert Path("/opt/python/bin") not in external_sources
+
+
+def test_python_guard_rejects_root_filesystem_as_workspace():
+    decision = GuardEngine(Path("/")).check(
+        tool="jalankan_python",
+        arguments={"nama": "main.py"},
+    )
+    assert decision.allowed is False
+    assert decision.reason == "WORKSPACE_ROOT_TOO_BROAD"
+
+
+def test_python_runner_direct_entry_rechecks_guard(tmp_path, monkeypatch):
+    workspace = _workspace(tmp_path, monkeypatch)
+    (workspace / "main.py").write_text("print('must not run')", encoding="utf-8")
+    monkeypatch.setattr(
+        guard_module,
+        "namespace_sandbox_status",
+        lambda: (False, "unsupported host"),
+    )
+    monkeypatch.setattr(
+        python_runner,
+        "_run_command_unchecked",
+        lambda **_kwargs: pytest.fail("direct runner must enforce GuardEngine"),
+    )
+
+    result = python_runner.run_python_file("main.py")
+    assert result["success"] is False
+    assert result["status"] == "SANDBOX_UNAVAILABLE"
+
+
 def test_python_runner_passes_source_via_stdin_and_requires_namespace(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path, monkeypatch)
     source = "print('PRIVATE_SOURCE_MARKER')\n"
     (workspace / "main.py").write_text(source, encoding="utf-8")
-    monkeypatch.setattr(python_runner, "namespace_sandbox_status", lambda: (True, "available"))
+    monkeypatch.setattr(guard_module, "namespace_sandbox_status", lambda: (True, "available"))
     monkeypatch.setattr(python_runner, "python_resource_limits_available", lambda: True)
     captured = {}
 
@@ -54,7 +103,7 @@ def test_python_runner_passes_source_via_stdin_and_requires_namespace(tmp_path, 
 def test_python_runner_fails_closed_without_namespace(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path, monkeypatch)
     (workspace / "main.py").write_text("print('must not run')", encoding="utf-8")
-    monkeypatch.setattr(python_runner, "namespace_sandbox_status", lambda: (False, "namespace probe failed"))
+    monkeypatch.setattr(guard_module, "namespace_sandbox_status", lambda: (False, "namespace probe failed"))
     monkeypatch.setattr(python_runner, "_run_command_unchecked",
                         lambda **_kwargs: pytest.fail("must not execute without namespaces"))
 
@@ -67,7 +116,7 @@ def test_python_runner_fails_closed_without_namespace(tmp_path, monkeypatch):
 def test_python_runner_never_uses_hardened_fallback(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path, monkeypatch)
     (workspace / "main.py").write_text("print('must not run')", encoding="utf-8")
-    monkeypatch.setattr(python_runner, "namespace_sandbox_status", lambda: (True, "available"))
+    monkeypatch.setattr(guard_module, "namespace_sandbox_status", lambda: (True, "available"))
     monkeypatch.setattr(python_runner, "python_resource_limits_available", lambda: True)
 
     def unavailable(*_args, **_kwargs):
@@ -87,7 +136,7 @@ def test_python_runner_rejects_traversal_symlink_and_hardlink(tmp_path, monkeypa
     workspace = _workspace(tmp_path, monkeypatch)
     target = workspace / "main.py"
     target.write_text("print('safe')", encoding="utf-8")
-    monkeypatch.setattr(python_runner, "namespace_sandbox_status", lambda: (True, "available"))
+    monkeypatch.setattr(guard_module, "namespace_sandbox_status", lambda: (True, "available"))
     monkeypatch.setattr(python_runner, "python_resource_limits_available", lambda: True)
     monkeypatch.setattr(python_runner, "_run_command_unchecked",
                         lambda **_kwargs: pytest.fail("unsafe source must not run"))
@@ -105,7 +154,7 @@ def test_python_runner_rejects_traversal_symlink_and_hardlink(tmp_path, monkeypa
 
 def test_python_runner_rejects_large_and_non_utf8_source(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path, monkeypatch)
-    monkeypatch.setattr(python_runner, "namespace_sandbox_status", lambda: (True, "available"))
+    monkeypatch.setattr(guard_module, "namespace_sandbox_status", lambda: (True, "available"))
     monkeypatch.setattr(python_runner, "python_resource_limits_available", lambda: True)
     monkeypatch.setattr(python_runner, "_run_command_unchecked",
                         lambda **_kwargs: pytest.fail("invalid source must not run"))
@@ -157,6 +206,8 @@ def test_namespace_launcher_makes_mount_propagation_private(tmp_path, monkeypatc
     launcher = Path(command[-1])
     try:
         lines = launcher.read_text(encoding="utf-8").splitlines()
+        assert "--ipc" in command
+        assert "--uts" in command
         private_index = lines.index("mount --make-rprivate /")
         root_mount_index = lines.index('mount -t tmpfs -o size=128m,nr_inodes=8192 tmpfs "$ROOT"')
         first_bind_index = next(i for i, line in enumerate(lines) if "mount --bind" in line)

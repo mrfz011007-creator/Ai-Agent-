@@ -119,9 +119,13 @@ def _bind_sources(
             return
         if path == Path("/"):
             raise SandboxPolicyError("Binding the host root into the sandbox is denied")
-        if any(path == source or path in source.parents for source in sources):
+        # If an existing read-only mount already contains this path, it
+        # exposes the candidate and all of its runtime libraries. Do not replace
+        # that parent with a narrower child such as /usr/local/bin.
+        if any(path == source or source in path.parents for source in sources):
             return
-        sources[:] = [source for source in sources if source not in path.parents]
+        # A newly added parent mount subsumes any previously added children.
+        sources[:] = [source for source in sources if path not in source.parents]
         sources.append(path)
 
     for candidate in (Path("/usr"), Path("/etc"), *extra_readonly_roots):
@@ -199,7 +203,10 @@ def namespace_sandbox_status() -> tuple[bool, str]:
         return False, "unshare and chroot are required"
     try:
         probe = subprocess.run(
-            [unshare, "--user", "--map-root-user", "--mount", "--net", "--pid", "--fork", "true"],
+            [
+                unshare, "--user", "--map-root-user", "--mount",
+                "--net", "--pid", "--ipc", "--uts", "--fork", "true",
+            ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=3,
@@ -320,6 +327,8 @@ def prepare_sandbox(
         "--mount",
         "--net",
         "--pid",
+        "--ipc",
+        "--uts",
         "--fork",
         shell,
         str(launcher),

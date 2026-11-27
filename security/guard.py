@@ -113,6 +113,10 @@ class GuardEngine:
         if tool == "jalankan_python":
             if not isinstance(arguments.get("nama"), str) or not arguments["nama"].strip():
                 return GuardResult(False, "PYTHON_SCRIPT_REQUIRED")
+            if not self.workspace_root.is_dir():
+                return GuardResult(False, "WORKSPACE_NOT_CONFIGURED")
+            if self.workspace_root == Path(self.workspace_root.anchor):
+                return GuardResult(False, "WORKSPACE_ROOT_TOO_BROAD")
             available, reason = namespace_sandbox_status()
             if not available:
                 return GuardResult(False, f"PYTHON_SANDBOX_UNAVAILABLE:{reason}")

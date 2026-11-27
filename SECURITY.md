@@ -11,7 +11,7 @@ AI Agent is designed to keep model output untrusted and route tool requests thro
 - The public `run_command` entry point and the registered command handler both re-check the command guard.
 - The agent command allowlist is intentionally small and excludes shells, interpreters, launch wrappers, destructive commands, and unknown executables.
 - `run_command` rejects interpreters, shells, and execution wrappers.
-- `jalankan_python` is a separate, confirmation-gated tool. It runs one bounded UTF-8 workspace file only after user, mount, network, and PID namespaces pass a live probe; unsupported hosts fail closed and never fall back to the hardened command mode.
+- `jalankan_python` is a separate, confirmation-gated tool. It runs one bounded UTF-8 workspace file only after user, mount, network, PID, IPC, and UTS namespaces pass a live probe; unsupported hosts fail closed and never fall back to the hardened command mode.
 - Python execution uses isolated mode (`-I -S -B`), caps source at 32 KiB, wall time at 30 seconds, output at 64 KiB, address space at 512 MiB, per-file writes at 16 MiB, process count at 32, and open descriptors at 64. The mount tree is made private before sandbox mounts are created; the workspace is the only persistent writable host mount, system/runtime roots are read-only, and `/tmp` is a capped private tmpfs.
 - Generic, non-interpreter process commands may still use the hardened fallback when namespaces are unavailable. That fallback is not an OS sandbox and does not provide network isolation.
 
@@ -36,7 +36,7 @@ AI Agent is designed to keep model output untrusted and route tool requests thro
 ## Known limitations
 
 - Android Termux and Ubuntu running inside PRoot do not provide the Linux namespace isolation required for the strict Python runner; `jalankan_python` is denied there. The hardened fallback is defense in depth only.
-- The Python runner enforces a per-file size limit, not an aggregate workspace disk quota. Approved code can still modify or delete files in the workspace; run only code you intend to execute.
+- The Python runner rejects the host root (`/`) as its writable workspace. It enforces a per-file size limit, not an aggregate workspace disk quota. Approved code can still modify or delete files inside the configured workspace; run only code you intend to execute.
 - Same-user processes and a compromised Android/Termux account are outside the protection boundary of the application-level workspace checks.
 - Resource limits and application guards reduce risk but do not guarantee protection from every kernel, runtime, dependency, or device vulnerability.
 - Do not store API keys in workspace files, prompts, model output, screenshots, or issue reports.
