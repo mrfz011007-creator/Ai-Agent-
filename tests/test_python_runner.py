@@ -71,8 +71,15 @@ def test_bind_sources_keep_runtime_roots_and_library_directories(tmp_path):
         {},
         ("/usr/local",),
     )
-    assert Path("/usr") in system_sources
-    assert Path("/etc") in system_sources
+    # Android/Termux may not have /usr; /etc may resolve to /system/etc.
+    # Assert only roots that actually exist on this host are mounted.
+    for root in (Path("/usr"), Path("/etc")):
+        if root.is_dir():
+            resolved_root = root.resolve()
+            assert any(
+                source == resolved_root or source in resolved_root.parents
+                for source in system_sources
+            )
     assert Path("/usr/local") not in system_sources
     assert Path("/usr/local/bin") not in system_sources
 
@@ -86,7 +93,12 @@ def test_bind_sources_keep_runtime_roots_and_library_directories(tmp_path):
         {},
         (str(runtime_root),),
     )
-    assert Path("/usr") in external_sources
+    if Path("/usr").is_dir():
+        resolved_usr = Path("/usr").resolve()
+        assert any(
+            source == resolved_usr or source in resolved_usr.parents
+            for source in external_sources
+        )
     assert runtime_root in external_sources
     assert binary_directory not in external_sources
 
@@ -211,7 +223,7 @@ def test_python_runner_never_uses_hardened_fallback(tmp_path, monkeypatch):
     assert result["sandbox_mode"] == "unavailable"
 
 
-def test_python_runner_rejects_traversal_symlink_and_hardlink(tmp_path, monkeypatch):
+def test_python_runner_rejects_traversal_and_symlink(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path, monkeypatch)
     target = workspace / "main.py"
     target.write_text("print('safe')", encoding="utf-8")
@@ -223,11 +235,29 @@ def test_python_runner_rejects_traversal_symlink_and_hardlink(tmp_path, monkeypa
     assert python_runner.run_python_file("../main.py")["status"] == "WORKSPACE_ACCESS_DENIED"
     (workspace / "link.py").symlink_to(target)
     assert python_runner.run_python_file("link.py")["status"] == "WORKSPACE_ACCESS_DENIED"
+
+
+def test_python_runner_rejects_hardlink_when_os_link_is_available(tmp_path, monkeypatch):
+    import os
+
+    link_function = getattr(os, "link", None)
+    if not callable(link_function):
+        pytest.skip("os.link is unavailable on this platform")
+
+    workspace = _workspace(tmp_path, monkeypatch)
+    target = workspace / "main.py"
+    target.write_text("print('safe')", encoding="utf-8")
     hardlink = workspace / "hardlink.py"
     try:
-        hardlink.hardlink_to(target)
-    except (AttributeError, OSError):
-        pytest.skip("Hard links unavailable")
+        link_function(target, hardlink)
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"Hard links unavailable on this platform: {error}")
+
+    monkeypatch.setattr(guard_module, "namespace_sandbox_status", lambda: (True, "available"))
+    monkeypatch.setattr(python_runner, "python_resource_limits_available", lambda: True)
+    monkeypatch.setattr(python_runner, "_run_command_unchecked",
+                        lambda **_kwargs: pytest.fail("unsafe hard-linked source must not run"))
+
     assert python_runner.run_python_file("hardlink.py")["status"] == "WORKSPACE_ACCESS_DENIED"
 
 
