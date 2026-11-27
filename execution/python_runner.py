@@ -46,7 +46,7 @@ def _build_python_bootstrap(script_path: str, script_directory: str) -> str:
         "namespace = {'__name__': '__main__', '__file__': script_path, '__package__': None}",
         "exec(compile(source, script_path, 'exec', dont_inherit=True), namespace, namespace)",
     )
-    return "\\n".join(lines) + "\\n"
+    return chr(10).join(lines) + chr(10)
 
 def run_python_file(
     nama: str,
