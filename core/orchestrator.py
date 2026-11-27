@@ -146,7 +146,11 @@ class Orchestrator:
                 model_call,
                 tool_catalog=tool_catalog,
                 agent_rules=agent_rules_prompt_section(),
-            ).propose(task.title, context=model_context)
+            ).propose(
+                task.title,
+                context=model_context,
+                execution_contract=task.execution_contract,
+            )
         except Exception as error:
             if handle_model_failure is not None:
                 decision = handle_model_failure(task.task_id, error)

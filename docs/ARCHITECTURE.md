@@ -14,7 +14,7 @@ This document describes implemented behavior, not a security certification or a 
 2. Ordinary questions and explanations use `ConversationService`. This path receives bounded conversation history and has no tool-execution interface.
 3. Explicit imperative requests enter `GoalRunner`.
 4. The planner returns a JSON plan. `PlanDecoder` validates its structure, dependencies, criteria, tool names, and declared capabilities.
-5. The executor proposes one tool call for the active task. The proposal remains untrusted data.
+5. The executor receives the active task's validated execution contract and only the tool-catalog entries named in `allowed_tools`; it proposes one tool call. The proposal remains untrusted data, and an out-of-contract tool is rejected before routing.
 6. `ToolRouter` checks task state and attempt identity, execution contract, capability policy, schema, GuardEngine, PolicyEngine, user confirmation, global budget, and task-local tool quota.
 7. The registered handler runs. The router records redacted evidence; the verifier and acceptance gate decide whether the task/plan can complete.
 

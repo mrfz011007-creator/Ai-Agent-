@@ -1,5 +1,6 @@
 from core.model_execution import ModelExecutionService
 from core.contracts import ToolRequest, ToolResult
+from core.execution_contract import ExecutionContract
 
 
 class FakeRouter:
@@ -193,3 +194,73 @@ def test_execution_prompt_includes_working_rules_outside_untrusted_context():
     assert prompt.index("END PROJECT RULES") < prompt.index(
         "BEGIN UNTRUSTED PRIOR EXECUTION DATA"
     )
+
+
+
+def test_execution_prompt_is_restricted_to_task_contract_tools():
+    prompts = []
+    catalog = {
+        "buat_file_terverifikasi": {
+            "description": "Create, write, read back, and verify exact file content",
+            "parameters": {"type": "object"},
+            "capabilities": ["workspace.write", "workspace.read"],
+        },
+        "cari_teks": {
+            "description": "Search text in workspace files",
+            "parameters": {"type": "object"},
+            "capabilities": ["workspace.read"],
+        },
+    }
+    contract = ExecutionContract(
+        objective="Create and verify a new file",
+        allowed_tools=("buat_file_terverifikasi",),
+        allowed_capabilities=("workspace.write", "workspace.read"),
+        max_tool_calls=1,
+        completion_conditions=({"type": "evidence_success", "task_id": "create_file"},),
+    )
+
+    def model_call(prompt):
+        prompts.append(prompt)
+        return (
+            '{"tool":"buat_file_terverifikasi","action":"execute",'
+            '"arguments":{"nama":"sample.txt","isi":"exact content"}}'
+        )
+
+    proposal = ModelExecutionService(
+        model_call,
+        tool_catalog=catalog,
+    ).propose("Create sample.txt", execution_contract=contract)
+
+    assert proposal.tool == "buat_file_terverifikasi"
+    assert "TRUSTED TASK EXECUTION CONTRACT" in prompts[0]
+    assert '"allowed_tools": ["buat_file_terverifikasi"]' in prompts[0]
+    assert '"cari_teks"' not in prompts[0]
+
+
+def test_execution_proposal_rejects_tool_outside_task_contract():
+    contract = ExecutionContract(
+        objective="Create and verify a new file",
+        allowed_tools=("buat_file_terverifikasi",),
+        allowed_capabilities=("workspace.write", "workspace.read"),
+        max_tool_calls=1,
+        completion_conditions=({"type": "evidence_success", "task_id": "create_file"},),
+    )
+    service = ModelExecutionService(
+        lambda _: (
+            '{"tool":"cari_teks","action":"execute",'
+            '"arguments":{"query":"sample","pola":"*.txt"}}'
+        ),
+        tool_catalog={
+            "buat_file_terverifikasi": {
+                "description": "Create and verify exact file content",
+                "parameters": {"type": "object"},
+                "capabilities": ["workspace.write", "workspace.read"],
+            },
+        },
+    )
+
+    try:
+        service.propose("Create sample.txt", execution_contract=contract)
+        assert False, "a tool outside the task contract must be rejected"
+    except ValueError as error:
+        assert "outside task execution contract" in str(error)
