@@ -90,7 +90,7 @@ def test_failed_goal_is_available_to_followup_chat_after_restart(tmp_path, monke
     history = json.loads(prompts[0][0])["conversation_history"]
     assert response == "Tindakan sebelumnya ditolak."
     assert any(row["role"] == "user" and row["content"] == original_goal for row in history)
-    recorded_outcome = "\\n".join(row["content"] for row in history if row["role"] == "assistant")
+    recorded_outcome = "\n".join(row["content"] for row in history if row["role"] == "assistant")
     assert "goal_execution_result" in recorded_outcome
     assert "FAILED" in recorded_outcome
     assert "User denied tool execution" in recorded_outcome
@@ -109,8 +109,8 @@ def test_resumed_goal_outcome_is_saved_to_conversation_history(tmp_path, monkeyp
     runtime.tool_router._confirmation = lambda _tool, _args: False
 
     goal = (
-        "Buat file resume.txt dengan isi persis berikut:\\n"
-        "Catatan resume\\nTahap: 1"
+        "Buat file resume.txt dengan isi persis berikut:\n"
+        "Catatan resume\nTahap: 1"
     )
     plan_payload = {
         "goal": "Create exact file",
@@ -133,7 +133,7 @@ def test_resumed_goal_outcome_is_saved_to_conversation_history(tmp_path, monkeyp
     proposal = {
         "tool": "buat_file_terverifikasi",
         "action": "execute",
-        "arguments": {"nama": "resume.txt", "isi": "Catatan resume\\nTahap: 1"},
+        "arguments": {"nama": "resume.txt", "isi": "Catatan resume\nTahap: 1"},
     }
     monkeypatch.setattr(runtime.model_gateway, "generate_text", lambda *_a, **_k: json.dumps(plan_payload))
     monkeypatch.setattr(runtime.model_gateway, "text", lambda *_a, **_k: json.dumps(proposal))
@@ -159,7 +159,7 @@ def test_resumed_goal_outcome_is_saved_to_conversation_history(tmp_path, monkeyp
     ).answer("Apa hasil tugas yang dilanjutkan tadi?")
     history = json.loads(prompts[0])["conversation_history"]
     assert response == "Tugas sebelumnya ditolak."
-    outcome = "\\n".join(row["content"] for row in history if row["role"] == "assistant")
+    outcome = "\n".join(row["content"] for row in history if row["role"] == "assistant")
     assert "goal_execution_result" in outcome
     assert "FAILED" in outcome
     assert "User denied tool execution" in outcome
