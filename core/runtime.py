@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core.budget import BudgetManager
 from core.model_gateway import ModelGateway, create_model_gateway
+from core.conversation import ConversationService
 from core.model_planner import ModelPlanService
 from core.model_execution import ExecutionProposal
 from core.memory_service import MemoryService
@@ -153,6 +154,10 @@ class AgentRuntime:
             orchestrator=orchestrator,
             memory=memory,
         )
+
+    def chat(self, message: str) -> str:
+        """Answer a normal user message without creating a plan or executing tools."""
+        return ConversationService(self.model_gateway).answer(message)
 
     def tool_catalog(self) -> dict[str, dict]:
         """Return non-executable tool metadata for model context."""
