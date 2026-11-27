@@ -460,7 +460,11 @@ def _retrieval_scope_matches(
     record_project = record["project_id"]
     record_task = record["task_id"]
     if project_id is None:
-        return record_project is None and record_task is None
+        if record_project is not None:
+            return False
+        return record_task is None or (
+            task_id is not None and record_task == task_id
+        )
     if record_project not in (None, project_id):
         return False
     if task_id is None:
