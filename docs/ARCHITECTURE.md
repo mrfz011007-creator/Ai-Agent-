@@ -37,7 +37,7 @@ Memory supplied to a model is reference data only. It does not prove a task succ
 
 - Default route: configured OpenRouter model, then one configurable OpenRouter backup, then Gemini.
 - Direct Gemini mode is supported through `AI_AGENT_MODEL_PROVIDER=gemini`.
-- OpenRouter and Gemini use `AI_AGENT_MODEL_TIMEOUT_SECONDS` (default 45 seconds; accepted range 1–120 seconds).
+- OpenRouter and Gemini use `AI_AGENT_MODEL_TIMEOUT_SECONDS` (default 45 seconds; accepted range 1–120 seconds). The synchronous Gemini client is closed after each request to release its HTTP connection.
 - The Gemini SDK receives its timeout in milliseconds through `HttpOptions.timeout`.
 - Retry/failover is limited to classified authentication, rate-limit, service-unavailable, and network failures. Invalid requests stop without fallback.
 - A confirmed invalid API key (HTTP 401 / invalid-key response) skips additional models under the same provider so the same credential is not sent repeatedly. Model-specific HTTP 403 still permits trying the configured backup model.
