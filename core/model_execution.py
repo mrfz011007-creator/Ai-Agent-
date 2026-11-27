@@ -4,8 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
-from core.contracts import ToolRequest, ToolResult
 from core.agent_rules import agent_rules_prompt_section
+from core.contracts import ToolRequest, ToolResult
 
 
 @dataclass(frozen=True)
