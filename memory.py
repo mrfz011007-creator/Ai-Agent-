@@ -563,7 +563,21 @@ def recall(
         and _retrieval_scope_matches(record, project_id=project_id, task_id=task_id)
         and (include_invalidated or record["status"] == "active")
     ]
-    records.sort(key=lambda record: (record["version"], record["updated_at"]), reverse=True)
+    def scope_priority(record: Mapping[str, Any]) -> int:
+        if task_id is not None and record["task_id"] == task_id:
+            return 2
+        if project_id is not None and record["project_id"] == project_id:
+            return 1
+        return 0
+
+    records.sort(
+        key=lambda record: (
+            scope_priority(record),
+            record["version"],
+            record["updated_at"],
+        ),
+        reverse=True,
+    )
     if not records:
         return {"status": "not_found", "success": True, "key": key}
     record = records[0]
