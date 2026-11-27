@@ -164,3 +164,31 @@ def test_task_quota_not_consumed_when_global_budget_exhausted(tmp_path):
 
     assert result.status == "budget_exceeded"
     assert manager.get(task.task_id).tool_calls == 0
+
+
+def test_tool_router_preserves_pesan_and_code_from_failed_tool_result():
+    registry = {
+        "read_failure": {
+            "permission": "safe",
+            "capabilities": ["workspace.read"],
+            "parameters": {"type": "object", "properties": {}},
+            "func": lambda: {
+                "status": "error", "success": False,
+                "code": "FILE_NOT_FOUND",
+                "pesan": "File tidak ditemukan: sample.txt",
+            },
+        }
+    }
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=EvidenceStore(),
+    )
+
+    result = router.execute(ToolRequest(tool="read_failure", action="execute", arguments={}))
+
+    assert result.success is False
+    assert result.status == "error"
+    assert result.error == "FILE_NOT_FOUND: File tidak ditemukan: sample.txt"
+    assert result.evidence_id is not None

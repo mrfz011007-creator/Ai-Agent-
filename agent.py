@@ -6,11 +6,37 @@ from intent_router import deteksi_intent
 from local_router import jalankan_lokal
 
 
-def _print_result(plan, graph):
-    print(f"\nPlan: {plan.plan_id}")
-    print(f"Status: {plan.status.value}")
+def _print_result(plan, graph, runtime=None, printer=print):
+    printer(f"\nPlan: {plan.plan_id}")
+    printer(f"Status: {plan.status.value}")
+    executions = getattr(runtime, "last_goal_execution", {}) if runtime is not None else {}
     for task in graph.tasks.values():
-        print(f"  - {task.task_id}: {task.status.value}")
+        printer(f"  - {task.task_id}: {task.status.value}")
+        execution = executions.get(task.task_id, {}) if isinstance(executions, dict) else {}
+        data = execution.get("data") if isinstance(execution, dict) else None
+        if execution.get("tool") == "buat_file_terverifikasi" and isinstance(data, dict):
+            if data.get("path"):
+                printer(f"    Path relatif: {data['path']}")
+            if "isi_aktual" in data:
+                printer("    Isi aktual:")
+                printer(data["isi_aktual"])
+            if "verified" in data:
+                status = "LULUS" if data.get("verified") is True else "GAGAL"
+                printer(f"    Verifikasi isi: {status}")
+            steps = data.get("steps")
+            if isinstance(steps, dict):
+                details = ", ".join(
+                    f"{name}={'OK' if passed else 'GAGAL'}"
+                    for name, passed in steps.items()
+                )
+                printer(f"    Tahapan: {details}")
+        if task.status.value in {"FAILED", "BLOCKED"}:
+            task_result = task.result if isinstance(task.result, dict) else {}
+            reason = task_result.get("reason") or execution.get("error")
+            if reason:
+                printer(f"    Penyebab: {reason}")
+        elif execution and not execution.get("success") and execution.get("error"):
+            printer(f"    Penyebab: {execution['error']}")
 
 
 def handle_request(runtime, perintah, printer=print):
@@ -56,7 +82,7 @@ def handle_request(runtime, perintah, printer=print):
     printer("\nAgent sedang merencanakan dan mengeksekusi...")
     try:
         plan, graph = runtime.run_goal(perintah)
-        _print_result(plan, graph)
+        _print_result(plan, graph, runtime=runtime, printer=printer)
 
         if plan.status.value == "COMPLETED":
             printer("\nGoal selesai dan telah diverifikasi.")

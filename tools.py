@@ -25,6 +25,7 @@ from security.workspace import (
 DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_SEARCH_RESULTS = 500
 MAX_STATIC_PYTHON_VALIDATION_BYTES = 256 * 1024
+MAX_VERIFIED_FILE_CONTENT_CHARS = 16000
 
 
 def workspace_root() -> Path:
@@ -135,6 +136,104 @@ def buat_file(nama):
             "success": False,
             "pesan": str(error),
         }
+
+
+def buat_file_terverifikasi(nama, isi):
+    """Create a new file, write exact UTF-8 content, read it back, and compare bytes.
+
+    Existing paths are never overwritten. All file I/O uses the secure workspace
+    helpers, including descriptor-relative no-follow operations.
+    """
+    if not isinstance(isi, str):
+        return {"status": "error", "success": False, "verified": False,
+                "code": "INVALID_CONTENT", "pesan": "Isi file harus berupa teks."}
+    if len(isi) > MAX_VERIFIED_FILE_CONTENT_CHARS:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "VERIFIED_CONTENT_TOO_LARGE",
+                "pesan": f"Konten dibatasi hingga {MAX_VERIFIED_FILE_CONTENT_CHARS} karakter."}
+
+    try:
+        root = workspace_root()
+        limit = _max_file_bytes()
+        payload = isi.encode("utf-8")
+        if len(payload) > limit:
+            raise FileTooLargeError("Workspace write exceeds the configured maximum size")
+        create_file_secure(root, nama)
+    except FileExistsError:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "FILE_ALREADY_EXISTS",
+                "pesan": f"File sudah ada; tidak ditimpa: {nama}"}
+    except FileTooLargeError:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "FILE_TOO_LARGE", "pesan": "Konten melebihi batas ukuran workspace."}
+    except FileNotFoundError:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "WORKSPACE_PARENT_NOT_FOUND",
+                "pesan": f"Folder induk tidak ditemukan untuk: {nama}"}
+    except PermissionError as error:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "WORKSPACE_ACCESS_DENIED", "pesan": str(error)}
+    except Exception as error:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "FILE_CREATE_FAILED",
+                "pesan": f"{type(error).__name__}: {error}"}
+
+    steps = {"created": True, "written": False, "read_back": False, "exact_match": False}
+    empty_sha256 = hashlib.sha256(b"").hexdigest()
+    try:
+        write_file_secure(root, nama, payload, limit, expected_sha256=empty_sha256)
+        steps["written"] = True
+        actual_bytes = read_file_secure(root, nama, limit)
+        steps["read_back"] = True
+        actual = actual_bytes.decode("utf-8")
+        expected_sha256 = hashlib.sha256(payload).hexdigest()
+        actual_sha256 = hashlib.sha256(actual_bytes).hexdigest()
+        exact_match = actual_bytes == payload
+        steps["exact_match"] = exact_match
+        result = {
+            "status": "success" if exact_match else "error",
+            "success": exact_match,
+            "verified": exact_match,
+            "code": "CONTENT_MATCH" if exact_match else "CONTENT_MISMATCH",
+            "path": nama,
+            "isi_aktual": actual,
+            "expected_sha256": expected_sha256,
+            "actual_sha256": actual_sha256,
+            "size": len(actual_bytes),
+            "steps": steps,
+        }
+        if not exact_match:
+            result["pesan"] = "Isi hasil pembacaan tidak sama persis dengan konten target."
+        return result
+    except FileChangedError as error:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "FILE_CHANGED",
+                "pesan": "File berubah di antara tahap tulis dan verifikasi.",
+                "current_sha256": error.current_sha256, "path": nama, "steps": steps}
+    except FileTooLargeError:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "FILE_TOO_LARGE",
+                "pesan": "File melebihi batas ukuran saat tulis atau baca ulang.",
+                "path": nama, "steps": steps}
+    except FileNotFoundError:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "FILE_DISAPPEARED",
+                "pesan": "File tidak ditemukan saat tulis atau baca ulang.",
+                "path": nama, "steps": steps}
+    except PermissionError as error:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "WORKSPACE_ACCESS_DENIED", "pesan": str(error),
+                "path": nama, "steps": steps}
+    except UnicodeDecodeError:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "FILE_ENCODING_INVALID",
+                "pesan": "Hasil pembacaan bukan teks UTF-8 valid.",
+                "path": nama, "steps": steps}
+    except Exception as error:
+        return {"status": "error", "success": False, "verified": False,
+                "code": "FILE_VERIFICATION_FAILED",
+                "pesan": f"{type(error).__name__}: {error}",
+                "path": nama, "steps": steps}
 
 
 def cari_teks(query, pola="*.py"):

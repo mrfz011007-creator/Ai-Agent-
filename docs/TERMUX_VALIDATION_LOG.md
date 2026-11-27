@@ -4,7 +4,7 @@ Dokumen ini menjadi catatan kesinambungan untuk pengujian lokal di Termux. Pisah
 
 Terakhir diperbarui: 2026-11-27
 
-Status terkini: uji identitas model setelah perbaikan **LULUS** pada 2026-11-27; lihat Bagian 16. Catatan lama di bawah dipertahankan sebagai riwayat dan dapat berstatus pending sesuai waktu pencatatannya.
+Status terkini: uji identitas model **LULUS**, smoke test filesystem Termux **LULUS**, dan perbaikan handoff execution contract **LULUS di CI** pada 2026-11-27. Uji interaktif Agent perlu diulang pada branch perbaikan terbaru; lihat Bagian 17–18.
 
 ## 1. Identitas repo dan checkpoint
 
@@ -396,3 +396,93 @@ Hasil ini hanya membuktikan perilaku identitas provider/model untuk request yang
 - PR #17: masih OPEN dan belum di-merge.
 
 Catatan batas CI: tes network-isolation dan strict namespace yang membutuhkan dukungan kernel tidak dijalankan karena hosted runner tidak menyediakan namespace yang dibutuhkan. Status job CI yang success tidak boleh ditafsirkan sebagai bukti bahwa tes namespace tersebut benar-benar berjalan.
+
+
+## 17. Filesystem create/write/read/verify — validasi perangkat parsial
+
+### Perubahan
+
+- ToolRouter sekarang mempertahankan kode dan pesan kegagalan dari tool filesystem.
+- Tool `buat_file_terverifikasi` meminta persetujuan eksplisit, menolak file yang sudah ada, membuat file, menulis teks UTF-8, membaca ulang, dan membandingkan byte secara persis.
+- CLI menampilkan path relatif, isi aktual, langkah eksekusi, status verifikasi, dan alasan kegagalan.
+- Detail hasil disimpan sementara di memori proses untuk tampilan CLI, bukan sebagai konten di database state.
+- Smoke test tersedia di `scripts/termux_filesystem_smoke.py`; seluruh file sementara berada di dalam workspace dan dibersihkan otomatis.
+
+### Uji Termux
+
+Status: **PARTIAL** — smoke test filesystem lokal sudah lulus di Termux; uji interaktif Agent pada commit sebelum perbaikan gagal karena pemilihan tool di luar execution contract.
+
+### Hasil CI GitHub
+
+- Commit kode yang diuji: `c6df48530aa7c9344c13ce0b7ce9663f645832ac`.
+- Run PR: [#46007788810](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46007788810) — seluruh 4 job selesai dengan status success.
+- Python 3.11: **416 passed, 1 skipped, 1 deselected**.
+- Python 3.14: **416 passed, 1 skipped, 1 deselected**.
+- Ruff dan Bandit lulus; Bandit tidak menemukan isu pada level pemindaian yang dikonfigurasi.
+- Strict Linux namespace smoke test dilewati karena kernel runner tidak mendukung namespace yang diperlukan. Ini bukan bukti sandbox berjalan.
+
+Perintah:
+
+`cd ~/Projects/Ai-Agent/testing`
+`git status --short`
+`git pull --ff-only`
+`export AI_AGENT_WORKSPACE_ROOT="$HOME/Projects/Ai-Agent/workspace"`
+`python scripts/termux_filesystem_smoke.py`
+
+Smoke test tidak menggunakan API/model. Ia menguji buat file, baca snapshot, tulis dengan SHA-256 snapshot, baca ulang, perbandingan persis, operasi gabungan, dan pencegahan overwrite.
+
+Smoke test di atas sudah lulus pada perangkat. Setelah branch diperbarui ke commit perbaikan di Bagian 18, ulangi uji interaktif Agent dengan database terpisah. Prompt harus dimulai dengan `Buat` dan meminta file baru dengan isi persis. Ketik persetujuan hanya setelah memeriksa nama tool, path, dan isi yang ditampilkan. Periksa file aktual secara langsung sebelum memberi status lulus.
+
+### Batas bukti
+
+- CI membuktikan regresi otomatis pada kode yang diuji.
+- Smoke test membuktikan primitive filesystem di perangkat Termux.
+- Uji interaktif membuktikan planner, pemilihan tool, persetujuan, dan pelaporan CLI secara langsung.
+- Status Termux tetap pending sampai kedua pengujian perangkat selesai.
+
+
+
+## 18. Audit dan perbaikan handoff execution contract (2026-11-27)
+
+### Cakupan audit struktur
+
+- Snapshot yang diaudit: branch `agent/filesystem-execution-fix`, sebelum perbaikan, commit `6e7658a1a0d49a882fa148d0f513df331d54b311`.
+- Struktur berisi **119 file**: root, `.github`, `core`, `docs`, `execution`, `scripts`, `security`, `tests`, dan `verification`.
+- Jalur yang ditelusuri: `GoalRunner` → `Orchestrator.execute_model_step` → `ModelExecutionService` → `ToolRouter` → registry/evidence/verifier.
+- Pemeriksaan juga mencakup `PlanDecoder`, `ExecutionContract`, katalog tool, tes planner/executor, dan workflow CI.
+
+### Bug terkonfirmasi
+
+`Orchestrator.execute_model_step` sebelumnya hanya meneruskan judul task dan konteks ke `ModelExecutionService`. Execution contract yang sudah divalidasi tidak ikut diteruskan ke prompt model eksekusi. Selain itu, prompt menampilkan katalog seluruh tool, bukan hanya tool yang diizinkan untuk task aktif.
+
+Akibatnya model dapat mengusulkan `cari_teks` untuk task pembuatan file meskipun kontrak task hanya mengizinkan tool lain. `ToolRouter` kemudian menolak proposal tersebut dengan `Tool not allowed by execution contract: cari_teks`. Penolakan ini merupakan perilaku keamanan yang benar; bug berada pada integrasi pemilihan tool sebelum routing, bukan pada penegakan kontrak oleh ToolRouter.
+
+### Perbaikan
+
+Commit: [`020005d`](https://github.com/mrfz011007-creator/Ai-Agent-/commit/020005d95bfeaba2ddafcd4a794cdb2d3d58afcc)
+
+- Orchestrator meneruskan execution contract task aktif ke ModelExecutionService.
+- Prompt model eksekusi menyertakan kontrak yang telah divalidasi.
+- Katalog yang ditampilkan ke model dibatasi pada tool yang tercantum di `allowed_tools`.
+- Proposal dengan nama tool di luar kontrak ditolak secara deterministik sebelum mencapai ToolRouter.
+- ToolRouter dan seluruh kontrol keamanan tetap menjadi batas otorisasi terakhir dan tidak dilonggarkan.
+- Regression test ditambahkan untuk pembatasan katalog, penolakan tool di luar kontrak, dan integrasi goal end-to-end.
+
+### Verifikasi GitHub Actions
+
+Run: [#46010607260](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46010607260)
+
+- Python 3.11: **418 passed, 1 skipped, 1 deselected**.
+- Python 3.14: **418 passed, 1 skipped, 1 deselected**.
+- Dependency consistency dan compileall: lulus.
+- Ruff: lulus.
+- Bandit: tidak menemukan temuan pada level pemindaian yang dikonfigurasi; peringatan komentar/no-sec yang sudah ada tetap tercatat oleh tool.
+- Strict namespace smoke test: **1 skipped** karena kernel hosted runner tidak menyediakan namespace yang diperlukan. Job success tidak berarti tes namespace benar-benar berjalan.
+
+### Verifikasi Termux
+
+Pada commit sebelum perbaikan, `python scripts/termux_filesystem_smoke.py` di perangkat menghasilkan tujuh pemeriksaan **PASS** dan `HASIL: PASS`, termasuk pembuatan, baca/tulis, pembandingan isi persis, verifikasi gabungan, dan penolakan overwrite.
+
+Uji interaktif Agent pada commit lama gagal dengan task `create_file` dan alasan `Tool not allowed by execution contract: cari_teks`. Kegagalan ini menjadi bukti reproduksi bug.
+
+**Status saat catatan dibuat:** perbaikan sudah masuk ke branch PR #18 dan CI lulus; uji interaktif di Termux harus diulang setelah checkout diperbarui ke commit `020005d`. Jangan menyatakan tahap end-to-end lulus sebelum pengulangan perangkat dan pemeriksaan file aktual berhasil.

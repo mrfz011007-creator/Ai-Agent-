@@ -47,6 +47,9 @@ class GoalRunner:
         context=None,
     ) -> tuple[Plan, TaskGraph]:
         plan = self._persist(plan, PlanStatus.EXECUTING)
+        last_results = getattr(self.runtime, "last_goal_execution", None)
+        if isinstance(last_results, dict):
+            last_results.clear()
         steps = 0
         execution_context = {"goal": plan.goal, "project_id": project_id, "context": dict(context or {})}
 
@@ -56,7 +59,7 @@ class GoalRunner:
                 task_id=task_id,
                 attempt_id=attempt_id,
             )
-            execution_context[task_id] = {
+            execution_record = {
                 "tool": proposal.tool,
                 "action": proposal.action,
                 "success": result.success,
@@ -65,6 +68,10 @@ class GoalRunner:
                 "data": result.data,
                 "error": result.error,
             }
+            execution_context[task_id] = execution_record
+            last_results = getattr(self.runtime, "last_goal_execution", None)
+            if isinstance(last_results, dict):
+                last_results[task_id] = execution_record
             # Memory/reflection is observability, not an execution authority.
             # A persistence or reflection failure must never convert an already
             # successful tool execution into a task failure or trigger a retry
