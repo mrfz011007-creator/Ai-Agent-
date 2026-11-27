@@ -105,3 +105,22 @@ The hosted CI namespace tests were skipped because the runner kernel lacked the 
 
 Think First. Simplicity First. Surgical Changes. Evidence-Based Completion.
 Do not claim tests passed unless their actual results are available. Do not merge PR #17 without explicit approval.
+
+
+## Current checkpoint — verified filesystem execution (2026-11-27)
+
+- Work branch: `agent/filesystem-execution-fix`.
+- Pull request: [#18 — verify exact workspace file creation](https://github.com/mrfz011007-creator/Ai-Agent-/pull/18). Status: OPEN, not merged.
+- Tool `buat_file_terverifikasi` is registered with explicit confirmation and `workspace.write` + `workspace.read` capabilities.
+- The tool creates only a new file, refuses existing paths, writes the supplied UTF-8 content, reads the file back, and returns success only when the bytes match exactly.
+- ToolRouter now preserves tool error codes/messages. CLI output includes failure details and, for the verified tool, relative path, read-back content, step states, and verification result.
+- Detail output is retained in process memory for the current CLI response; file contents are not added to the persistent state database.
+- Automated integration and regression tests were added, plus `scripts/termux_filesystem_smoke.py` for on-device testing.
+- CI validated code commit `c6df48530aa7c9344c13ce0b7ce9663f645832ac`: Python 3.11 and 3.14 each **416 passed, 1 skipped, 1 deselected**; Ruff and Bandit passed.
+- The strict namespace smoke test was skipped because GitHub's hosted kernel did not support the required namespaces. Do not treat it as sandbox verification.
+- Termux verification: **PENDING**. The smoke test and interactive Agent test must run on the user's Android device before this stage can be marked complete.
+- Do not merge PR #18 without explicit user approval.
+
+### Termux next action
+
+From `~/Projects/Ai-Agent/testing`, fetch and switch to `agent/filesystem-execution-fix` only after confirming the working tree is clean. Set `AI_AGENT_WORKSPACE_ROOT` to `~/Projects/Ai-Agent/workspace`, then run `python scripts/termux_filesystem_smoke.py`. After it passes, run the interactive Agent test with a separate state database and approve only the exact tool/arguments shown by the Agent.
