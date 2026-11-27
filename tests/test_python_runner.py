@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,6 +34,35 @@ def _workspace(tmp_path: Path, monkeypatch) -> Path:
         lambda name: f"/usr/bin/{name}",
     )
     return workspace
+
+
+def test_python_runner_bootstrap_executes_source_from_stdin(tmp_path):
+    script_path = tmp_path / "script with 'quote'.py"
+    bootstrap = python_runner._build_python_bootstrap(
+        str(script_path),
+        str(script_path.parent),
+    )
+    source = (
+        "print('python-runner-bootstrap-ok')\\n"
+        "print(__name__)\\n"
+        "print(__file__)\\n"
+    ).encode('utf-8')
+
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-B", "-c", bootstrap],
+        input=source,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=5,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr.decode('utf-8', errors='replace')
+    assert result.stdout.decode('utf-8').splitlines() == [
+        "python-runner-bootstrap-ok",
+        "__main__",
+        str(script_path),
+    ]
 
 
 def test_bind_sources_keep_runtime_roots_and_library_directories(tmp_path):
