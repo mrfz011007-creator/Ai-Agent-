@@ -8,6 +8,9 @@ _FILE_NAME = re.compile(
     r"\bfile\s+([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.[A-Za-z0-9]{1,12})",
     re.IGNORECASE,
 )
+_ANY_FILE_NAME = re.compile(
+    r"\b[A-Za-z0-9_-][A-Za-z0-9_.-]*\.[A-Za-z0-9]{1,12}\b"
+)
 _EXACT_CONTENT = re.compile(
     r"\b(?:isi|konten|content)\b.{0,60}?"
     r"\b(?:persis|tepat|exact(?:ly)?)\b"
@@ -27,8 +30,14 @@ def extract_trusted_file_intent(goal: str) -> dict[str, Any] | None:
         return None
 
     file_matches = list(_FILE_NAME.finditer(goal))
+    all_file_tokens = list(_ANY_FILE_NAME.finditer(goal))
     content_match = _EXACT_CONTENT.search(goal)
-    if len(file_matches) != 1 or content_match is None:
+    if (
+        len(file_matches) != 1
+        or len(all_file_tokens) != 1
+        or content_match is None
+        or all_file_tokens[0].group(0) != file_matches[0].group(1)
+    ):
         return None
 
     relative_name = file_matches[0].group(1)
