@@ -500,10 +500,13 @@ Implementation branches added after the earlier checkpoint:
 ### Evidence and limits
 
 - PR #20 CI passed on Python 3.11 and 3.14, static/security checks, and the namespace smoke job on the final PR #20 code head `cfe5e73a15793e30ebd27880e1125e9b6d0dc2f1`.
-- PR #21 and PR #22 still require their own final CI results.
-- The Linux namespace smoke job must be interpreted from its step result; a successful job can report a platform skip if the hosted kernel does not support namespaces.
-- No claim is made here that PR #21/#22 or the current code has passed on a physical Android/Termux device.
-- PRs remain unmerged pending review and explicit approval.
+- PR #20 final head `cfe5e73a15793e30ebd27880e1125e9b6d0dc2f1`: push and PR workflows **SUCCESS** (runs [46020900152](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46020900152) and [46020907952](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46020907952)).
+- PR #21 final head `5145f3669cd463b5b7716e8714b8b7787de35bd6`: push and PR workflows **SUCCESS** (runs [46021799963](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021799963) and [46021811873](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021811873)).
+- PR #22 final head `1cbd1eb3e676be353fb01c3557918b6bad9c1799`: push and PR workflows **SUCCESS** (runs [46021923339](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021923339) and [46021934979](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021934979)). Python 3.11 and 3.14 each reported **430 passed, 1 skipped, 1 deselected**; Ruff, Bandit, and dependency checks passed.
+- PR #23 initial documentation-only head `4b7a136e3e7b606361315d38904d6ad4bd103e97`: push and PR workflows initially **SUCCESS** (runs [46021965568](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021965568) and [46021975002](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021975002)); the documentation status update below requires one final rerun.
+- The strict Linux namespace job completed successfully as a job, but its actual namespace pytest was **skipped**: the hosted kernel reported `Strict Linux namespaces unavailable on this host`. This is not evidence that strict namespace isolation ran.
+- No claim is made that this code has passed on a physical Android/Termux device. The local Termux gate remains outstanding.
+- PRs #18–#23 remain unmerged pending review and explicit approval.
 
 ### Termux validation gate
 
