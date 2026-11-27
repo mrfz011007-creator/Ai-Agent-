@@ -234,3 +234,68 @@ Workflow PR #17: https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/45
 - CI menggunakan gateway/model mock untuk tes memori; kelulusan tes tidak membuktikan kualitas ingatan model live.
 - Riwayat percakapan tersimpan lokal dalam SQLite workspace. Gunakan conversation ID berbeda untuk sesi terpisah; API penghapusan tersedia pada StateStore tetapi belum dipasang sebagai perintah CLI.
 - Tahap 3 belum dinyatakan selesai sampai workflow push selesai dan uji lanjutan pada Termux memverifikasi konteks benar-benar terbawa ke pesan berikutnya.
+
+## 13. Audit penyelesaian Tahap 3–8 (2026-11-27)
+
+Perubahan lanjutan dibuat pada branch `agent/security-hardening-workspace`, PR #17. Bagian ini memperbarui status implementasi setelah audit Tahap 3–8. Catatan historis di bagian sebelumnya dipertahankan.
+
+### Tahap 3 — Memori percakapan
+
+- Mempertahankan riwayat terpisah di SQLite, bukan mencampurnya dengan memori fakta/proyek/tugas.
+- Batas per percakapan tetap 12 pesan dan konteks prompt 24.000 karakter; pesan individual maksimum 12.000 karakter.
+- Menambahkan batas global 2.048 pesan lintas seluruh conversation ID sehingga banyak sesi tidak dapat menumbuhkan tabel tanpa batas.
+- Menambahkan tes retensi global, di samping kesinambungan setelah restart, isolasi sesi, kegagalan provider, validasi input, dan penanganan riwayat sebagai data tidak tepercaya.
+- Batasan: ID default masih `default`; sesi berbeda perlu mengatur `AI_AGENT_CONVERSATION_ID`. API penghapusan riwayat tersedia di `StateStore.clear_conversation()`, tetapi belum disediakan sebagai perintah CLI.
+
+### Tahap 4 — Routing dan batas tools
+
+- Menambahkan pengecualian untuk pertanyaan tujuan seperti “Buat apa AI Agent ini?” agar tidak salah diklasifikasikan sebagai perintah tindakan.
+- Menambahkan regresi untuk pertanyaan “buat apa/bisa buat apa” dan perintah tindakan eksplisit.
+- Jalur eksekusi tetap melewati execution contract, capability policy, schema validation, GuardEngine, PolicyEngine, konfirmasi, budget, ToolRouter, dan pencatatan evidence.
+- Tidak mengubah atau melemahkan batas keamanan eksekusi.
+
+### Tahap 5 — Reliabilitas model/provider
+
+- Menetapkan timeout per request untuk OpenRouter dan Gemini lewat `AI_AGENT_MODEL_TIMEOUT_SECONDS` (default 45 detik; rentang 1–120 detik).
+- Gemini SDK menerima timeout dalam milidetik melalui `HttpOptions.timeout`; client sinkron ditutup setelah request.
+- Jika API key provider diketahui tidak valid (HTTP 401), fallback tidak mengirim ulang kredensial provider yang sama ke model cadangan provider tersebut. HTTP 403 yang dapat bersifat model-spesifik tetap boleh mencoba model cadangan.
+- Rantai fallback yang habis tetap berurutan dan dapat memakan waktu lebih lama daripada satu timeout request; belum ada deadline total end-to-end untuk keseluruhan rantai.
+- Mematok dependensi `google-genai>=1.0.0,<3.0.0` untuk menghindari upgrade major tanpa audit kompatibilitas.
+
+### Tahap 6 — Eksekusi dan pemulihan tugas
+
+- Memastikan kegagalan seluruh provider yang muncul sebagai `MODEL_PROVIDERS_EXHAUSTED` dikenali sebagai kondisi menunggu pemulihan provider, bukan langsung dianggap kegagalan tool.
+- Menambahkan tes regresi yang memastikan task berpindah ke `WAITING` dengan `WAIT_FOR_MODEL`.
+- Mempertahankan aturan bahwa operasi non-idempoten tidak diulang otomatis; task terputus menunggu rekonsiliasi dan evidence.
+
+### Tahap 7 — Tes komprehensif
+
+Pengujian CI pada commit kode dan dokumentasi `cf027aea1ac6018b0fb2047080ef0d5192651631`:
+
+Workflow PR #17: https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/45946286364
+
+- Python 3.11: **382 passed, 2 skipped**.
+- Python 3.14: **382 passed, 2 skipped**.
+- Python Runner bootstrap: 1 passed pada masing-masing job.
+- `pip check`, `compileall`, Ruff, dan Bandit sukses pada kedua versi.
+- Bandit tetap mencatat satu pengecualian `nosec B608` pada query SQL berparameter `core/state_store.py:213`; tidak ada temuan Bandit level tinggi yang membuat job gagal.
+- Dua tes skipped tidak dihitung sebagai passed. Tes namespace nyata bergantung pada ketersediaan fitur isolasi host; dukungan perangkat/host harus dinilai sesuai hasil tes lingkungannya.
+
+### Tahap 8 — Audit arsitektur, optimasi, dan dokumentasi
+
+- Menambahkan `docs/ARCHITECTURE.md` berisi alur request, model memori, batas provider, lifecycle tugas, kapabilitas, batasan, dan invariants keamanan.
+- Memperbarui `TERMUX.md` tentang batas memori global, timeout/fallback provider, serta prosedur smoke test setelah gate CI Tahap 8.
+- Smoke test interaktif Termux **belum dijalankan** sesuai instruksi pengguna. Pelaksanaan ditunda sampai implementasi Tahap 8 dan GitHub Actions pada head final branch lulus.
+- CI provider memakai fake/mock untuk tes deterministik; kelulusan CI bukan bukti key/provider live atau kualitas jawaban model.
+- Validator Python Tahap 8 melakukan parsing AST dan pemeriksaan definisi, bukan eksekusi kode. Keberhasilan validator tidak membuktikan perilaku runtime kode hasil generasi.
+
+### Batas keamanan yang dipertahankan
+
+Tidak ada perubahan yang melemahkan `write_file_secure`, descriptor-relative/no-follow workspace checks, GuardEngine, PolicyEngine, ToolRouter, execution contract, capability checks, user confirmation, evidence verification, atau perilaku fail-closed Python Runner. `jalankan_python` tetap ditolak pada Termux/PRoot karena isolasi OS yang diwajibkan tidak tersedia.
+
+### Status checkpoint
+
+- Implementasi Tahap 3–8 dan tes CI: lulus pada commit yang tercantum di atas.
+- Uji smoke interaktif Termux: sengaja ditunda, belum diverifikasi.
+- PR #17: tetap OPEN dan belum di-merge.
+- Kelulusan CI bukan sertifikasi keamanan dan tidak menyatakan seluruh lingkungan/provider telah diuji.
