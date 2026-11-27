@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.contracts import Task, TaskStatus, VerificationResult
-from core.plan import Plan, PlanProposal, Planner, TaskGraph, PlanStatus
-from core.task_manager import TaskManager
-from core.state_store import StateStore
-from core.model_execution import ModelExecutionService
 from core.agent_rules import agent_rules_prompt_section
+from core.contracts import Task, TaskStatus, VerificationResult
+from core.model_execution import ModelExecutionService
+from core.plan import Plan, PlanProposal, Planner, TaskGraph, PlanStatus
+from core.state_store import StateStore
+from core.task_manager import TaskManager
 
 
 @dataclass
