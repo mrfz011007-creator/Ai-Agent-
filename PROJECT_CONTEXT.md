@@ -9,7 +9,8 @@ Updated: 2026-11-27
 - Pull request: [#17](https://github.com/mrfz011007-creator/Ai-Agent-/pull/17)
 - PR base: `agent/security-hardening`
 - PR status at last inspection: OPEN, not merged.
-- Previous verified head: `b6884f7b66c7502a8d7c88484028b64966753217`
+- Previous audited head: `b6884f7b66c7502a8d7c88484028b64966753217`
+- Provider identity fix/code test commit: `a06e226128a15971e1b1e9ab6b1c613cfefb3f94`
 - Do not merge PR #17 without explicit user approval.
 
 ## Current task: per-request provider/model identity
@@ -57,12 +58,23 @@ At commit `b6884f7`, the model received the configured primary/fallback descript
 - Confirm the model text directs the user to the separate runtime metadata block and that the CLI shows the provider-reported model without a literal `\\nProvider` prefix.
 - Repeat with a response path where actual-model metadata is unavailable or use an existing deterministic test; never infer model identity from configuration.
 
+## GitHub verification record
+
+- Implementation commit: [`a06e226`] (https://github.com/mrfz011007-creator/Ai-Agent-/commit/a06e226128a15971e1b1e9ab6b1c613cfefb3f94)
+- PR Actions run: [#46000429534](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46000429534) — completed successfully; all four jobs reported success.
+- Python 3.11: **402 passed, 1 skipped, 1 deselected**.
+- Python 3.14: **402 passed, 1 skipped, 1 deselected**.
+- Dependency consistency, compileall, Ruff, and Bandit completed successfully.
+- Namespace smoke job completed successfully, but its real namespace test was **skipped** because the hosted kernel lacked strict namespaces. The one network-isolation test in each main matrix was also skipped for the same platform constraint.
+- This CI run validates deterministic tests and static checks. It is not a security certification and does not validate live provider credentials or Termux behavior.
+- Push-triggered run: [#46000421772](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46000421772) — status `completed`, conclusion `success` at documentation update time.
+
 ## Current status
 
-- Stages 1–3: source audit and targeted code/test changes prepared for GitHub; completion depends on CI after commit.
-- Stage 4: pending GitHub Actions for the new commit.
-- Stage 5: pending live rerun on Termux after the CI gate.
-- Stage 6: this file and `docs/TERMUX_VALIDATION_LOG.md` are the continuity records; final verification remains pending until the device retest is recorded.
+- Stages 1–3: **complete** — cause audited, prompt/CLI behavior corrected, and regression tests added in `a06e226`.
+- Stage 4: **passed** — PR CI run #46000429534, with the namespace-test skips stated above.
+- Stage 5: **pending Termux** — live Android/provider retest is required on the user's device after pulling the latest branch.
+- Stage 6: **checkpoint recorded** in this file and `docs/TERMUX_VALIDATION_LOG.md`. Final closure remains pending until the post-fix Termux output is recorded.
 
 ## Working rules
 

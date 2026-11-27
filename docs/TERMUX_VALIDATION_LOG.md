@@ -323,3 +323,21 @@ Diagnosis:
 - Bug format berasal dari escape newline ganda pada `agent.py`; bukan kegagalan ekstraksi metadata provider.
 
 Status: ini adalah bukti uji **sebelum perbaikan** pada commit di atas. Pengujian ulang terhadap commit perbaikan tetap wajib dilakukan di Termux setelah CI GitHub lulus.
+
+
+## 15. Verifikasi GitHub setelah perbaikan identitas model (2026-11-27)
+
+Commit implementasi: `a06e226128a15971e1b1e9ab6b1c613cfefb3f94`
+Workflow PR #17: [run #46000429534](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46000429534)
+
+Hasil:
+- Semua empat job workflow melaporkan status **success**.
+- Python 3.11: **402 passed, 1 skipped, 1 deselected**.
+- Python 3.14: **402 passed, 1 skipped, 1 deselected**.
+- Dependency consistency, `compileall`, Ruff, dan Bandit berhasil.
+- Satu tes network-isolation di setiap matriks utama dilewati karena kernel hosted runner tidak menyediakan namespace yang diperlukan.
+- Job strict namespace selesai dengan status success, tetapi tes namespace nyata berstatus **skipped** (1 skipped, 16 deselected) karena namespace Linux tidak tersedia pada host.
+
+Interpretasi: perubahan prompt, CLI, dan regresi lolos suite otomatis pada dua versi Python. Tes namespace yang dilewati tidak boleh dihitung sebagai bukti sandbox berhasil; hasil CI bukan sertifikasi keamanan dan tidak menggantikan tes langsung Termux.
+
+Status uji perangkat: **belum diuji ulang setelah perbaikan**. Ulangi smoke test setelah menarik commit terbaru dari branch kerja.
