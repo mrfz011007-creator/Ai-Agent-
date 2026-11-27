@@ -24,7 +24,7 @@ def _workspace(tmp_path: Path, monkeypatch) -> Path:
     return workspace
 
 
-def test_bind_sources_keep_runtime_roots_and_library_directories():
+def test_bind_sources_keep_runtime_roots_and_library_directories(tmp_path):
     system_sources = sandbox._bind_sources(
         "/usr/local/bin/python3",
         {},
@@ -35,14 +35,19 @@ def test_bind_sources_keep_runtime_roots_and_library_directories():
     assert Path("/usr/local") not in system_sources
     assert Path("/usr/local/bin") not in system_sources
 
+    runtime_root = tmp_path / "python-runtime"
+    binary_directory = runtime_root / "bin"
+    binary_directory.mkdir(parents=True)
+    executable = binary_directory / "python3"
+    executable.touch()
     external_sources = sandbox._bind_sources(
-        "/opt/python/bin/python3",
+        str(executable),
         {},
-        ("/opt/python",),
+        (str(runtime_root),),
     )
     assert Path("/usr") in external_sources
-    assert Path("/opt/python") in external_sources
-    assert Path("/opt/python/bin") not in external_sources
+    assert runtime_root in external_sources
+    assert binary_directory not in external_sources
 
 
 def test_python_guard_rejects_root_filesystem_as_workspace():
