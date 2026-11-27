@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 
+MAX_TOTAL_CONVERSATION_MESSAGES = 2048
+
+
 class StateStore:
     """Small SQLite state store for restart-safe agent state."""
 
@@ -171,6 +174,13 @@ class StateStore:
                 "(SELECT message_id FROM conversation_messages WHERE conversation_id=? "
                 "ORDER BY message_id DESC LIMIT ?)",
                 (conversation_id, conversation_id, max_messages),
+            )
+            # Bound storage across all conversation IDs, not only within one session.
+            db.execute(
+                "DELETE FROM conversation_messages WHERE message_id NOT IN "
+                "(SELECT message_id FROM conversation_messages "
+                "ORDER BY message_id DESC LIMIT ?)",
+                (MAX_TOTAL_CONVERSATION_MESSAGES,),
             )
 
     def clear_conversation(self, conversation_id: str) -> int:
