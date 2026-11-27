@@ -201,3 +201,36 @@ Workflow run: https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/45939
 - Tes provider live dan uji interaktif pada Termux belum dilakukan pada tahap ini.
 
 Tahap 2 dinyatakan selesai berdasarkan tes CI di atas. Tahap 3 (memori percakapan) belum dimulai. Kontrol `write_file_secure`, GuardEngine, PolicyEngine, ToolRouter, dan Python Runner tidak dilonggarkan. PR #17 tetap terbuka dan belum di-merge.
+
+
+## 12. Tahap 3 — Memori percakapan (2026-11-27)
+
+Implementasi pada branch `agent/security-hardening-workspace`:
+
+- Menambahkan tabel SQLite `conversation_messages` terpisah dari tabel task/evidence/plan dan dari `memory.json` yang dipakai untuk memori fakta/pengalaman proyek.
+- Menyimpan pasangan pesan user dan assistant secara atomik hanya setelah model mengembalikan jawaban valid. Kegagalan provider tidak meninggalkan pesan user yatim.
+- Memuat riwayat percakapan saat permintaan berikutnya, termasuk setelah proses Agent dimulai ulang.
+- Default conversation ID adalah `default`; sesi dapat dipisahkan dengan variabel lingkungan `AI_AGENT_CONVERSATION_ID`.
+- Riwayat dibatasi pada 12 pesan terbaru (maksimum 6 giliran) dan konteks yang dikirim ke model dibatasi 24.000 karakter. Pesan individual dibatasi 12.000 karakter.
+- Isi riwayat dikirim sebagai data JSON dan secara eksplisit ditandai sebagai data tidak tepercaya. Riwayat tidak dapat mengubah system instruction, kontrak tool, izin, atau kebijakan keamanan.
+- Percakapan biasa tidak otomatis menulis ke memori fakta/proyek/tugas. Mekanisme memori hierarkis dan reflection yang sudah ada tetap terpisah.
+- Menambahkan tes untuk kesinambungan lintas restart, isolasi conversation ID, batas retensi, kegagalan provider, input kosong/panjang, prompt injection, dan pemisahan dari project memory.
+
+### Verifikasi GitHub Actions
+
+Commit implementasi/tes terakhir saat verifikasi: `4147f39382c6de7106e15521e58952619b1dc54f`.
+
+Workflow PR #17: https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/45944580095
+
+- Python 3.11: 368 passed, 2 skipped; bootstrap smoke test 1 passed.
+- Python 3.14: 368 passed, 2 skipped; bootstrap smoke test 1 passed.
+- Dependency consistency, compile, Ruff, dan Bandit sukses.
+- Bandit tetap melaporkan peringatan `nosec B608` yang sudah ada pada query SQL berparameter di `core/state_store.py`; tidak ada temuan keamanan baru.
+- Workflow push untuk commit yang sama masih berjalan saat catatan ini diperbarui; periksa status akhir sebelum menyatakan seluruh CI selesai.
+
+### Batas validasi
+
+- Tes provider live dan uji percakapan lanjutan langsung pada Termux belum dilakukan.
+- CI menggunakan gateway/model mock untuk tes memori; kelulusan tes tidak membuktikan kualitas ingatan model live.
+- Riwayat percakapan tersimpan lokal dalam SQLite workspace. Gunakan conversation ID berbeda untuk sesi terpisah; API penghapusan tersedia pada StateStore tetapi belum dipasang sebagai perintah CLI.
+- Tahap 3 belum dinyatakan selesai sampai workflow push selesai dan uji lanjutan pada Termux memverifikasi konteks benar-benar terbawa ke pesan berikutnya.
