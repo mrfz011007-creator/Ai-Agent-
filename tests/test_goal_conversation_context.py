@@ -141,7 +141,7 @@ def test_resumed_goal_outcome_is_saved_to_conversation_history(tmp_path, monkeyp
     waiting_plan, _ = runtime.run_goal(goal, plan_id="plan-resume-continuity", max_steps=0)
     assert waiting_plan.status.value == "WAITING"
 
-    resumed_plan, graph = runtime.resume("plan-resume-continuity")
+    resumed_plan, graph = runtime.resume_goal("plan-resume-continuity")
     assert resumed_plan.status.value == "FAILED"
     assert graph.tasks["create_file"].status.value == "FAILED"
     assert not (workspace / "resume.txt").exists()
