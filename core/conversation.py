@@ -1,12 +1,29 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 
 MAX_CONVERSATION_MESSAGES = 12
 MAX_CONVERSATION_CONTEXT_CHARS = 24000
 MAX_CONVERSATION_MESSAGE_CHARS = 12000
+
+
+
+@dataclass(frozen=True)
+class ConversationReply:
+    """A chat answer paired with runtime-supplied provider metadata."""
+
+    answer: str
+    provider: str | None = None
+    requested_model: str | None = None
+    actual_model: str | None = None
+    request_id: str | None = None
+
+    @property
+    def identity_verified(self) -> bool:
+        return self.actual_model is not None
 
 SYSTEM_INSTRUCTION = """You are the conversational assistant inside AI Agent.
 Answer the user's question directly in the language they used.
@@ -71,7 +88,7 @@ class ConversationService:
             history.pop(0)
         return history
 
-    def answer(self, message: str) -> str:
+    def answer_with_metadata(self, message: str) -> ConversationReply:
         if not isinstance(message, str) or not message.strip():
             raise ValueError("Pesan percakapan tidak boleh kosong")
         message = message.strip()
@@ -93,10 +110,26 @@ class ConversationService:
             + "\nKonfigurasi model AI Agent (bukan jaminan model yang menangani permintaan ini): "
             + self.model_description
         )
-        answer = self.model_gateway.generate_text(
-            prompt=prompt,
-            system_instruction=instruction,
+        metadata_method = getattr(
+            self.model_gateway, "generate_text_with_metadata", None
         )
+        if callable(metadata_method):
+            model_result = metadata_method(
+                prompt=prompt,
+                system_instruction=instruction,
+            )
+            answer = getattr(model_result, "text", None)
+            provider = getattr(model_result, "provider", None)
+            requested_model = getattr(model_result, "requested_model", None)
+            actual_model = getattr(model_result, "actual_model", None)
+            request_id = getattr(model_result, "request_id", None)
+        else:
+            answer = self.model_gateway.generate_text(
+                prompt=prompt,
+                system_instruction=instruction,
+            )
+            provider = requested_model = actual_model = request_id = None
+
         if not isinstance(answer, str) or not answer.strip():
             raise RuntimeError("MODEL_RETURNED_EMPTY_RESPONSE")
         answer = answer.strip()
@@ -109,4 +142,14 @@ class ConversationService:
                 answer,
                 max_messages=MAX_CONVERSATION_MESSAGES,
             )
-        return answer
+        return ConversationReply(
+            answer=answer,
+            provider=provider if isinstance(provider, str) else None,
+            requested_model=requested_model if isinstance(requested_model, str) else None,
+            actual_model=actual_model if isinstance(actual_model, str) and actual_model.strip() else None,
+            request_id=request_id if isinstance(request_id, str) else None,
+        )
+
+    def answer(self, message: str) -> str:
+        """Backward-compatible string-only chat API."""
+        return self.answer_with_metadata(message).answer
