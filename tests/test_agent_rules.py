@@ -20,6 +20,17 @@ def test_rules_loader_uses_built_in_guidance_when_file_is_missing(monkeypatch, t
     assert "Security precedence" in rules
 
 
+def test_rules_loader_uses_fallback_when_prompt_section_is_missing(monkeypatch, tmp_path):
+    rules_path = tmp_path / "AGENT_RULES.md"
+    rules_path.write_text("# Incomplete rules file", encoding="utf-8")
+    monkeypatch.setattr(agent_rules, "RULES_PATH", rules_path)
+
+    rules = agent_rules.load_agent_rules()
+
+    assert "Think First" in rules
+    assert "Security precedence" in rules
+
+
 def test_rules_loader_uses_built_in_guidance_for_oversized_or_invalid_files(monkeypatch, tmp_path):
     rules_path = tmp_path / "AGENT_RULES.md"
     monkeypatch.setattr(agent_rules, "RULES_PATH", rules_path)
