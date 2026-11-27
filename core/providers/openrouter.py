@@ -186,7 +186,7 @@ class OpenRouterProvider:
             )
         return result
 
-    def text(
+    def text_with_metadata(
         self,
         api_key: str,
         *,
@@ -194,7 +194,7 @@ class OpenRouterProvider:
         system_instruction: str = "",
         model: str,
         response_mime_type: str | None = None,
-    ) -> str:
+    ) -> dict[str, str | None]:
         # The app parser validates JSON-only planner output. Avoid response_format:
         # some free models, including Nemotron 3 Ultra, do not support that mode.
         del response_mime_type
@@ -216,7 +216,32 @@ class OpenRouterProvider:
             )
         if not isinstance(content, str):
             raise OpenRouterError("OpenRouter response did not contain text")
-        return content
+
+        actual_model = result.get("model")
+        request_id = result.get("id")
+        return {
+            "text": content,
+            "actual_model": actual_model.strip() if isinstance(actual_model, str) and actual_model.strip() else None,
+            "request_id": request_id.strip() if isinstance(request_id, str) and request_id.strip() else None,
+        }
+
+    def text(
+        self,
+        api_key: str,
+        *,
+        prompt: str,
+        system_instruction: str = "",
+        model: str,
+        response_mime_type: str | None = None,
+    ) -> str:
+        """Backward-compatible text-only adapter."""
+        return self.text_with_metadata(
+            api_key,
+            prompt=prompt,
+            system_instruction=system_instruction,
+            model=model,
+            response_mime_type=response_mime_type,
+        )["text"] or ""
 
     def generate(
         self,
