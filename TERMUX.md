@@ -64,7 +64,7 @@ export AI_AGENT_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free'
 
 The bounded model failover order is: configured OpenRouter primary → one OpenRouter backup (`nvidia/nemotron-3.5-super-vl:free` by default) → Gemini credential rotation. It does not try all five evaluation models for every request. Set `AI_AGENT_OPENROUTER_BACKUP_MODEL=''` to disable the OpenRouter backup. To use Gemini directly, set both `AI_AGENT_MODEL_PROVIDER='gemini'` and `AI_AGENT_MODEL='gemini-3.8-flash'`.
 
-Only retryable authentication, rate-limit, service-unavailable, and network failures trigger provider failover. Invalid request/configuration errors stop immediately. Every actual provider request consumes the existing model-call budget.
+`AI_AGENT_MODEL_TIMEOUT_SECONDS` applies to both OpenRouter and Gemini requests (default 45 seconds; accepted range 1–120). This is a per-provider-request timeout, not a hard deadline for the entire sequential fallback chain. Only retryable authentication, rate-limit, service-unavailable, and network failures trigger provider failover. A confirmed invalid API key (HTTP 401) skips further models under that same provider to avoid resending a known-invalid credential; HTTP 403 may still try a different model. Invalid request/configuration errors stop immediately. Every actual provider request consumes the existing model-call budget.
 
 ## 7. Start the agent
 
