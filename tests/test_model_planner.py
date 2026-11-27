@@ -127,6 +127,8 @@ def test_model_plan_prompt_includes_repository_working_rules():
 
 
 def test_model_plan_prompt_prefers_verified_new_file_workflow():
+    import json
+
     prompts = []
     catalog = {
         "buat_file": {
@@ -140,16 +142,24 @@ def test_model_plan_prompt_prefers_verified_new_file_workflow():
             "parameters": {"type": "object"},
         },
     }
-    response = (
-        '{"goal":"create exact file","tasks":[{"task_id":"create",'
-        '"title":"Create file with exact content","dependencies":[],',
-        '"execution_contract":{"objective":"create and verify exact file",'
-        '"allowed_tools":["buat_file_terverifikasi"],',
-        '"allowed_capabilities":["workspace.write","workspace.read"],',
-        '"max_tool_calls":1,"retry_limit":0,"evidence_required":true,',
-        '"completion_conditions":[{"type":"evidence_success","task_id":"create"}]}}],',
-        '"acceptance_criteria":[{"type":"all_tasks_completed"}]}'
-    )
+    response = json.dumps({
+        "goal": "create exact file",
+        "tasks": [{
+            "task_id": "create",
+            "title": "Create file with exact content",
+            "dependencies": [],
+            "execution_contract": {
+                "objective": "create and verify exact file",
+                "allowed_tools": ["buat_file_terverifikasi"],
+                "allowed_capabilities": ["workspace.write", "workspace.read"],
+                "max_tool_calls": 1,
+                "retry_limit": 0,
+                "evidence_required": True,
+                "completion_conditions": [{"type": "evidence_success", "task_id": "create"}],
+            },
+        }],
+        "acceptance_criteria": [{"type": "all_tasks_completed"}],
+    })
 
     def model_call(prompt):
         prompts.append(prompt)
