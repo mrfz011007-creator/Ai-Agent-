@@ -486,3 +486,28 @@ Pada commit sebelum perbaikan, `python scripts/termux_filesystem_smoke.py` di pe
 Uji interaktif Agent pada commit lama gagal dengan task `create_file` dan alasan `Tool not allowed by execution contract: cari_teks`. Kegagalan ini menjadi bukti reproduksi bug.
 
 **Status saat catatan dibuat:** perbaikan sudah masuk ke branch PR #18 dan CI lulus; uji interaktif di Termux harus diulang setelah checkout diperbarui ke commit `020005d`. Jangan menyatakan tahap end-to-end lulus sebelum pengulangan perangkat dan pemeriksaan file aktual berhasil.
+
+
+## 19. Roadmap integrity and approval validation — 2026-11-27
+
+Implementation branches added after the earlier checkpoint:
+
+- PR #20: bind explicit exact-file requests to the original user instruction. The runtime rejects a model proposal whose filename or full content differs, before interactive approval. A failed mismatch is recorded as tool evidence.
+- PR #21: bind explicit human approval to the tool, action, and exact argument payload using a SHA-256 approval ID. The prompt requires `SETUJU <nama_tool> <approval_id>`; callback argument mutation invalidates approval.
+- PR #22: persist each goal's original request, plan/task status, failure reason, and redacted tool results into the bounded SQLite conversation history used by direct chat. A regression test covers a denied file operation followed by a chat question after reopening the database.
+- PR #23: this document adds the device-validation procedure and current approval phrase.
+
+### Evidence and limits
+
+- PR #20 CI passed on Python 3.11 and 3.14, static/security checks, and the namespace smoke job on the final PR #20 code head `cfe5e73a15793e30ebd27880e1125e9b6d0dc2f1`.
+- PR #20 final head `cfe5e73a15793e30ebd27880e1125e9b6d0dc2f1`: push and PR workflows **SUCCESS** (runs [46020900152](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46020900152) and [46020907952](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46020907952)).
+- PR #21 final head `5145f3669cd463b5b7716e8714b8b7787de35bd6`: push and PR workflows **SUCCESS** (runs [46021799963](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021799963) and [46021811873](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021811873)).
+- PR #22 final head `1cbd1eb3e676be353fb01c3557918b6bad9c1799`: push and PR workflows **SUCCESS** (runs [46021923339](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021923339) and [46021934979](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46021934979)). Python 3.11 and 3.14 each reported **430 passed, 1 skipped, 1 deselected**; Ruff, Bandit, and dependency checks passed.
+- PR #23 final head `c06156729803c501805626f2bbce215ae2d54df6`: PR workflow **SUCCESS** (run [46022186179](https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/46022186179)); Python 3.11 and 3.14 each reported **430 passed, 1 skipped, 1 deselected**; static/security checks passed. This confirms the final documentation and validation instructions are CI-clean.
+- The strict Linux namespace job completed successfully as a job, but its actual namespace pytest was **skipped**: the hosted kernel reported `Strict Linux namespaces unavailable on this host`. This is not evidence that strict namespace isolation ran.
+- No claim is made that this code has passed on a physical Android/Termux device. The local Termux gate remains outstanding.
+- PRs #18–#23 remain unmerged pending review and explicit approval.
+
+### Termux validation gate
+
+Run the commands and interactive cases in `TERMUX.md` section “Roadmap regression and device validation”. Record actual output and exact tested commit SHA here only after the device run. The gate includes exact file content, mismatched model proposal rejection (covered deterministically by regression tests), explicit approval and denial, refusal to overwrite, context after restart, and graceful exit.
