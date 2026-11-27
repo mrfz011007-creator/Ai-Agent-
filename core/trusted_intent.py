@@ -18,11 +18,6 @@ _EXACT_CONTENT = re.compile(
     r"\s*[:：]\s*(.*)\Z",
     re.IGNORECASE | re.DOTALL,
 )
-_FOLLOW_UP = re.compile(
-    r"(?im)^\s*(?:baca kembali|verifikasi|laporkan|jangan menyatakan|"
-    r"read back|verify|report)\b"
-)
-
 
 def extract_trusted_file_intent(goal: str) -> dict[str, Any] | None:
     """Extract exact file arguments; ambiguity must be handled as a denial upstream."""
@@ -49,7 +44,6 @@ def extract_trusted_file_intent(goal: str) -> dict[str, Any] | None:
     raw_content = content_match.group(1)
     # Only a blank-line boundary immediately before a recognized follow-up
     # instruction ends the payload. Other blank lines are part of file content.
-    boundary = re.search(r"\r?\n[ \t]*\r?\n(?=[ \t]*" + _FOLLOW_UP.pattern.split("|")[0] + r")", "")
     follow_up = re.search(
         r"\r?\n[ \t]*\r?\n(?=[ \t]*(?:baca kembali|verifikasi|laporkan|"
         r"jangan menyatakan|read back|verify|report)\b)",
