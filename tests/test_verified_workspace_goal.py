@@ -251,7 +251,7 @@ def test_unrecognized_exact_file_format_fails_closed_before_approval(tmp_path, m
     )
 
     assert plan.status.value == "FAILED"
-    assert graph.tasks["create_file"] == graph.tasks["create_file"]
+    assert graph.tasks["create_file"].status == TaskStatus.FAILED
     assert approvals == []
     assert not (workspace / "catatan.txt").exists()
     assert runtime.last_goal_execution["create_file"]["status"] == "instruction_mismatch"
