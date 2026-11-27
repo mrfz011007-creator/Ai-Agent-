@@ -24,6 +24,7 @@ from security.workspace import (
 
 DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_SEARCH_RESULTS = 500
+MAX_STATIC_PYTHON_VALIDATION_BYTES = 256 * 1024
 
 
 def workspace_root() -> Path:
@@ -408,10 +409,13 @@ def validasi_python(nama, fungsi_wajib=None):
             "pesan": "fungsi_wajib harus berupa daftar nama fungsi/class yang valid.",
         }
     try:
-        raw = read_file_secure(workspace_root(), nama, _max_file_bytes())
+        raw = read_file_secure(
+            workspace_root(), nama,
+            min(_max_file_bytes(), MAX_STATIC_PYTHON_VALIDATION_BYTES),
+        )
         source = raw.decode("utf-8")
     except FileTooLargeError:
-        return {"status": "error", "success": False, "code": "FILE_TOO_LARGE", "pesan": "File melebihi batas validasi."}
+        return {"status": "error", "success": False, "code": "FILE_TOO_LARGE", "pesan": "File melebihi batas validasi 256 KiB."}
     except UnicodeDecodeError:
         return {"status": "error", "success": False, "code": "FILE_ENCODING_INVALID", "pesan": "File bukan UTF-8 valid."}
     except FileNotFoundError:
@@ -421,13 +425,17 @@ def validasi_python(nama, fungsi_wajib=None):
 
     try:
         tree = ast.parse(source, filename=nama, mode="exec")
-    except SyntaxError as error:
+    except (SyntaxError, RecursionError) as error:
         return {
             "status": "error",
             "success": False,
             "code": "PYTHON_SYNTAX_INVALID",
-            "pesan": f"Syntax error pada baris {error.lineno}: {error.msg}",
-            "line": error.lineno,
+            "pesan": (
+                f"Syntax error pada baris {error.lineno}: {error.msg}"
+                if isinstance(error, SyntaxError)
+                else "Struktur sintaks terlalu dalam untuk divalidasi."
+            ),
+            "line": error.lineno if isinstance(error, SyntaxError) else None,
         }
 
     definitions = [
