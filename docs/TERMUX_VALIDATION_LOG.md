@@ -176,3 +176,28 @@ Pada pemeriksaan GitHub terakhir untuk commit `ce1a05fe94181b03ca7bab323ac28fa37
 - Pisahkan tes lokal Termux, tes CI, dan tes provider live; jangan menyatukan hasil ketiganya.
 - Jangan mencatat API key, token, kredensial, data pribadi, atau output sensitif.
 - Pertahankan catatan kegagalan lama sebagai riwayat; tambahkan hasil baru alih-alih menghapus konteks sebelumnya.
+
+
+## 11. Tahap 2 — Fondasi percakapan (2026-11-27)
+
+Implementasi pada branch `agent/security-hardening-workspace`:
+
+- Menambahkan `core/conversation.py` sebagai jalur percakapan langsung melalui ModelGateway. Jalur ini tidak membuat plan dan tidak memiliki antarmuka eksekusi tools.
+- Menambahkan `core/request_router.py` untuk memisahkan pertanyaan biasa dari permintaan tindakan imperatif yang eksplisit. Permintaan ambigu secara default diarahkan ke percakapan, bukan eksekusi.
+- Menambahkan `AgentRuntime.chat()` dan mengubah CLI agar pertanyaan biasa mendapat jawaban langsung; jalur GoalRunner tetap dipakai untuk permintaan tindakan yang terdeteksi.
+- Instruksi percakapan membatasi klaim akses/eksekusi dan menyertakan konfigurasi provider/model primer serta fallback. Informasi tersebut adalah konfigurasi, bukan bukti model mana yang menangani satu permintaan tertentu.
+- Menambahkan `tests/test_conversation.py` untuk percakapan langsung, identitas model/fallback, input kosong/panjang, respons model kosong, klasifikasi intent, dan pemisahan CLI dari GoalRunner.
+
+### Verifikasi GitHub Actions
+
+Commit kode dan tes: `033144c6276a1cb7510b310ff9c7a6e76c9a2f6e`
+
+Workflow run: https://github.com/mrfz011007-creator/Ai-Agent-/actions/runs/45939531121
+
+- Python 3.11: 368 passed, 2 skipped; bootstrap smoke test 1 passed; Ruff dan Bandit sukses.
+- Python 3.14: 368 passed, 2 skipped; bootstrap smoke test 1 passed; Ruff dan Bandit sukses.
+- Dependency consistency dan compileall sukses pada kedua versi.
+- Bandit tidak menemukan isu baru; peringatan B608 yang sudah tercatat pada `core/state_store.py:133` tetap ada sebagai pengecualian `nosec`.
+- Tes provider live dan uji interaktif pada Termux belum dilakukan pada tahap ini.
+
+Tahap 2 dinyatakan selesai berdasarkan tes CI di atas. Tahap 3 (memori percakapan) belum dimulai. Kontrol `write_file_secure`, GuardEngine, PolicyEngine, ToolRouter, dan Python Runner tidak dilonggarkan. PR #17 tetap terbuka dan belum di-merge.
