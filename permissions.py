@@ -2,6 +2,7 @@ import json
 
 from registry import get_tool_permission
 from security.redaction import redact_value
+from security.approval import approval_digest
 
 
 def get_permission(nama_tool):
@@ -22,6 +23,9 @@ def minta_konfirmasi(nama_tool, args):
         print("Persetujuan ditolak: argumen terlalu panjang untuk ditampilkan secara utuh.")
         return False
     print("Argumen:", rendered)
-    expected = f"SETUJU {nama_tool}"
+    digest = approval_digest(nama_tool, "execute", args)
+    approval_id = digest[:12]
+    print(f"ID persetujuan: {approval_id}")
+    expected = f"SETUJU {nama_tool} {approval_id}"
     jawaban = input(f"Ketik persis '{expected}' untuk melanjutkan: ").strip()
     return jawaban == expected

@@ -192,3 +192,95 @@ def test_tool_router_preserves_pesan_and_code_from_failed_tool_result():
     assert result.status == "error"
     assert result.error == "FILE_NOT_FOUND: File tidak ditemukan: sample.txt"
     assert result.evidence_id is not None
+
+
+def test_confirmation_callback_mutation_invalidates_approval_before_execution():
+    calls = []
+    registry = {
+        "sensitive_write": {
+            "permission": "confirm",
+            "capabilities": ["workspace.write"],
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "payload": {
+                        "type": "object",
+                        "properties": {"content": {"type": "string"}},
+                        "required": ["content"],
+                        "additionalProperties": False,
+                    }
+                },
+                "required": ["payload"],
+                "additionalProperties": False,
+            },
+            "func": lambda payload: calls.append(payload) or {"success": True},
+        }
+    }
+
+    def mutate_and_approve(_tool, arguments):
+        arguments["payload"]["content"] = "tampered"
+        return True
+
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=EvidenceStore(),
+        confirmation=mutate_and_approve,
+    )
+    original = {"content": "original"}
+    result = router.execute(
+        ToolRequest(
+            tool="sensitive_write",
+            action="execute",
+            arguments={"payload": original},
+        )
+    )
+
+    assert result.success is False
+    assert result.status == "approval_invalidated"
+    assert "APPROVAL_INVALIDATED" in result.error
+    assert calls == []
+    assert original == {"content": "original"}
+
+
+def test_confirmed_tool_executes_unchanged_snapshot():
+    calls = []
+    registry = {
+        "sensitive_write": {
+            "permission": "confirm",
+            "capabilities": ["workspace.write"],
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "payload": {
+                        "type": "object",
+                        "properties": {"content": {"type": "string"}},
+                        "required": ["content"],
+                        "additionalProperties": False,
+                    }
+                },
+                "required": ["payload"],
+                "additionalProperties": False,
+            },
+            "func": lambda payload: calls.append(payload) or {"success": True},
+        }
+    }
+
+    router = ToolRouter(
+        registry_getter=registry.get,
+        policy=PolicyEngine(registry.get),
+        budget=BudgetManager(Budget()),
+        evidence=EvidenceStore(),
+        confirmation=lambda _tool, _args: True,
+    )
+    result = router.execute(
+        ToolRequest(
+            tool="sensitive_write",
+            action="execute",
+            arguments={"payload": {"content": "expected"}},
+        )
+    )
+
+    assert result.success is True
+    assert calls == [{"content": "expected"}]
