@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from core.execution_contract import ExecutionContract, ExecutionContractError
-from execution.command import run_command
+# These tests exercise the internal sandbox mechanics after authorization.
+from execution.command import _run_command_unchecked as run_command
 from verification.criteria import CriterionValidationError, validate_criteria
 
 

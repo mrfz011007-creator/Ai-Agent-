@@ -70,12 +70,16 @@ def test_memory_is_scoped_to_workspace(monkeypatch, tmp_path):
     assert recall("scope")["value"] == "workspace-only"
 
 
-def test_command_output_is_redacted():
+def test_command_output_is_redacted(tmp_path, monkeypatch):
     from execution.command import run_command
 
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(workspace))
+
     result = run_command(
-        command="python -c \"print('AIzaSyA12345678901234567890')\"",
-        cwd=".",
+        command="echo AIzaSyA12345678901234567890",
+        cwd=str(workspace),
     )
 
     assert result["success"] is True
@@ -313,18 +317,24 @@ def test_guard_rejects_shell_execution_bypass(tmp_path):
     assert result.reason == "SHELL_EXECUTION_DENIED"
 
 
-def test_guard_still_allows_non_shell_executables(tmp_path):
+def test_guard_denies_interpreter_execution_and_allows_basic_utilities(tmp_path):
     from security.guard import GuardEngine
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     guard = GuardEngine(workspace)
 
-    result = guard.check(
+    blocked = guard.check(
         tool="run_command",
         arguments={"cwd": str(workspace), "command": "python -c 'print(1)'"},
     )
-    assert result.allowed is True
+    allowed = guard.check(
+        tool="run_command",
+        arguments={"cwd": str(workspace), "command": "ls -la"},
+    )
+    assert blocked.allowed is False
+    assert blocked.reason == "INTERPRETER_EXECUTION_DENIED"
+    assert allowed.allowed is True
 
 
 def test_router_rejects_task_tool_call_bound_to_stale_attempt(tmp_path):

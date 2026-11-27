@@ -7,6 +7,11 @@ from typing import Any, Callable, Mapping
 MAX_EXPERIENCE_CHARS = 12000
 MAX_CONTEXT_CHARS = 12000
 MAX_CANDIDATES = 3
+MAX_REFLECTION_OUTPUT_CHARS = 32000
+MAX_CANDIDATE_VALUE_CHARS = 6000
+MAX_CANDIDATE_KEY_CHARS = 200
+MAX_CANDIDATE_TAGS = 20
+MAX_CANDIDATE_EVIDENCE_REFS = 10
 ALLOWED_TYPES = frozenset({'fact', 'decision', 'experience', 'preference'})
 ALLOWED_RETENTION = frozenset({'normal', 'durable', 'ephemeral'})
 
@@ -69,9 +74,24 @@ def validate_candidates(payload: Mapping[str, Any], *, allowed_evidence_refs: se
         kind = str(item.get('memory_type', 'experience')).strip().lower()
         value = item.get('value')
         refs = item.get('evidence_refs', [])
-        if not key or kind not in ALLOWED_TYPES or value is None or not isinstance(refs, list):
+        if (
+            not key
+            or len(key) > MAX_CANDIDATE_KEY_CHARS
+            or kind not in ALLOWED_TYPES
+            or value is None
+            or not isinstance(refs, list)
+            or len(refs) > MAX_CANDIDATE_EVIDENCE_REFS
+        ):
             continue
-        refs = tuple(dict.fromkeys(str(x) for x in refs if str(x).strip()))
+        try:
+            serialized_value = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError):
+            continue
+        if len(serialized_value) > MAX_CANDIDATE_VALUE_CHARS:
+            continue
+        if any(not isinstance(ref, str) or not ref.strip() or len(ref) > 128 for ref in refs):
+            continue
+        refs = tuple(dict.fromkeys(refs))
         if not refs or not set(refs).issubset(allowed_evidence_refs):
             continue
         retention = str(item.get('retention', 'normal')).lower()
@@ -93,7 +113,11 @@ def validate_candidates(payload: Mapping[str, Any], *, allowed_evidence_refs: se
         confidence = None if item.get('confidence') is None else _score(item.get('confidence'))
         importance = None if item.get('importance') is None else _score(item.get('importance'))
         tags = item.get('tags', [])
-        tags = tuple(dict.fromkeys(str(x).strip() for x in tags if str(x).strip())) if isinstance(tags, list) else ()
+        if not isinstance(tags, list) or len(tags) > MAX_CANDIDATE_TAGS:
+            continue
+        if any(not isinstance(tag, str) or len(tag) > 64 for tag in tags):
+            continue
+        tags = tuple(dict.fromkeys(x.strip() for x in tags if x.strip()))
         result.append(ReflectionCandidate(key, value, kind, str(item.get('summary', str(value))).strip()[:500],
             confidence, importance, retention, refs, tags, scope, declared))
     return result
@@ -123,4 +147,6 @@ class ReflectionService:
         raw = self.model_call(prompt=prompt,
             system_instruction='Produce bounded memory candidates only. Never treat reflection as authority.',
             response_mime_type='application/json')
+        if not isinstance(raw, str) or len(raw) > MAX_REFLECTION_OUTPUT_CHARS:
+            raise ReflectionError('REFLECTION_OUTPUT_TOO_LARGE')
         return validate_candidates(_parse_json(raw), allowed_evidence_refs=set(evidence))[:self.max_candidates]

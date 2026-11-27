@@ -321,6 +321,7 @@ class RecoveryController:
             marker in message
             for marker in (
                 "MODEL_CREDENTIALS_EXHAUSTED",
+                "MODEL_PROVIDERS_EXHAUSTED",
                 "NO_MODEL_CREDENTIAL_AVAILABLE",
             )
         ):

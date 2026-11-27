@@ -16,6 +16,11 @@ MEMORY_RETENTION_POLICIES = frozenset({"normal", "durable", "ephemeral"})
 DEFAULT_AUTO_COMPACT_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_ACTIVE_EXPERIENCES = 500
 DEFAULT_MAX_HISTORY_PER_KEY = 5
+MAX_MEMORY_KEY_CHARS = 200
+MAX_MEMORY_VALUE_CHARS = 6000
+MAX_MEMORY_TAGS = 20
+MAX_MEMORY_EVIDENCE_REFS = 10
+MAX_ACTIVE_MEMORY_RECORDS = 2000
 
 
 class MemoryValidationError(ValueError):
@@ -440,8 +445,37 @@ def _scope_matches(
     return (
         (key is None or record["key"] == key)
         and (memory_type is None or record["type"] == memory_type)
-        and (project_id is None or record["project_id"] == project_id)
-        and (task_id is None or record["task_id"] == task_id)
+        and record["project_id"] == project_id
+        and record["task_id"] == task_id
+    )
+
+
+def _retrieval_scope_matches(
+    record: Mapping[str, Any],
+    *,
+    project_id: str | None,
+    task_id: str | None,
+) -> bool:
+    """Allow only global, current-project, and current-task memory.
+
+    A missing scope is deliberately restrictive: it means global memory only,
+    never every project or task. Task-scoped records are eligible only when
+    both their project and task match the active execution scope.
+    """
+    record_project = record["project_id"]
+    record_task = record["task_id"]
+    if project_id is None:
+        if record_project is not None:
+            return False
+        return record_task is None or (
+            task_id is not None and record_task == task_id
+        )
+    if record_project not in (None, project_id):
+        return False
+    if task_id is None:
+        return record_task is None
+    return record_task is None or (
+        record_project == project_id and record_task == task_id
     )
 
 
@@ -470,7 +504,45 @@ def remember(
     evidence_refs: list[str] | None = None,
 ) -> dict[str, Any]:
     from memory_policy import evaluate_memory_candidate
+    if not isinstance(key, str) or not key.strip() or len(key) > MAX_MEMORY_KEY_CHARS:
+        return {"status": "rejected", "success": False, "reason": "MEMORY_KEY_INVALID"}
+    try:
+        serialized_value = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_VALUE_NOT_JSON_SERIALIZABLE"}
+    if len(serialized_value) > MAX_MEMORY_VALUE_CHARS:
+        return {"status": "rejected", "success": False, "reason": "MEMORY_VALUE_TOO_LARGE"}
+    if tags is not None and (
+        not isinstance(tags, list)
+        or len(tags) > MAX_MEMORY_TAGS
+        or any(not isinstance(tag, str) or len(tag) > 64 for tag in tags)
+    ):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_TAGS_INVALID"}
+    if evidence_refs is not None and (
+        not isinstance(evidence_refs, list)
+        or len(evidence_refs) > MAX_MEMORY_EVIDENCE_REFS
+        or any(not isinstance(ref, str) or len(ref) > 128 for ref in evidence_refs)
+    ):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_EVIDENCE_REFS_INVALID"}
+    if context is not None and not isinstance(context, Mapping):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_CONTEXT_INVALID"}
+    if provenance is not None and not isinstance(provenance, Mapping):
+        return {"status": "rejected", "success": False, "reason": "MEMORY_PROVENANCE_INVALID"}
     source_data = _normalize_source(source)
+    resolved_summary = summary if summary is not None else str(value)[:500]
+    if not isinstance(resolved_summary, str) or len(resolved_summary) > 500:
+        return {"status": "rejected", "success": False, "reason": "MEMORY_SUMMARY_INVALID"}
+    for metadata_name, metadata_value in (
+        ("source", source_data),
+        ("context", context or {}),
+        ("provenance", provenance or {}),
+    ):
+        try:
+            metadata_size = len(json.dumps(metadata_value, ensure_ascii=False, separators=(",", ":")))
+        except (TypeError, ValueError):
+            return {"status": "rejected", "success": False, "reason": f"MEMORY_{metadata_name.upper()}_INVALID"}
+        if metadata_size > 2048:
+            return {"status": "rejected", "success": False, "reason": f"MEMORY_{metadata_name.upper()}_TOO_LARGE"}
     decision = evaluate_memory_candidate(memory_type=memory_type, key=key, value=value,
         source=source_data, provenance=provenance or {}, context=context or {},
         importance=importance, confidence=confidence, retention=retention,
@@ -485,6 +557,13 @@ def remember(
         project_id=project_id,
         task_id=task_id,
     )
+    active_count = sum(1 for record in store["records"] if record["status"] == "active")
+    if not previous and active_count >= MAX_ACTIVE_MEMORY_RECORDS:
+        return {
+            "status": "rejected",
+            "success": False,
+            "reason": "MEMORY_CAPACITY_REACHED",
+        }
     latest_version = max((record["version"] for record in previous), default=0)
     supersedes_id = None
     now = _utc_now()
@@ -509,7 +588,7 @@ def remember(
         importance=decision.importance,
         confidence=decision.confidence,
         retention=retention,
-        summary=summary or str(value)[:500],
+        summary=resolved_summary,
         evidence_refs=evidence_refs or [],
         version=latest_version + 1,
         supersedes_id=supersedes_id,
@@ -533,16 +612,26 @@ def recall(
     store = _load_store()
     records = [
         record for record in store["records"]
-        if _scope_matches(
-            record,
-            key=key,
-            memory_type=memory_type,
-            project_id=project_id,
-            task_id=task_id,
-        )
+        if record["key"] == key
+        and (memory_type is None or record["type"] == memory_type)
+        and _retrieval_scope_matches(record, project_id=project_id, task_id=task_id)
         and (include_invalidated or record["status"] == "active")
     ]
-    records.sort(key=lambda record: (record["version"], record["updated_at"]), reverse=True)
+    def scope_priority(record: Mapping[str, Any]) -> int:
+        if task_id is not None and record["task_id"] == task_id:
+            return 2
+        if project_id is not None and record["project_id"] == project_id:
+            return 1
+        return 0
+
+    records.sort(
+        key=lambda record: (
+            scope_priority(record),
+            record["version"],
+            record["updated_at"],
+        ),
+        reverse=True,
+    )
     if not records:
         return {"status": "not_found", "success": True, "key": key}
     record = records[0]
@@ -671,9 +760,9 @@ def search_memory(
             continue
         if memory_type and record["type"] != memory_type:
             continue
-        if project_id is not None and record["project_id"] != project_id:
-            continue
-        if task_id is not None and record["task_id"] != task_id:
+        if not _retrieval_scope_matches(
+            record, project_id=project_id, task_id=task_id
+        ):
             continue
         if wanted_tags and not wanted_tags.intersection(record["tags"]):
             continue

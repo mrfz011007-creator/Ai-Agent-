@@ -8,6 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+MAX_PENDING_ITEMS = 500
+MAX_TOTAL_ITEMS = 1000
+MAX_QUEUE_FILE_BYTES = 20 * 1024 * 1024
+MAX_QUEUE_CANDIDATE_CHARS = 16000
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
@@ -18,18 +23,37 @@ def _load() -> dict[str, Any]:
     path = _path()
     if not path.exists():
         return {'schema_version': 1, 'items': []}
+    if path.stat().st_size > MAX_QUEUE_FILE_BYTES:
+        raise RuntimeError('REFLECTION_QUEUE_TOO_LARGE')
     value = json.loads(path.read_text(encoding='utf-8'))
-    if not isinstance(value, Mapping) or value.get('schema_version') != 1 or not isinstance(value.get('items'), list):
+    if (
+        not isinstance(value, Mapping)
+        or value.get('schema_version') != 1
+        or not isinstance(value.get('items'), list)
+        or len(value['items']) > MAX_TOTAL_ITEMS
+    ):
         raise RuntimeError('REFLECTION_QUEUE_INVALID')
+    for item in value['items']:
+        if (
+            not isinstance(item, Mapping)
+            or not isinstance(item.get('id'), str)
+            or item.get('status') not in {'pending', 'approved', 'rejected'}
+            or not isinstance(item.get('candidate'), Mapping)
+            or len(json.dumps(item.get('candidate'), ensure_ascii=False, separators=(",", ":"))) > MAX_QUEUE_CANDIDATE_CHARS
+        ):
+            raise RuntimeError('REFLECTION_QUEUE_ITEM_INVALID')
     return dict(value)
 
 def _save(value: Mapping[str, Any]) -> None:
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    if len(payload.encode("utf-8")) > MAX_QUEUE_FILE_BYTES:
+        raise RuntimeError('REFLECTION_QUEUE_TOO_LARGE')
     fd, temporary = tempfile.mkstemp(prefix='.reflection-', suffix='.tmp', dir=path.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
+            stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
@@ -39,7 +63,21 @@ def _save(value: Mapping[str, Any]) -> None:
         raise
 
 def enqueue(candidate: Mapping[str, Any], *, reason: str) -> dict[str, Any]:
+    if not isinstance(candidate, Mapping):
+        raise ValueError('REFLECTION_QUEUE_CANDIDATE_INVALID')
+    if len(json.dumps(candidate, ensure_ascii=False, separators=(",", ":"))) > MAX_QUEUE_CANDIDATE_CHARS:
+        raise ValueError('REFLECTION_QUEUE_CANDIDATE_TOO_LARGE')
+    if not isinstance(reason, str) or len(reason) > 200:
+        raise ValueError('REFLECTION_QUEUE_REASON_INVALID')
     store = _load()
+    pending_count = sum(1 for entry in store['items'] if entry.get('status') == 'pending')
+    if pending_count >= MAX_PENDING_ITEMS:
+        raise RuntimeError('REFLECTION_QUEUE_FULL')
+    if len(store['items']) >= MAX_TOTAL_ITEMS:
+        pending = [entry for entry in store['items'] if entry.get('status') == 'pending']
+        resolved = [entry for entry in store['items'] if entry.get('status') != 'pending']
+        keep_resolved = max(0, MAX_TOTAL_ITEMS - len(pending) - 1)
+        store['items'] = resolved[-keep_resolved:] + pending if keep_resolved else pending
     item = {'id': 'reflection-' + uuid.uuid4().hex[:12], 'status': 'pending', 'created_at': _now(),
             'reason': reason, 'candidate': dict(candidate)}
     store['items'].append(item)

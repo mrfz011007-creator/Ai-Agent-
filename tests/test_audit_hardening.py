@@ -107,7 +107,8 @@ def test_router_redacts_long_string_output():
     assert "REDACTED" in str(result.data)
 
 
-def test_router_clamps_run_command_timeout_to_remaining_runtime():
+def test_router_clamps_run_command_timeout_to_remaining_runtime(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
     seen = {}
     registry = {
         "run_command": {
@@ -140,7 +141,7 @@ def test_router_clamps_run_command_timeout_to_remaining_runtime():
         ToolRequest(
             "run_command",
             "execute",
-            {"command": "true", "cwd": ".", "timeout": 999999},
+            {"command": "true", "cwd": str(tmp_path), "timeout": 999999},
         )
     )
     assert result.success
@@ -241,3 +242,30 @@ def test_task_start_cannot_bypass_uncompleted_dependencies(tmp_path):
     assert manager.get("CHILD").status == TaskStatus.PENDING
     assert manager.get("CHILD").attempts == 0
 
+
+
+
+def test_redaction_uses_sensitive_dictionary_keys_without_hiding_usage_counts():
+    from security.redaction import redact_value
+
+    payload = {
+        "OPENROUTER_API_KEY": "custom-format-secret",
+        "nested": {
+            "client_secret": "another-secret",
+            "access_token": "access-secret",
+            "github_token": "github-secret",
+            "oauth_token": "oauth-secret",
+            "max_tokens": 4096,
+            "token_count": 3,
+        },
+    }
+
+    result = redact_value(payload)
+
+    assert result["OPENROUTER_API_KEY"] == "[REDACTED_SECRET]"
+    assert result["nested"]["client_secret"] == "[REDACTED_SECRET]"
+    assert result["nested"]["access_token"] == "[REDACTED_SECRET]"
+    assert result["nested"]["github_token"] == "[REDACTED_SECRET]"
+    assert result["nested"]["oauth_token"] == "[REDACTED_SECRET]"
+    assert result["nested"]["max_tokens"] == 4096
+    assert result["nested"]["token_count"] == 3
