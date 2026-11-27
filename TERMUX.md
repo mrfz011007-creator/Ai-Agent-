@@ -31,23 +31,23 @@ The workspace is deliberately separate from the cloned source-code directory: ke
 
 These variables can be added to your Termux shell profile later if needed.
 
-## 4. Install Python dependencies
+## 4. Install application dependencies
 
 ```bash
 python -m pip install -r requirements.txt
-python -m pip check
-python -m compileall -q .
 ```
 
-The second command verifies installed dependency consistency. The third command verifies that all Python sources compile.
+Instalasi ini menyiapkan dependency untuk menjalankan agent. Pemeriksaan konsistensi dependency, kompilasi seluruh sumber Python, dan validasi dependency dilakukan rutin oleh GitHub Actions; tidak perlu mengulang seluruh pemeriksaan tersebut di Termux.
 
-## 5. Run the repository tests
+## 5. Automated test gate — GitHub Actions
 
-```bash
-python -m pytest -q
-```
+Seluruh tes otomatis repository dijalankan di GitHub Actions pada setiap push dan pull request, dengan matriks Python 3.11 dan 3.14. Workflow juga menjalankan `pip check`, `compileall`, repository test suite, laporan branch coverage, Ruff, dan Bandit. Tes strict Linux namespace dipisahkan ke job khusus karena bergantung pada dukungan kernel runner.
 
-A clean environment should report the repository test suite as passing.
+Tes yang mensimulasikan Termux melalui environment variable dan mock Android tetap dijalankan di CI. Ini mencakup verifikasi kebijakan fallback Termux dan resource limit tanpa memerlukan perangkat Android.
+
+Untuk alur kerja normal, jangan jalankan ulang seluruh `pytest`, `compileall`, Ruff, dan Bandit di Termux. Gunakan GitHub Actions sebagai gerbang tes otomatis. Jalankan tes lokal hanya saat sedang mendiagnosis masalah khusus perangkat, lalu catat hasilnya terpisah dari hasil CI.
+
+Pengujian yang benar-benar membutuhkan Android tetap dilakukan langsung di Termux, terutama startup pada perangkat, akses workspace dan izin file aktual, penyimpanan percakapan setelah restart, perilaku shell Termux, serta koneksi provider menggunakan kredensial lokal. Jangan mengirim API key ke CI atau mencetaknya ke log.
 
 ## 6. Configure model providers
 
