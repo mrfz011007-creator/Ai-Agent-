@@ -37,6 +37,22 @@ class Credential:
     failures: int = 0
 
 
+
+@dataclass(frozen=True)
+class ModelCallResult:
+    """Text plus provider metadata returned outside the model-generated content."""
+
+    text: str
+    provider: str | None
+    requested_model: str | None
+    actual_model: str | None
+    request_id: str | None = None
+
+    @property
+    def identity_verified(self) -> bool:
+        return self.actual_model is not None
+
+
 class ModelGateway:
     """Single model-entry boundary with bounded credential rotation."""
 
@@ -192,6 +208,55 @@ class ModelGateway:
             response_mime_type=response_mime_type,
         )
 
+    def generate_text_with_metadata(
+        self,
+        prompt: str,
+        *,
+        system_instruction: str = "",
+        response_mime_type: str | None = None,
+    ) -> ModelCallResult:
+        """Return text and provider-reported identity without changing text APIs."""
+        if self.provider is None:
+            raise RuntimeError("MODEL_PROVIDER_NOT_CONFIGURED")
+
+        def invoke(provider, secret):
+            metadata_method = getattr(provider, "text_with_metadata", None)
+            if callable(metadata_method):
+                return metadata_method(
+                    secret,
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    model=self.config.model,
+                    response_mime_type=response_mime_type,
+                )
+            return {
+                "text": provider.text(
+                    secret,
+                    prompt=prompt,
+                    system_instruction=system_instruction,
+                    model=self.config.model,
+                    response_mime_type=response_mime_type,
+                ),
+                "actual_model": None,
+                "request_id": None,
+            }
+
+        response = self.call(invoke)
+        if not isinstance(response, dict):
+            raise RuntimeError("MODEL_PROVIDER_RESPONSE_INVALID")
+        text = response.get("text")
+        if not isinstance(text, str):
+            raise RuntimeError("MODEL_PROVIDER_RESPONSE_INVALID")
+        actual_model = response.get("actual_model")
+        request_id = response.get("request_id")
+        return ModelCallResult(
+            text=text,
+            provider=getattr(self.provider, "name", self.config.provider),
+            requested_model=self.config.model,
+            actual_model=actual_model.strip() if isinstance(actual_model, str) and actual_model.strip() else None,
+            request_id=request_id.strip() if isinstance(request_id, str) and request_id.strip() else None,
+        )
+
     def generate_text(
         self,
         prompt: str,
@@ -199,20 +264,12 @@ class ModelGateway:
         system_instruction: str = "",
         response_mime_type: str | None = None,
     ) -> str:
-        """High-level model API used by planners and execution services."""
-        if self.provider is None:
-            raise RuntimeError("MODEL_PROVIDER_NOT_CONFIGURED")
-
-        def invoke(provider, secret):
-            return provider.text(
-                secret,
-                prompt=prompt,
-                system_instruction=system_instruction,
-                model=self.config.model,
-                response_mime_type=response_mime_type,
-            )
-
-        return self.call(invoke)
+        """Backward-compatible text-only API used by planners and execution services."""
+        return self.generate_text_with_metadata(
+            prompt,
+            system_instruction=system_instruction,
+            response_mime_type=response_mime_type,
+        ).text
 
     def generate(
         self,
@@ -337,6 +394,64 @@ class FallbackModelGateway:
             raise RuntimeError("MODEL_PROVIDERS_EXHAUSTED") from last_error
         raise RuntimeError("NO_MODEL_PROVIDER_AVAILABLE")
 
+    def generate_text_with_metadata(
+        self,
+        prompt: str,
+        *,
+        system_instruction: str = "",
+        response_mime_type: str | None = None,
+    ) -> ModelCallResult:
+        """Return metadata from the exact fallback route that served the request."""
+        last_error: Exception | None = None
+        skipped_providers: set[str] = set()
+        for route in self.routes:
+            provider_name = self._provider_name(route)
+            if provider_name and provider_name in skipped_providers:
+                continue
+            try:
+                method = getattr(route, "generate_text_with_metadata", None)
+                if callable(method):
+                    result = method(
+                        prompt=prompt,
+                        system_instruction=system_instruction,
+                        response_mime_type=response_mime_type,
+                    )
+                else:
+                    # Compatibility for simple/custom routes implementing only
+                    # the long-standing string-returning API.
+                    result = route.generate_text(
+                        prompt=prompt,
+                        system_instruction=system_instruction,
+                        response_mime_type=response_mime_type,
+                    )
+                if isinstance(result, ModelCallResult):
+                    return result
+                if isinstance(result, str):
+                    config = getattr(route, "config", None)
+                    provider = provider_name or getattr(config, "provider", None)
+                    requested_model = getattr(config, "model", None)
+                    return ModelCallResult(
+                        text=result,
+                        provider=provider,
+                        requested_model=requested_model,
+                        actual_model=None,
+                    )
+                raise RuntimeError("MODEL_PROVIDER_RESPONSE_INVALID")
+            except Exception as error:
+                last_error = error
+                kind = ModelGateway.classify_error(error)
+                if kind not in {
+                    ProviderErrorKind.AUTH,
+                    ProviderErrorKind.RATE_LIMIT,
+                    ProviderErrorKind.UNAVAILABLE,
+                }:
+                    raise
+                if provider_name and self._should_skip_provider(error):
+                    skipped_providers.add(provider_name)
+        if last_error is not None:
+            raise RuntimeError("MODEL_PROVIDERS_EXHAUSTED") from last_error
+        raise RuntimeError("NO_MODEL_PROVIDER_AVAILABLE")
+
     def generate_text(
         self,
         prompt: str,
@@ -344,12 +459,11 @@ class FallbackModelGateway:
         system_instruction: str = "",
         response_mime_type: str | None = None,
     ) -> str:
-        return self._invoke(
-            "generate_text",
-            prompt=prompt,
+        return self.generate_text_with_metadata(
+            prompt,
             system_instruction=system_instruction,
             response_mime_type=response_mime_type,
-        )
+        ).text
 
     def text(
         self,
