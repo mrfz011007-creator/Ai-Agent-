@@ -4,8 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
-from core.plan import PlanDecoder, PlanGraphError, PlanProposal
 from core.agent_rules import agent_rules_prompt_section
+from core.plan import PlanDecoder, PlanGraphError, PlanProposal
 from core.memory_service import MemoryService, memory_prompt_context
 
 
