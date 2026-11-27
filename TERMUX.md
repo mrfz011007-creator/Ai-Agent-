@@ -216,7 +216,7 @@ cd ~/Projects/Ai-Agent/testing
 git status --short
 git fetch origin agent/audit-hardening-followups
 git switch -C termux/roadmap-validation origin/agent/audit-hardening-followups
-git rev-parse --short HEAD
+git rev-parse HEAD
 ```
 
 Create an isolated workspace and database for this validation. Do not reuse or delete an existing production/test database:
@@ -278,7 +278,8 @@ cd ~/Projects/Ai-Agent/testing
 git status --short
 # If the command above prints modified/untracked files, stop and preserve them first.
 git fetch origin agent/post-pr24-hardening
-git switch -C termux/post-pr24-hardening origin/agent/post-pr24-hardening
+# If this local branch already exists, stop and inspect it; do not force-reset it.
+git switch --create termux/post-pr24-hardening --track origin/agent/post-pr24-hardening
 git rev-parse --short HEAD
 git status --short
 ```
