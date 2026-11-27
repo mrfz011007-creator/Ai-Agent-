@@ -37,11 +37,20 @@ class GeminiProvider:
         model: str,
     ) -> Any:
         client = self._client_factory(api_key)
-        return client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=config,
-        )
+        try:
+            return client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+        finally:
+            close = getattr(client, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    # Cleanup failure must not mask the provider response/error.
+                    pass
 
     def text(
         self,
