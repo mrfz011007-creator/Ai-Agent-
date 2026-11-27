@@ -5,7 +5,14 @@ import urllib.error
 import pytest
 
 from core.providers.openrouter import OpenRouterError, OpenRouterProvider
-from core.model_gateway import FallbackModelGateway, ModelGateway, ProviderErrorKind
+from core.model_gateway import (
+    Credential,
+    FallbackModelGateway,
+    ModelCallResult,
+    ModelGateway,
+    ProviderErrorKind,
+)
+from core.model_config import ModelConfig
 
 
 @pytest.fixture(autouse=True)
@@ -436,3 +443,134 @@ def test_gemini_client_is_closed_after_request():
         "key", contents="hello", config={}, model="test-model"
     ) == "response"
     assert client.closed is True
+
+
+
+def test_openrouter_reports_model_and_request_id_from_provider_response(monkeypatch):
+    payload = {
+        "id": "req-openrouter-123",
+        "model": "nvidia/nemotron-3.5-super-vl:free",
+        "choices": [{"message": {"content": "served"}}],
+    }
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda request, timeout: FakeResponse(json.dumps(payload).encode("utf-8")),
+    )
+
+    result = OpenRouterProvider().text_with_metadata(
+        "secret",
+        prompt="hello",
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
+
+    assert result == {
+        "text": "served",
+        "actual_model": "nvidia/nemotron-3.5-super-vl:free",
+        "request_id": "req-openrouter-123",
+    }
+
+
+def test_openrouter_marks_actual_model_unavailable_when_provider_omits_it(monkeypatch):
+    payload = {"choices": [{"message": {"content": "served"}}]}
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda request, timeout: FakeResponse(json.dumps(payload).encode("utf-8")),
+    )
+
+    result = OpenRouterProvider().text_with_metadata(
+        "secret", prompt="hello", model="requested/model"
+    )
+
+    assert result["text"] == "served"
+    assert result["actual_model"] is None
+
+
+def test_model_gateway_keeps_legacy_string_api_and_returns_provider_metadata(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    class Provider:
+        name = "openrouter"
+
+        def text_with_metadata(self, api_key, **kwargs):
+            assert api_key == "test-key"
+            assert kwargs["model"] == "requested/model"
+            return {
+                "text": "hello",
+                "actual_model": "provider/actual-model",
+                "request_id": "req-42",
+            }
+
+    gateway = ModelGateway(
+        credentials=[Credential("OPENROUTER_API_KEY", "OPENROUTER_API_KEY")],
+        provider=Provider(),
+        config=ModelConfig(provider="openrouter", model="requested/model"),
+        max_attempts=1,
+    )
+
+    metadata = gateway.generate_text_with_metadata("prompt")
+    assert metadata == ModelCallResult(
+        text="hello",
+        provider="openrouter",
+        requested_model="requested/model",
+        actual_model="provider/actual-model",
+        request_id="req-42",
+    )
+    assert gateway.generate_text("prompt") == "hello"
+
+
+def test_fallback_gateway_reports_the_route_that_actually_succeeded():
+    from types import SimpleNamespace
+
+    calls = []
+
+    class Route:
+        def __init__(self, name, provider, model, response=None, error=None):
+            self.provider = SimpleNamespace(name=provider)
+            self.config = SimpleNamespace(provider=provider, model=model)
+            self.response = response
+            self.error = error
+            self.name = name
+
+        def generate_text_with_metadata(self, **kwargs):
+            calls.append(self.name)
+            if self.error:
+                raise self.error
+            return self.response
+
+    backup_result = ModelCallResult(
+        text="from backup",
+        provider="openrouter",
+        requested_model="backup/requested",
+        actual_model="backup/served",
+        request_id="req-backup",
+    )
+    gateway = FallbackModelGateway([
+        Route("primary", "openrouter", "primary/model", error=RuntimeError("503 unavailable")),
+        Route("backup", "openrouter", "backup/requested", response=backup_result),
+    ])
+
+    result = gateway.generate_text_with_metadata("prompt")
+
+    assert result == backup_result
+    assert calls == ["primary", "backup"]
+    assert gateway.generate_text("prompt") == "from backup"
+
+
+def test_fallback_legacy_route_is_reported_unverified_not_as_actual_model():
+    from types import SimpleNamespace
+
+    class LegacyRoute:
+        provider = SimpleNamespace(name="openrouter")
+        config = SimpleNamespace(provider="openrouter", model="configured/model")
+
+        def generate_text(self, **kwargs):
+            return "legacy response"
+
+    result = FallbackModelGateway([LegacyRoute()]).generate_text_with_metadata("prompt")
+
+    assert result.text == "legacy response"
+    assert result.provider == "openrouter"
+    assert result.requested_model == "configured/model"
+    assert result.actual_model is None
+    assert result.identity_verified is False
