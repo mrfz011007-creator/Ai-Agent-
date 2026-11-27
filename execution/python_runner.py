@@ -35,6 +35,19 @@ def _failure(status: str, message: str) -> dict:
     }
 
 
+def _build_python_bootstrap(script_path: str, script_directory: str) -> str:
+    """Build valid interpreter source that executes the bounded stdin payload."""
+    lines = (
+        "import sys",
+        f"script_path = {script_path!r}",
+        "sys.argv = [script_path]",
+        "source = sys.stdin.buffer.read().decode('utf-8')",
+        f"sys.path.insert(0, {script_directory!r})",
+        "namespace = {'__name__': '__main__', '__file__': script_path, '__package__': None}",
+        "exec(compile(source, script_path, 'exec', dont_inherit=True), namespace, namespace)",
+    )
+    return "\\n".join(lines) + "\\n"
+
 def run_python_file(
     nama: str,
     timeout: float = DEFAULT_PYTHON_TIMEOUT_SECONDS,
@@ -110,15 +123,7 @@ def run_python_file(
 
     script_path = str(workspace / nama)
     script_directory = str((workspace / nama).parent)
-    bootstrap = (
-        "import sys\\n"
-        f"script_path = {script_path!r}\\n"
-        "sys.argv = [script_path]\\n"
-        "source = sys.stdin.buffer.read().decode('utf-8')\\n"
-        f"sys.path.insert(0, {script_directory!r})\\n"
-        "namespace = {'__name__': '__main__', '__file__': script_path, '__package__': None}\\n"
-        "exec(compile(source, script_path, 'exec', dont_inherit=True), namespace, namespace)\\n"
-    )
+    bootstrap = _build_python_bootstrap(script_path, script_directory)
 
     # Interpreter-specific libraries are injected only after setpriv has
     # dropped every capability; setpriv itself uses only system loader paths.
