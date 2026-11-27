@@ -5,6 +5,8 @@ import json
 import pytest
 
 from core.memory_service import MemoryService
+from core.contracts import ToolResult
+from verification.evidence import EvidenceStore
 from core.reflection import (
     MAX_REFLECTION_OUTPUT_CHARS,
     ReflectionError,
@@ -109,6 +111,18 @@ def test_reflection_rejects_model_response_over_output_limit():
         service.reflect(experience={"success": True}, evidence_refs=["ev-1"])
 
 
+def _evidence_store(evidence_id, task_id):
+    store = EvidenceStore()
+    store.record(
+        evidence_id=evidence_id,
+        task_id=task_id,
+        tool="test_tool",
+        action="execute",
+        result=ToolResult(True, "SUCCESS", "test_tool"),
+    )
+    return store
+
+
 def test_reflection_is_queued_until_human_approval_and_survives_restart(
     tmp_path, monkeypatch
 ):
@@ -130,7 +144,8 @@ def test_reflection_is_queued_until_human_approval_and_survives_restart(
     def model_call(**_):
         return json.dumps({"candidates": [candidate]})
 
-    service = MemoryService(project_id="project-a")
+    evidence_store = _evidence_store("ev-verified-1", "task-a1")
+    service = MemoryService(project_id="project-a", evidence_store=evidence_store)
     result = service.reflect_and_commit(
         model_call=model_call,
         experience={"tool": "run_command", "success": True},
@@ -148,7 +163,7 @@ def test_reflection_is_queued_until_human_approval_and_survives_restart(
         "Check the SDK", project_id="project-a", limit=10
     )["results"] == []
 
-    restarted = MemoryService(project_id="project-a")
+    restarted = MemoryService(project_id="project-a", evidence_store=evidence_store)
     assert any(item["id"] == review_id for item in restarted.pending_reflections())
     approved = restarted.review_reflection(review_id, approve=True)
     assert approved["status"] == "approved"
@@ -166,7 +181,8 @@ def test_rejected_reflection_never_enters_active_memory(tmp_path, monkeypatch):
         "memory_type": "fact",
         "evidence_refs": ["ev-1"],
     }
-    service = MemoryService(project_id="project-a")
+    evidence_store = _evidence_store("ev-1", "task-a")
+    service = MemoryService(project_id="project-a", evidence_store=evidence_store)
     result = service.reflect_and_commit(
         model_call=lambda **_: json.dumps({"candidates": [candidate]}),
         experience={"success": False},
@@ -182,3 +198,28 @@ def test_rejected_reflection_never_enters_active_memory(tmp_path, monkeypatch):
     assert search_memory(
         "This claim", project_id="project-a", task_id="task-a"
     )["results"] == []
+
+
+
+def test_reflection_rejects_missing_or_cross_task_evidence(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_AGENT_WORKSPACE_ROOT", str(tmp_path))
+    evidence_store = _evidence_store("real-evidence", "task-a")
+    service = MemoryService(project_id="project-a", evidence_store=evidence_store)
+
+    missing = service.reflect_and_commit(
+        model_call=lambda **_: json.dumps({"candidates": []}),
+        experience={"success": True},
+        evidence_refs=["forged-evidence"],
+        project_id="project-a",
+        task_id="task-a",
+    )
+    mismatch = service.reflect_and_commit(
+        model_call=lambda **_: json.dumps({"candidates": []}),
+        experience={"success": True},
+        evidence_refs=["real-evidence"],
+        project_id="project-a",
+        task_id="task-b",
+    )
+
+    assert missing["reason"] == "EVIDENCE_NOT_FOUND"
+    assert mismatch["reason"] == "EVIDENCE_TASK_MISMATCH"
