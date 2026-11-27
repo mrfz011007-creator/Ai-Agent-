@@ -1,4 +1,5 @@
 from core.conversation import ConversationService
+from core.model_gateway import ModelCallResult
 from core.request_router import is_action_request
 
 
@@ -159,3 +160,75 @@ def test_cli_ignores_empty_input_without_model_or_goal_call():
             raise AssertionError("empty input must not create goal")
 
     assert agent.handle_request(Runtime(), "   ") is None
+
+
+
+def test_conversation_returns_provider_metadata_separately_from_answer():
+    class MetadataGateway:
+        def generate_text_with_metadata(self, **kwargs):
+            return ModelCallResult(
+                text="Jawaban dari model",
+                provider="openrouter",
+                requested_model="nvidia/primary",
+                actual_model="nvidia/served-model",
+                request_id="req-chat-1",
+            )
+
+    reply = ConversationService(MetadataGateway()).answer_with_metadata("Halo")
+
+    assert reply.answer == "Jawaban dari model"
+    assert reply.provider == "openrouter"
+    assert reply.requested_model == "nvidia/primary"
+    assert reply.actual_model == "nvidia/served-model"
+    assert reply.identity_verified is True
+
+
+def test_conversation_keeps_model_identity_unverified_when_provider_omits_it():
+    class MetadataGateway:
+        def generate_text_with_metadata(self, **kwargs):
+            return ModelCallResult(
+                text="Jawaban dari fallback",
+                provider="gemini",
+                requested_model="gemini/configured",
+                actual_model=None,
+            )
+
+    reply = ConversationService(MetadataGateway()).answer_with_metadata("Halo")
+
+    assert reply.answer == "Jawaban dari fallback"
+    assert reply.provider == "gemini"
+    assert reply.requested_model == "gemini/configured"
+    assert reply.actual_model is None
+    assert reply.identity_verified is False
+
+
+def test_cli_displays_provider_reported_model_metadata_without_changing_return_type(monkeypatch):
+    import agent
+    from core.conversation import ConversationReply
+
+    class Runtime:
+        def chat_with_metadata(self, message):
+            return ConversationReply(
+                answer="Jawaban",
+                provider="openrouter",
+                requested_model="primary/model",
+                actual_model="served/model",
+                request_id="req-cli-1",
+            )
+
+        def run_goal(self, message):
+            raise AssertionError("normal chat must not create a goal")
+
+    monkeypatch.setattr(agent, "deteksi_intent", lambda _: None)
+    output = []
+    result = agent.handle_request(
+        Runtime(),
+        "Model apa yang melayani?",
+        printer=lambda *args: output.append(" ".join(map(str, args))),
+    )
+
+    assert result == "Jawaban"
+    rendered = "\n".join(output)
+    assert "Provider : openrouter" in rendered
+    assert "Model aktual : served/model" in rendered
+    assert "Terverifikasi dari metadata provider" in rendered
